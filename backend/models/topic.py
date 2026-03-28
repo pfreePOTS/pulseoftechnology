@@ -10,6 +10,14 @@ class TopicStatus(str, enum.Enum):
     approved = "approved"
 
 
+class AdoptionState(str, enum.Enum):
+    learn_about = "Learn About"
+    get_ahead_of = "Get Ahead Of"
+    get_prepared_for = "Get Prepared For"
+    get_your_hands_around = "Get Your Hands Around"
+    make_the_most_of = "Make the Most Of"
+
+
 class Topic(Base):
     __tablename__ = "topics"
 
@@ -21,8 +29,11 @@ class Topic(Base):
     status: Mapped[TopicStatus] = mapped_column(
         Enum(TopicStatus), default=TopicStatus.pending, nullable=False, index=True
     )
+    adoption_state: Mapped[AdoptionState] = mapped_column(
+        Enum(AdoptionState), default=AdoptionState.learn_about, nullable=False
+    )
 
     articles: Mapped[list["Article"]] = relationship("Article", back_populates="topic")
 
     def __repr__(self) -> str:
-        return f"<Topic id={self.id} name={self.name!r} domain={self.domain!r} status={self.status!r}>"
+        return f"<Topic id={self.id} name={self.name!r} domain={self.domain!r} status={self.status!r} adoption_state={self.adoption_state!r}>"

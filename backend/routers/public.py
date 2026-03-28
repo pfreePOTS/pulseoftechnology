@@ -27,6 +27,7 @@ class TopicPublic(BaseModel):
     domain: str
     summary: str | None
     urgency_score: float
+    adoption_state: str
 
     model_config = {"from_attributes": True}
 

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models.article import Article
-from ..models.topic import Topic, TopicStatus
+from ..models.topic import Topic, TopicStatus, AdoptionState
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -30,6 +30,7 @@ class TopicOut(BaseModel):
     summary: str | None
     urgency_score: float
     status: str
+    adoption_state: str
 
     model_config = {"from_attributes": True}
 
@@ -41,6 +42,7 @@ class TopicDetail(TopicOut):
 class TopicUpdate(BaseModel):
     summary: str | None = None
     urgency_score: float | None = None
+    adoption_state: AdoptionState | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +80,8 @@ def update_topic(topic_id: int, payload: TopicUpdate, db: Session = Depends(get_
         topic.summary = payload.summary
     if payload.urgency_score is not None:
         topic.urgency_score = payload.urgency_score
+    if payload.adoption_state is not None:
+        topic.adoption_state = payload.adoption_state
 
     db.commit()
     db.refresh(topic)

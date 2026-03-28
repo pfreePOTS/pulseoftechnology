@@ -17,6 +17,7 @@ interface TopicDetail {
   domain: string;
   summary: string | null;
   urgency_score: number;
+  adoption_state: string;
   status: string;
   articles: Article[];
 }

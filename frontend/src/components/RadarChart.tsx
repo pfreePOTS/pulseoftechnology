@@ -7,6 +7,7 @@ export interface RadarTopic {
   name: string;
   domain: string;
   urgency_score: number;
+  adoption_state: string;
   summary: string | null;
 }
 
@@ -48,13 +49,17 @@ function polarToXY(angleDeg: number, r: number): [number, number] {
   return [CX + r * Math.cos(rad), CY + r * Math.sin(rad)];
 }
 
-/** Map urgency 0–10 to adoption-axis index 0–4. */
-function urgencyToAxisIndex(urgency: number): number {
-  if (urgency < 2) return 0;
-  if (urgency < 4) return 1;
-  if (urgency < 6) return 2;
-  if (urgency < 8) return 3;
-  return 4;
+/** Map an explicit adoption_state string to its axis index (0–4). */
+const ADOPTION_STATE_INDEX: Record<string, number> = {
+  "Learn About": 0,
+  "Get Ahead Of": 1,
+  "Get Prepared For": 2,
+  "Get Your Hands Around": 3,
+  "Make the Most Of": 4,
+};
+
+function adoptionStateToAxisIndex(state: string): number {
+  return ADOPTION_STATE_INDEX[state] ?? 0;
 }
 
 /** Clockwise angle (deg) of the nth adoption-state axis, from 12 o'clock. */
@@ -84,7 +89,7 @@ function approxW(text: string, fontSize = 11): number {
 function computePositions(topics: RadarTopic[]) {
   const groups: Record<number, RadarTopic[]> = {};
   for (const t of topics) {
-    const axis = urgencyToAxisIndex(t.urgency_score);
+    const axis = adoptionStateToAxisIndex(t.adoption_state);
     (groups[axis] ??= []).push(t);
   }
 
@@ -233,7 +238,7 @@ export default function RadarChart({ topics }: { topics: RadarTopic[] }) {
           if (by < 6) by = svgY + PAD;
           if (by + BOX_H > SIZE - 6) by = SIZE - BOX_H - 6;
           const color = DOMAIN_COLORS[topic.domain] ?? DEFAULT_COLOR;
-          const axisLabel = ADOPTION_AXES[urgencyToAxisIndex(topic.urgency_score)];
+          const axisLabel = topic.adoption_state;
           return (
             <g pointerEvents="none">
               <rect

@@ -12,12 +12,21 @@ interface Article {
   status: string;
 }
 
+const ADOPTION_STATES = [
+  "Learn About",
+  "Get Ahead Of",
+  "Get Prepared For",
+  "Get Your Hands Around",
+  "Make the Most Of",
+] as const;
+
 interface TopicDetail {
   id: number;
   name: string;
   domain: string;
   summary: string | null;
   urgency_score: number;
+  adoption_state: string;
   status: string;
   articles: Article[];
 }
@@ -35,6 +44,7 @@ export default function TopicEditor({
   const router = useRouter();
   const [summary, setSummary] = useState(topic.summary ?? "");
   const [urgency, setUrgency] = useState(String(topic.urgency_score));
+  const [adoptionState, setAdoptionState] = useState(topic.adoption_state);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [approveState, setApproveState] = useState<ApproveState>(
     topic.status === "approved" ? "approved" : "idle",
@@ -51,6 +61,7 @@ export default function TopicEditor({
         body: JSON.stringify({
           summary: summary || null,
           urgency_score: parseFloat(urgency),
+          adoption_state: adoptionState,
         }),
       });
       if (!res.ok) throw new Error(await res.text());
@@ -73,6 +84,7 @@ export default function TopicEditor({
         body: JSON.stringify({
           summary: summary || null,
           urgency_score: parseFloat(urgency),
+          adoption_state: adoptionState,
         }),
       });
       const res = await fetch(
@@ -163,6 +175,28 @@ export default function TopicEditor({
               disabled={isApproved}
               className="w-32 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
             />
+          </div>
+
+          <div>
+            <label
+              htmlFor="adoption-state"
+              className="mb-1.5 block text-sm font-medium text-gray-300"
+            >
+              Adoption State
+            </label>
+            <select
+              id="adoption-state"
+              value={adoptionState}
+              onChange={(e) => setAdoptionState(e.target.value)}
+              disabled={isApproved}
+              className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
+            >
+              {ADOPTION_STATES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
           </div>
 
           {errorMsg && (

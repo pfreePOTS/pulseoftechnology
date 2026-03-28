@@ -77,28 +77,8 @@ export default async function Home() {
         </div>
       </header>
 
-      {/* ── Light Gray Control Bar ──────────────────────────────────────────── */}
-      <div
-        style={{ backgroundColor: "#E5E5E5" }}
-        className="border-b border-gray-300 px-6 py-5 shrink-0"
-      >
-        <div className="mx-auto max-w-7xl">
-          <h1 className="text-2xl font-bold" style={{ color: "#425B76" }}>
-            C-Level Technology Intelligence Radar
-          </h1>
-          <p className="mt-1 text-sm text-gray-600">
-            AI-curated signals scored by urgency · Hover a star to inspect ·
-            Updated daily
-          </p>
-        </div>
-      </div>
-
-      {/* ── White Radar Section ─────────────────────────────────────────────── */}
-      <section className="bg-white px-6 py-10 grow">
-        <div className="mx-auto max-w-7xl">
-          <RadarSection topics={topics} />
-        </div>
-      </section>
+      {/* ── Control Bar + Radar (rendered by RadarSection) ─────────────────── */}
+      <RadarSection topics={topics} />
 
       {/* ── Light Gray Legend Bar ───────────────────────────────────────────── */}
       <div

@@ -327,7 +327,7 @@ export default function SubscribeWizard({ apiBase }: Props) {
           <button
             type="button"
             onClick={handleNext}
-            className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500"
+            className="rounded-lg bg-pulse-red px-5 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90"
           >
             Continue →
           </button>
@@ -336,7 +336,7 @@ export default function SubscribeWizard({ apiBase }: Props) {
             type="button"
             onClick={handleSubmit}
             disabled={submitting}
-            className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 disabled:opacity-50"
+            className="rounded-lg bg-pulse-red px-5 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {submitting ? "Subscribing…" : "Subscribe to the Pulse"}
           </button>

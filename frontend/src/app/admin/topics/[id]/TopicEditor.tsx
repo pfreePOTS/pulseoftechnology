@@ -187,7 +187,7 @@ export default function TopicEditor({
               <button
                 onClick={handleApprove}
                 disabled={approveState === "approving"}
-                className="ml-auto rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 disabled:opacity-50"
+                className="ml-auto rounded-lg bg-pulse-red px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
               >
                 {approveState === "approving"
                   ? "Approving…"

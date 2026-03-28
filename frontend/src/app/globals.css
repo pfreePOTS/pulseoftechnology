@@ -16,13 +16,27 @@
   --color-pulse-teal: #425B76;
   --color-pulse-gray: #E5E5E5;
 
-  /* Industry accent colors */
+  /* Radar chart gradient stops */
+  --color-radar-bg: #0d9488;
+  --color-radar-mid: #ccfbf1;
+  --color-radar-inner: #f0fdf9;
+  --color-radar-center: #ffffff;
+
+  /* Domain accent colors (radar stars) */
   --color-industry-ai: #7C3AED;
   --color-industry-security: #DC2626;
   --color-industry-cloud: #0284C7;
   --color-industry-finance: #059669;
   --color-industry-leadership: #D97706;
   --color-industry-other: #6B7280;
+
+  /* Subscriber industry accent colors */
+  --color-ind-tech: #2563EB;
+  --color-ind-health: #0891B2;
+  --color-ind-finance: #059669;
+  --color-ind-mfg: #9333EA;
+  --color-ind-smb: #F59E0B;
+  --color-ind-all: #425B76;
 }
 
 body {

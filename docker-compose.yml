@@ -1,0 +1,78 @@
+version: "3.9"
+
+# ============================================================
+# IMPORTANT: Always start this project with Docker Compose.
+#   docker compose up --build
+# Do NOT run backend or frontend manually outside of Compose
+# during development. See README.md for full instructions.
+# ============================================================
+
+services:
+
+  # ── PostgreSQL Database ───────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    container_name: pulse_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pulse_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pulse_password}
+      POSTGRES_DB: ${POSTGRES_DB:-pulse_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pulse_user} -d ${POSTGRES_DB:-pulse_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI Backend ───────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pulse_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pulse_user}:${POSTGRES_PASSWORD:-pulse_password}@db:5432/${POSTGRES_DB:-pulse_db}
+      ENVIRONMENT: development
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount source for hot reload; node: trick keeps container-built deps intact
+      - ./backend:/app/backend
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ── Next.js Frontend ─────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: pulse_frontend
+    restart: unless-stopped
+    environment:
+      # Browser-accessible URL — must be localhost, not the service name
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      # Prevent host node_modules from shadowing container's
+      - frontend_node_modules:/app/node_modules
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  frontend_node_modules:

@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  /* PulseOne brand palette */
+  --color-pulse-red: #E91D24;
+  --color-pulse-teal: #425B76;
+  --color-pulse-gray: #E5E5E5;
+
+  /* Industry accent colors */
+  --color-industry-ai: #7C3AED;
+  --color-industry-security: #DC2626;
+  --color-industry-cloud: #0284C7;
+  --color-industry-finance: #059669;
+  --color-industry-leadership: #D97706;
+  --color-industry-other: #6B7280;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Inter, Roboto, system-ui, sans-serif;
+}

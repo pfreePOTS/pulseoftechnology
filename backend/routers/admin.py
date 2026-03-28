@@ -31,6 +31,7 @@ class TopicOut(BaseModel):
     urgency_score: float
     status: str
     adoption_state: str
+    industry_positions: dict | None = None
 
     model_config = {"from_attributes": True}
 
@@ -43,6 +44,7 @@ class TopicUpdate(BaseModel):
     summary: str | None = None
     urgency_score: float | None = None
     adoption_state: AdoptionState | None = None
+    industry_positions: dict | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -82,6 +84,8 @@ def update_topic(topic_id: int, payload: TopicUpdate, db: Session = Depends(get_
         topic.urgency_score = payload.urgency_score
     if payload.adoption_state is not None:
         topic.adoption_state = payload.adoption_state
+    if payload.industry_positions is not None:
+        topic.industry_positions = payload.industry_positions
 
     db.commit()
     db.refresh(topic)

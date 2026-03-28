@@ -28,6 +28,7 @@ class TopicPublic(BaseModel):
     summary: str | None
     urgency_score: float
     adoption_state: str
+    industry_positions: dict | None = None
 
     model_config = {"from_attributes": True}
 

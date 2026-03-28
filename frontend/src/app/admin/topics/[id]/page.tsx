@@ -11,6 +11,11 @@ interface Article {
   status: string;
 }
 
+interface IndustryPosition {
+  urgency_score: number;
+  adoption_state: string;
+}
+
 interface TopicDetail {
   id: number;
   name: string;
@@ -18,6 +23,7 @@ interface TopicDetail {
   summary: string | null;
   urgency_score: number;
   adoption_state: string;
+  industry_positions: Record<string, IndustryPosition> | null;
   status: string;
   articles: Article[];
 }

@@ -1,6 +1,6 @@
 import enum
 
-from sqlalchemy import Enum, Float, Integer, String, Text
+from sqlalchemy import Enum, Float, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from ..database import Base
 
@@ -32,6 +32,9 @@ class Topic(Base):
     adoption_state: Mapped[AdoptionState] = mapped_column(
         Enum(AdoptionState), default=AdoptionState.learn_about, nullable=False
     )
+    # Maps industry name → {urgency_score, adoption_state} for per-industry radar points
+    # e.g. {"Healthcare": {"urgency_score": 8.5, "adoption_state": "Get Ahead Of"}}
+    industry_positions: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
 
     articles: Mapped[list["Article"]] = relationship("Article", back_populates="topic")
 

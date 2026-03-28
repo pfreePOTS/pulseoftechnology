@@ -1,6 +1,6 @@
 import RadarSection from "@/components/RadarSection";
 import SubscribeWizard from "@/components/SubscribeWizard";
-import { type RadarTopic } from "@/components/RadarChart";
+import { type RadarTopic, INDUSTRY_COLORS } from "@/components/RadarChart";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -16,15 +16,11 @@ async function getPublishedTopics(): Promise<RadarTopic[]> {
   }
 }
 
-// Industry legend entries (keep in sync with RadarChart DOMAIN_COLORS)
-const DOMAIN_LEGEND = [
-  { name: "AI", color: "#7C3AED" },
-  { name: "Security", color: "#DC2626" },
-  { name: "Cloud", color: "#0284C7" },
-  { name: "Finance", color: "#059669" },
-  { name: "Leadership", color: "#D97706" },
-  { name: "Other", color: "#6B7280" },
-];
+// Legend sourced directly from RadarChart's exported INDUSTRY_COLORS
+const INDUSTRY_LEGEND = Object.entries(INDUSTRY_COLORS).map(([name, color]) => ({
+  name,
+  color,
+}));
 
 // Adoption-state descriptions for the instructions section
 const ADOPTION_STATES = [
@@ -116,7 +112,7 @@ export default async function Home() {
           >
             Domains
           </span>
-          {DOMAIN_LEGEND.map(({ name, color }) => (
+          {INDUSTRY_LEGEND.map(({ name, color }) => (
             <span key={name} className="flex items-center gap-1.5 text-sm text-gray-700">
               {/* Mini star icon using clip-path */}
               <span
@@ -179,9 +175,13 @@ export default async function Home() {
             </h2>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {topics.map((topic) => {
-                const color =
-                  DOMAIN_LEGEND.find((d) => d.name === topic.domain)?.color ??
-                  "#6B7280";
+                // Use the first industry position's colour if available, else domain fallback
+                const firstIndustry = topic.industry_positions
+                  ? Object.keys(topic.industry_positions)[0]
+                  : null;
+                const color = firstIndustry
+                  ? (INDUSTRY_COLORS[firstIndustry] ?? "#6B7280")
+                  : "#6B7280";
                 return (
                   <article
                     key={topic.id}

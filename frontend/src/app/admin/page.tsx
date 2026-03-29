@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -9,14 +12,6 @@ interface Topic {
   summary: string | null;
   urgency_score: number;
   status: string;
-}
-
-async function getPendingTopics(): Promise<Topic[]> {
-  const res = await fetch(`${API_BASE}/api/admin/topics`, {
-    cache: "no-store",
-  });
-  if (!res.ok) return [];
-  return res.json();
 }
 
 function UrgencyBadge({ score }: { score: number }) {
@@ -54,11 +49,22 @@ function DomainBadge({ domain }: { domain: string }) {
   );
 }
 
-export default async function AdminTopicsPage() {
-  const topics = await getPendingTopics();
+export default function AdminTopicsPage() {
+  const [topics, setTopics] = useState<Topic[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const token = localStorage.getItem("pulse_admin_token") ?? "";
+    fetch(`${API_BASE}/api/admin/topics`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setTopics)
+      .finally(() => setLoading(false));
+  }, []);
 
   return (
-    <main className="min-h-screen bg-gray-950 px-4 py-10 text-white sm:px-6 lg:px-8">
+    <div className="px-4 py-10 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-5xl">
         <header className="mb-8">
           <h1 className="text-3xl font-bold tracking-tight text-white">
@@ -69,11 +75,13 @@ export default async function AdminTopicsPage() {
           </p>
         </header>
 
-        {topics.length === 0 ? (
+        {loading ? (
           <div className="rounded-xl border border-gray-800 bg-gray-900 px-6 py-16 text-center">
-            <p className="text-lg font-medium text-gray-300">
-              No pending topics
-            </p>
+            <p className="text-sm text-gray-500">Loading topics…</p>
+          </div>
+        ) : topics.length === 0 ? (
+          <div className="rounded-xl border border-gray-800 bg-gray-900 px-6 py-16 text-center">
+            <p className="text-lg font-medium text-gray-300">No pending topics</p>
             <p className="mt-1 text-sm text-gray-500">
               All topics have been reviewed, or none have been processed yet.
             </p>
@@ -85,10 +93,10 @@ export default async function AdminTopicsPage() {
                 <tr className="border-b border-gray-800 text-left">
                   <th className="px-4 py-3 font-medium text-gray-400">Topic</th>
                   <th className="px-4 py-3 font-medium text-gray-400">Domain</th>
-                  <th className="px-4 py-3 font-medium text-gray-400 text-right">
+                  <th className="px-4 py-3 text-right font-medium text-gray-400">
                     Urgency
                   </th>
-                  <th className="px-4 py-3 font-medium text-gray-400 text-right">
+                  <th className="px-4 py-3 text-right font-medium text-gray-400">
                     Action
                   </th>
                 </tr>
@@ -132,6 +140,6 @@ export default async function AdminTopicsPage() {
           {topics.length} topic{topics.length !== 1 ? "s" : ""} pending review
         </p>
       </div>
-    </main>
+    </div>
   );
 }

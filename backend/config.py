@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     sendgrid_newsletter_template_id: str = ""  # optional dynamic template
     # HubSpot
     hubspot_api_key: str = ""  # private app access token
+    # Admin
+    admin_password: str = "pulseadmin"
 
     model_config = {"env_file": ".env"}
 

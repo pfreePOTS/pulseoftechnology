@@ -1,4 +1,7 @@
-import { notFound } from "next/navigation";
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import TopicEditor from "./TopicEditor";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -11,11 +14,6 @@ interface Article {
   status: string;
 }
 
-interface IndustryPosition {
-  urgency_score: number;
-  adoption_state: string;
-}
-
 interface TopicDetail {
   id: number;
   name: string;
@@ -23,35 +21,48 @@ interface TopicDetail {
   summary: string | null;
   urgency_score: number;
   adoption_state: string;
-  industry_positions: Record<string, IndustryPosition> | null;
+  industry_positions: Record<string, { urgency_score: number; adoption_state: string }> | null;
   status: string;
   articles: Article[];
 }
 
-async function getTopic(id: string): Promise<TopicDetail | null> {
-  const res = await fetch(`${API_BASE}/api/admin/topics/${id}`, {
-    cache: "no-store",
-  });
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Failed to load topic ${id}`);
-  return res.json();
-}
+export default function TopicDetailPage() {
+  const params = useParams();
+  const id = params.id as string;
+  const [topic, setTopic] = useState<TopicDetail | null | "loading">("loading");
 
-export default async function TopicDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
-  const topic = await getTopic(id);
+  useEffect(() => {
+    const token = localStorage.getItem("pulse_admin_token") ?? "";
+    fetch(`${API_BASE}/api/admin/topics/${id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    } as RequestInit)
+      .then((r) => (r.status === 404 ? null : r.ok ? r.json() : Promise.reject()))
+      .then(setTopic)
+      .catch(() => setTopic(null));
+  }, [id]);
 
-  if (!topic) notFound();
+  if (topic === "loading") {
+    return (
+      <div className="flex min-h-[300px] items-center justify-center px-4 py-10">
+        <p className="text-sm text-gray-500">Loading…</p>
+      </div>
+    );
+  }
+
+  if (topic === null) {
+    return (
+      <div className="flex min-h-[300px] items-center justify-center px-4 py-10">
+        <p className="text-sm text-red-400">Topic not found.</p>
+      </div>
+    );
+  }
 
   return (
-    <main className="min-h-screen bg-gray-950 px-4 py-10 text-white sm:px-6 lg:px-8">
+    <div className="px-4 py-10 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-5xl">
         <TopicEditor topic={topic} apiBase={API_BASE} />
       </div>
-    </main>
+    </div>
   );
 }

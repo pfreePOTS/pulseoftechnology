@@ -53,6 +53,14 @@ interface TopicDetail {
 type SaveState = "idle" | "saving" | "saved" | "error";
 type ApproveState = "idle" | "approving" | "approved" | "error";
 
+function authHeader(): Record<string, string> {
+  const token =
+    typeof window !== "undefined"
+      ? (localStorage.getItem("pulse_admin_token") ?? "")
+      : "";
+  return { Authorization: `Bearer ${token}` };
+}
+
 // ── Shared input styles (dark admin theme)
 const inputCls =
   "rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50";
@@ -142,7 +150,7 @@ export default function TopicEditor({
     try {
       const res = await fetch(`${apiBase}/api/admin/topics/${topic.id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeader() },
         body: JSON.stringify(buildPayload()),
       });
       if (!res.ok) throw new Error(await res.text());
@@ -160,12 +168,12 @@ export default function TopicEditor({
     try {
       await fetch(`${apiBase}/api/admin/topics/${topic.id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeader() },
         body: JSON.stringify(buildPayload()),
       });
       const res = await fetch(
         `${apiBase}/api/admin/topics/${topic.id}/approve`,
-        { method: "POST" },
+        { method: "POST", headers: authHeader() },
       );
       if (!res.ok) throw new Error(await res.text());
       setApproveState("approved");

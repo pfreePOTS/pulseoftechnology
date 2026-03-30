@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..models.article import Article
+from ..models.content import ContentItem
 from ..models.subscriber import Subscriber
 from ..models.topic import Topic, TopicStatus
 
@@ -67,11 +68,33 @@ text-transform:uppercase;color:{domain_color};font-family:Arial,Helvetica,sans-s
 font-family:Georgia,'Times New Roman',serif;line-height:1.3;">{name}</h2>
           <p style="margin:0;font-size:14px;color:#374151;\
 font-family:Arial,Helvetica,sans-serif;line-height:1.75;">{summary}</p>
+          {articles_html}
         </td>
       </tr>
     </table>
   </td>
 </tr>
+"""
+
+_ARTICLE_BLOCK = """\
+<table cellpadding="0" cellspacing="0" width="100%" style="margin-top:12px;">
+  <tr>
+    <td style="background:#f9fafb;border-radius:6px;padding:10px 14px;">
+      <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:#6b7280;\
+font-family:Arial,Helvetica,sans-serif;text-transform:uppercase;letter-spacing:.06em;">
+        What is it
+      </p>
+      <p style="margin:0 0 8px;font-size:13px;color:#111827;\
+font-family:Arial,Helvetica,sans-serif;line-height:1.6;">{what_is_it}</p>
+      <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:#6b7280;\
+font-family:Arial,Helvetica,sans-serif;text-transform:uppercase;letter-spacing:.06em;">
+        Why it matters
+      </p>
+      <p style="margin:0;font-size:13px;color:#374151;\
+font-family:Arial,Helvetica,sans-serif;line-height:1.6;">{why_it_matters}</p>
+    </td>
+  </tr>
+</table>
 """
 
 _EMAIL_TEMPLATE = """\
@@ -160,6 +183,8 @@ _EMAIL_TEMPLATE = """\
           </td>
         </tr>
 
+        {promo_html}
+
         <!-- FOOTER -->
         <tr>
           <td style="background:#f9fafb;padding:24px 32px;
@@ -185,19 +210,138 @@ _EMAIL_TEMPLATE = """\
 </html>
 """
 
+_TYPE_LABELS: dict[str, str] = {
+    "article": "Article",
+    "video": "Video",
+    "landing_page": "Landing Page",
+}
 
-def _build_html(subscriber: Subscriber, topics: list[Topic]) -> str:
+_PROMO_ITEM_BLOCK = """\
+<tr>
+  <td style="padding:0 0 14px 0;">
+    <span style="display:inline-block;margin-bottom:4px;padding:2px 8px;
+                 border-radius:4px;background:#e0e7ff;font-size:10px;font-weight:700;
+                 text-transform:uppercase;letter-spacing:.06em;color:#4338ca;
+                 font-family:Arial,Helvetica,sans-serif;">{type_label}</span>
+    <p style="margin:0 0 4px;">
+      <a href="{url}" style="font-size:15px;font-weight:700;color:#111827;
+         font-family:Georgia,'Times New Roman',serif;text-decoration:none;
+         line-height:1.3;">{title}</a>
+    </p>
+    {summary_html}
+  </td>
+</tr>
+"""
+
+_PROMO_SECTION = """\
+<tr>
+  <td style="padding:0 32px 8px;">
+    <table width="100%" cellpadding="0" cellspacing="0"
+           style="background:#f0f4ff;border-radius:8px;padding:20px 24px;">
+      <tr>
+        <td style="padding:0 0 14px 0;">
+          <hr style="border:none;border-top:2px solid #4f46e5;margin:0 0 14px;">
+          <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:.12em;
+                    text-transform:uppercase;color:#4f46e5;
+                    font-family:Arial,Helvetica,sans-serif;">
+            FROM PULSEONE &nbsp;&middot;&nbsp; Recommended Resources
+          </p>
+        </td>
+      </tr>
+      {promo_items}
+    </table>
+  </td>
+</tr>
+"""
+
+
+def _build_html(
+    subscriber: Subscriber,
+    topics: list[Topic],
+    db: Session | None = None,
+    promoted_content: list[ContentItem] | None = None,
+) -> str:
+    # Resolve role tags — prefer already-attached role object, fall back to DB lookup
+    role_tags: set[str] | None = None
+    role_obj = getattr(subscriber, "role", None)
+    if role_obj is None and db is not None and subscriber.role_id is not None:
+        from ..models.role import Role
+        role_obj = db.query(Role).filter(Role.id == subscriber.role_id).first()
+    if role_obj and getattr(role_obj, "tags", None):
+        role_tags = {t.lower() for t in role_obj.tags}
+
     topic_blocks = []
     for topic in topics:
         color = _DOMAIN_COLORS.get(topic.domain, "#6b7280")
+        articles_html = ""
+
+        if db is not None:
+            # Fetch all articles for this topic that have summaries
+            candidates: list[Article] = (
+                db.query(Article)
+                .filter(
+                    Article.topic_id == topic.id,
+                    Article.what_is_it.isnot(None),
+                    Article.why_it_matters.isnot(None),
+                )
+                .all()
+            )
+
+            if role_tags:
+                # Keep only articles whose tags intersect with the role's tags
+                matched = [
+                    a for a in candidates
+                    if {t.lower() for t in (a.tags or [])} & role_tags
+                ]
+                # If no matches, skip this topic entirely for this role
+                if not matched:
+                    continue
+                # Sort by published_at descending, take top 3
+                matched.sort(key=lambda a: a.published_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+                selected = matched[:3]
+            else:
+                # No role filter — show top 3 by published_at
+                candidates.sort(key=lambda a: a.published_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+                selected = candidates[:3]
+
+            articles_html = "\n".join(
+                _ARTICLE_BLOCK.format(
+                    what_is_it=a.what_is_it,
+                    why_it_matters=a.why_it_matters,
+                )
+                for a in selected
+            )
+
         topic_blocks.append(
             _TOPIC_BLOCK.format(
                 domain_color=color,
                 domain=topic.domain,
                 name=topic.name,
                 summary=topic.summary or "No summary available.",
+                articles_html=articles_html,
             )
         )
+
+    # ── Build promoted content section ──
+    promo_html = ""
+    if promoted_content:
+        items_html = []
+        for item in promoted_content[:3]:
+            summary_html = (
+                f'<p style="margin:0;font-size:13px;color:#374151;'
+                f'font-family:Arial,Helvetica,sans-serif;line-height:1.6;">'
+                f'{item.summary}</p>'
+                if item.summary else ""
+            )
+            items_html.append(
+                _PROMO_ITEM_BLOCK.format(
+                    type_label=_TYPE_LABELS.get(item.type, item.type.replace("_", " ").title()),
+                    url=item.url,
+                    title=item.title,
+                    summary_html=summary_html,
+                )
+            )
+        promo_html = _PROMO_SECTION.format(promo_items="\n".join(items_html))
 
     industry_line = (
         f" for the {subscriber.industry} sector" if subscriber.industry else ""
@@ -207,6 +351,7 @@ def _build_html(subscriber: Subscriber, topics: list[Topic]) -> str:
         date=datetime.now(timezone.utc).strftime("%B %-d, %Y"),
         industry_line=industry_line,
         topics_html="\n".join(topic_blocks),
+        promo_html=promo_html,
         domains_label=", ".join(subscriber.domains or []) or "All",
         industry_label=subscriber.industry or "Not specified",
     )
@@ -216,7 +361,12 @@ def _build_html(subscriber: Subscriber, topics: list[Topic]) -> str:
 # Public API
 # ---------------------------------------------------------------------------
 
-def send_daily_newsletter(subscriber: Subscriber, topics: list[Topic]) -> bool:
+def send_daily_newsletter(
+    subscriber: Subscriber,
+    topics: list[Topic],
+    db: Session | None = None,
+    promoted_content: list[ContentItem] | None = None,
+) -> bool:
     """
     Send a personalized newsletter to one subscriber.
 
@@ -262,7 +412,7 @@ def send_daily_newsletter(subscriber: Subscriber, topics: list[Topic]) -> bool:
         message.add_personalization(p)
     else:
         # Built-in HTML template
-        html_body = _build_html(subscriber, topics)
+        html_body = _build_html(subscriber, topics, db=db, promoted_content=promoted_content)
         message = Mail(
             from_email=from_email,
             to_emails=To(email=subscriber.email),
@@ -289,6 +439,38 @@ def send_daily_newsletter(subscriber: Subscriber, topics: list[Topic]) -> bool:
         return False
 
 
+def assemble_promoted_content(
+    subscriber: Subscriber,
+    db: Session,
+) -> list[ContentItem]:
+    """
+    Return up to 3 active ContentItems matched to the subscriber's role tags.
+    Falls back to the 3 most-recently-created active items if no role tags exist.
+    """
+    all_active: list[ContentItem] = (
+        db.query(ContentItem)
+        .filter(ContentItem.is_active == True)  # noqa: E712
+        .order_by(ContentItem.created_at.desc())
+        .all()
+    )
+    if not all_active:
+        return []
+
+    role_obj = getattr(subscriber, "role", None)
+    role_tags: set[str] | None = None
+    if role_obj and getattr(role_obj, "tags", None):
+        role_tags = {t.lower() for t in role_obj.tags}
+
+    if role_tags:
+        matched = [
+            item for item in all_active
+            if {t.lower() for t in (item.tags or [])} & role_tags
+        ]
+        return matched[:3]
+
+    return all_active[:3]
+
+
 def assemble_newsletter_topics(
     subscriber: Subscriber,
     all_approved: list[Topic],
@@ -310,6 +492,7 @@ def generate_newsletter_preview(
     db: Session,
     industry: str | None = None,
     domains: list[str] | None = None,
+    role_id: int | None = None,
 ) -> str:
     """
     Build and return a rendered HTML newsletter for a simulated subscriber.
@@ -317,18 +500,25 @@ def generate_newsletter_preview(
     Uses the 5 most recently approved topics so the preview is always
     populated regardless of the 24-hour recency window used by the real job.
     ``industry`` and ``domains`` control the simulated subscriber profile;
-    an empty domains list is treated as "all domains" (no filtering).
+    ``role_id`` applies role-based article tag filtering.
     Does NOT write anything to the database or send any email.
     """
+    from ..models.role import Role
+
+    role = db.query(Role).filter(Role.id == role_id).first() if role_id else None
+
     dummy = Subscriber(
         id=-1,
         email="preview@pulseone.internal",
         first_name="Jane",
         last_name="Executive",
         industry=industry or "Technology",
-        domains=domains if domains else None,  # None → assemble_newsletter_topics returns all
+        domains=domains if domains else None,
+        role_id=role_id,
         is_active=True,
     )
+    # Attach the role object directly so _build_html doesn't need a DB lookup
+    dummy.role = role  # type: ignore[attr-defined]
 
     all_approved: list[Topic] = (
         db.query(Topic)
@@ -353,7 +543,8 @@ def generate_newsletter_preview(
             "</body></html>"
         )
 
-    return _build_html(dummy, topics)
+    promoted = assemble_promoted_content(dummy, db)
+    return _build_html(dummy, topics, db=db, promoted_content=promoted)
 
 
 def run_daily_newsletter(db: Session) -> None:
@@ -398,7 +589,8 @@ def run_daily_newsletter(db: Session) -> None:
     for subscriber in subscribers:
         matched = assemble_newsletter_topics(subscriber, approved_topics)
         if matched:
-            if send_daily_newsletter(subscriber, matched):
+            promoted = assemble_promoted_content(subscriber, db)
+            if send_daily_newsletter(subscriber, matched, db=db, promoted_content=promoted):
                 sent += 1
 
     logger.info("Daily newsletter: %d emails dispatched", sent)

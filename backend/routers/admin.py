@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
@@ -8,6 +9,9 @@ from sqlalchemy.orm import Session, joinedload
 from ..database import SessionLocal, get_db
 from ..dependencies import require_admin
 from ..models.article import Article
+from ..models.content import ContentItem
+from ..models.role import Role
+from ..models.signal import SignalRecommendation
 from ..models.source import Source, SourceType
 from ..models.subscriber import Subscriber
 from ..models.topic import AdoptionState, Topic, TopicStatus
@@ -52,6 +56,9 @@ class ArticleOut(BaseModel):
     url: str
     content: str | None
     status: str
+    what_is_it: str | None = None
+    why_it_matters: str | None = None
+    tags: list[str] | None = None
 
     model_config = {"from_attributes": True}
 
@@ -66,6 +73,7 @@ class TopicOut(BaseModel):
     adoption_state: str
     industry_positions: dict | None = None
     article_count: int = 0
+    is_published: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -170,6 +178,183 @@ def approve_topic(
     return topic
 
 
+@router.post("/topics/{topic_id}/publish", response_model=TopicOut)
+def publish_topic(
+    topic_id: int,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    topic = db.query(Topic).filter(Topic.id == topic_id).first()
+    if topic is None:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    if topic.status != TopicStatus.approved:
+        raise HTTPException(status_code=400, detail="Topic must be approved before publishing")
+    topic.is_published = True
+    db.commit()
+    db.refresh(topic)
+    return topic
+
+
+@router.post("/topics/{topic_id}/unpublish", response_model=TopicOut)
+def unpublish_topic(
+    topic_id: int,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    topic = db.query(Topic).filter(Topic.id == topic_id).first()
+    if topic is None:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    topic.is_published = False
+    db.commit()
+    db.refresh(topic)
+    return topic
+
+
+# ---------------------------------------------------------------------------
+# Topic Merge
+# ---------------------------------------------------------------------------
+
+class TopicMergeRequest(BaseModel):
+    source_topic_ids: list[int]
+    target_topic_id: int
+
+
+@router.post("/topics/merge", status_code=200)
+def merge_topics(
+    payload: TopicMergeRequest,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """
+    Merge one or more source topics into a target topic.
+    All articles from source topics are reassigned to the target.
+    Source topics are deleted. Target urgency is set to the max across all merged topics.
+    """
+    if payload.target_topic_id in payload.source_topic_ids:
+        raise HTTPException(status_code=400, detail="Target topic cannot also be a source topic")
+
+    target = db.query(Topic).filter(Topic.id == payload.target_topic_id).first()
+    if target is None:
+        raise HTTPException(status_code=404, detail="Target topic not found")
+
+    sources = db.query(Topic).filter(Topic.id.in_(payload.source_topic_ids)).all()
+    if len(sources) != len(payload.source_topic_ids):
+        raise HTTPException(status_code=404, detail="One or more source topics not found")
+
+    # Reassign articles and track max urgency
+    max_urgency = target.urgency_score
+    for src in sources:
+        if src.urgency_score > max_urgency:
+            max_urgency = src.urgency_score
+        db.query(Article).filter(Article.topic_id == src.id).update(
+            {"topic_id": payload.target_topic_id}, synchronize_session=False
+        )
+        # Reassign any pending signals
+        db.query(SignalRecommendation).filter(SignalRecommendation.topic_id == src.id).update(
+            {"topic_id": payload.target_topic_id}, synchronize_session=False
+        )
+        db.delete(src)
+
+    target.urgency_score = max_urgency
+    db.commit()
+    db.refresh(target)
+    return {"merged_into": payload.target_topic_id, "deleted": payload.source_topic_ids}
+
+
+# ---------------------------------------------------------------------------
+# Signal Recommendations
+# ---------------------------------------------------------------------------
+
+class SignalOut(BaseModel):
+    id: int
+    topic_id: int
+    topic_name: str
+    topic_domain: str
+    current_state: str
+    suggested_state: str
+    rationale: str
+    velocity_score: float
+    acceleration_score: float
+    status: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+@router.get("/signals", response_model=list[SignalOut])
+def list_signals(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+    signal_status: str = Query(default="pending"),
+):
+    rows = (
+        db.query(SignalRecommendation)
+        .filter(SignalRecommendation.status == signal_status)
+        .order_by(SignalRecommendation.created_at.desc())
+        .all()
+    )
+    result = []
+    for row in rows:
+        topic = db.query(Topic).filter(Topic.id == row.topic_id).first()
+        result.append(SignalOut(
+            id=row.id,
+            topic_id=row.topic_id,
+            topic_name=topic.name if topic else "(deleted)",
+            topic_domain=topic.domain if topic else "",
+            current_state=topic.adoption_state if topic else "",
+            suggested_state=row.suggested_state,
+            rationale=row.rationale,
+            velocity_score=row.velocity_score,
+            acceleration_score=row.acceleration_score,
+            status=row.status,
+            created_at=row.created_at,
+        ))
+    return result
+
+
+@router.post("/signals/{signal_id}/approve", response_model=SignalOut)
+def approve_signal(
+    signal_id: int,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    signal = db.query(SignalRecommendation).filter(SignalRecommendation.id == signal_id).first()
+    if signal is None:
+        raise HTTPException(status_code=404, detail="Signal not found")
+    topic = db.query(Topic).filter(Topic.id == signal.topic_id).first()
+    if topic:
+        topic.adoption_state = signal.suggested_state
+    signal.status = "approved"
+    db.commit()
+    return SignalOut(
+        id=signal.id,
+        topic_id=signal.topic_id,
+        topic_name=topic.name if topic else "(deleted)",
+        topic_domain=topic.domain if topic else "",
+        current_state=topic.adoption_state if topic else "",
+        suggested_state=signal.suggested_state,
+        rationale=signal.rationale,
+        velocity_score=signal.velocity_score,
+        acceleration_score=signal.acceleration_score,
+        status=signal.status,
+        created_at=signal.created_at,
+    )
+
+
+@router.post("/signals/{signal_id}/reject")
+def reject_signal(
+    signal_id: int,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    signal = db.query(SignalRecommendation).filter(SignalRecommendation.id == signal_id).first()
+    if signal is None:
+        raise HTTPException(status_code=404, detail="Signal not found")
+    signal.status = "rejected"
+    db.commit()
+    return {"status": "rejected"}
+
+
 # ---------------------------------------------------------------------------
 # Sources
 # ---------------------------------------------------------------------------
@@ -266,6 +451,7 @@ class SubscriberOut(BaseModel):
     last_name: str
     industry: str | None
     domains: list[str] | None
+    role_id: int | None = None
     is_active: bool
     created_at: datetime
 
@@ -281,6 +467,191 @@ def list_subscribers(
 
 
 # ---------------------------------------------------------------------------
+# Roles
+# ---------------------------------------------------------------------------
+
+class RoleOut(BaseModel):
+    id: int
+    name: str
+    tags: list[str] | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class RoleCreate(BaseModel):
+    name: str
+    tags: list[str] | None = None
+
+
+class RoleUpdate(BaseModel):
+    name: str | None = None
+    tags: list[str] | None = None
+
+
+@router.get("/roles", response_model=list[RoleOut])
+def list_roles(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    return db.query(Role).order_by(Role.name).all()
+
+
+@router.post("/roles", response_model=RoleOut, status_code=201)
+def create_role(
+    payload: RoleCreate,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    if db.query(Role).filter(Role.name == payload.name).first():
+        raise HTTPException(status_code=409, detail="A role with this name already exists")
+    role = Role(name=payload.name, tags=payload.tags)
+    db.add(role)
+    db.commit()
+    db.refresh(role)
+    return role
+
+
+@router.put("/roles/{role_id}", response_model=RoleOut)
+def update_role(
+    role_id: int,
+    payload: RoleUpdate,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    role = db.query(Role).filter(Role.id == role_id).first()
+    if role is None:
+        raise HTTPException(status_code=404, detail="Role not found")
+    if payload.name is not None:
+        role.name = payload.name
+    if payload.tags is not None:
+        role.tags = payload.tags
+    db.commit()
+    db.refresh(role)
+    return role
+
+
+@router.delete("/roles/{role_id}", status_code=204)
+def delete_role(
+    role_id: int,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    role = db.query(Role).filter(Role.id == role_id).first()
+    if role is None:
+        raise HTTPException(status_code=404, detail="Role not found")
+    db.delete(role)
+    db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Content Library
+# ---------------------------------------------------------------------------
+
+CONTENT_TYPES = {"article", "video", "landing_page"}
+
+
+class ContentItemOut(BaseModel):
+    id: uuid.UUID
+    title: str
+    url: str
+    type: str
+    summary: str | None = None
+    tags: list[str] = []
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ContentItemCreate(BaseModel):
+    title: str
+    url: str
+    type: str
+    summary: str | None = None
+    tags: list[str] = []
+
+
+class ContentItemUpdate(BaseModel):
+    title: str | None = None
+    url: str | None = None
+    type: str | None = None
+    summary: str | None = None
+    tags: list[str] | None = None
+    is_active: bool | None = None
+
+
+@router.get("/content", response_model=list[ContentItemOut])
+def list_content(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    return db.query(ContentItem).order_by(ContentItem.created_at.desc()).all()
+
+
+@router.post("/content", response_model=ContentItemOut, status_code=201)
+def create_content(
+    payload: ContentItemCreate,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    if payload.type not in CONTENT_TYPES:
+        raise HTTPException(status_code=422, detail=f"type must be one of {sorted(CONTENT_TYPES)}")
+    item = ContentItem(
+        title=payload.title,
+        url=payload.url,
+        type=payload.type,
+        summary=payload.summary,
+        tags=payload.tags,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.put("/content/{item_id}", response_model=ContentItemOut)
+def update_content(
+    item_id: uuid.UUID,
+    payload: ContentItemUpdate,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    item = db.query(ContentItem).filter(ContentItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=404, detail="Content item not found")
+    if payload.title is not None:
+        item.title = payload.title
+    if payload.url is not None:
+        item.url = payload.url
+    if payload.type is not None:
+        if payload.type not in CONTENT_TYPES:
+            raise HTTPException(status_code=422, detail=f"type must be one of {sorted(CONTENT_TYPES)}")
+        item.type = payload.type
+    if payload.summary is not None:
+        item.summary = payload.summary
+    if payload.tags is not None:
+        item.tags = payload.tags
+    if payload.is_active is not None:
+        item.is_active = payload.is_active
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.delete("/content/{item_id}", status_code=204)
+def delete_content(
+    item_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    item = db.query(ContentItem).filter(ContentItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=404, detail="Content item not found")
+    db.delete(item)
+    db.commit()
+
+
+# ---------------------------------------------------------------------------
 # Newsletter preview
 # ---------------------------------------------------------------------------
 
@@ -290,6 +661,7 @@ def newsletter_preview(
     _: None = Depends(require_admin),
     industry: str | None = Query(default=None),
     domains: list[str] = Query(default=[]),
+    role_id: int | None = Query(default=None),
 ):
     """Return a fully rendered HTML newsletter for a simulated subscriber profile."""
     return HTMLResponse(
@@ -297,6 +669,7 @@ def newsletter_preview(
             db,
             industry=industry or None,
             domains=domains or None,
+            role_id=role_id,
         )
     )
 
@@ -337,3 +710,22 @@ def trigger_newsletter(
 ):
     background_tasks.add_task(_run_newsletter)
     return {"message": "Newsletter dispatch started in the background."}
+
+
+def _run_signals() -> None:
+    from ..services.signal_service import run_signal_scorer, cleanup_empty_topics
+    db = SessionLocal()
+    try:
+        cleanup_empty_topics(db)
+        run_signal_scorer(db)
+    finally:
+        db.close()
+
+
+@router.post("/jobs/signals")
+def trigger_signals(
+    background_tasks: BackgroundTasks,
+    _: None = Depends(require_admin),
+):
+    background_tasks.add_task(_run_signals)
+    return {"message": "Signal scoring started in the background."}

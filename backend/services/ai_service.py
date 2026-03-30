@@ -13,28 +13,35 @@ logger = logging.getLogger(__name__)
 
 _client: anthropic.Anthropic | None = None
 
-HAIKU_MODEL = "claude-haiku-4-5"
+HAIKU_MODEL = "claude-haiku-4-5-20251001"
 SONNET_MODEL = "claude-sonnet-4-6"
 
 _EVALUATE_SYSTEM = """\
 You are a content classifier for a C-level executive intelligence briefing.
-Given an article and a list of recently identified trending topics, determine:
+Given an article and a list of existing trending topics, determine:
 1. Whether it is relevant to C-level executives (CEOs, CTOs, CISOs, CFOs).
 2. The primary domain: one of AI, Security, Cloud, Finance, Leadership, or Other.
 3. An urgency score from 1 (low) to 10 (high) reflecting how time-sensitive the topic is.
-4. A specific trending topic name (3-5 words) that best describes what this article is about.
-   If the article fits one of the existing topics listed, use that EXACT name.
-   Otherwise suggest a new concise specific name (e.g. "EU AI Act Enforcement", "DeepSeek Market Impact").
+4. A broad trending topic name (2-4 words) that this article belongs to.
+   You MUST prioritize assigning the article to one of the Existing trending topics provided, \
+even if the match is only partial or approximate. \
+Only suggest a NEW topic name if the article represents a completely novel trend not covered by any existing topic.
+5. A plain-language "what is it" sentence (1–2 sentences) explaining the technology or development.
+6. A "why it matters" sentence (1–2 sentences) explaining the business impact for executives.
+7. A list of 2–4 short tags relevant to this article (e.g. ["AI", "regulation", "compliance"]).
 
 Respond with valid JSON only — no markdown, no explanation. Schema:
 {
   "relevant": true | false,
   "domain": "<string>",
   "urgency_score": <integer 1-10>,
-  "suggested_topic_name": "<specific 3-5 word trend>",
-  "reason": "<one sentence>"
+  "suggested_topic_name": "<2-4 word broad trend — prefer existing topics>",
+  "reason": "<one sentence>",
+  "what_is_it": "<1-2 sentence plain-language explanation>",
+  "why_it_matters": "<1-2 sentence business impact for executives>",
+  "tags": ["<tag1>", "<tag2>"]
 }
-If the article is not relevant, still return valid JSON with relevant=false and urgency_score=1."""
+If the article is not relevant, still return valid JSON with relevant=false, urgency_score=1, and empty strings for what_is_it/why_it_matters."""
 
 _INDUSTRY_POSITIONING_SYSTEM = """\
 You are a technology advisor evaluating how a technology topic affects different industries.
@@ -67,6 +74,15 @@ Respond with valid JSON only — no markdown, no explanation. Schema:
 }"""
 
 
+def _strip_fences(text: str) -> str:
+    """Remove markdown code fences that Claude sometimes wraps JSON in."""
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[-1]          # drop the opening ```json line
+        text = text.rsplit("```", 1)[0].strip()  # drop the closing ```
+    return text
+
+
 def _get_client() -> anthropic.Anthropic:
     global _client
     if _client is None:
@@ -85,7 +101,7 @@ def evaluate_article(
     Returns None if the article is not relevant or on parse error.
     """
     if existing_topics:
-        topic_list = "\n".join(f"- {t}" for t in existing_topics[:40])
+        topic_list = "\n".join(f"- {t}" for t in existing_topics[:80])
         message = (
             f"Existing trending topics (use one exactly if it fits):\n{topic_list}"
             f"\n\nArticle:\n{article_content}"
@@ -100,7 +116,7 @@ def evaluate_article(
         system=_EVALUATE_SYSTEM,
         messages=[{"role": "user", "content": message}],
     )
-    raw = response.content[0].text.strip()
+    raw = _strip_fences(response.content[0].text)
     try:
         result = json.loads(raw)
     except json.JSONDecodeError:
@@ -127,10 +143,24 @@ def process_raw_articles(db: Session) -> int:
     )
     logger.info("Processing %d raw articles", len(raw_articles))
 
-    # Build a live snapshot of known topic names so the AI can cluster into them
-    existing_topic_names: list[str] = [
-        row[0] for row in db.query(Topic.name).all()
+    # Build a prioritised topic list: approved first, then pending sorted by article count desc.
+    # The AI sees the biggest clusters first so it preferentially assigns to them.
+    from ..models.topic import TopicStatus as _TS
+    from sqlalchemy import func as _func
+    approved_names: list[str] = [
+        row[0] for row in db.query(Topic.name).filter(Topic.status == _TS.approved).all()
     ]
+    pending_names: list[str] = [
+        row[0] for row in (
+            db.query(Topic.name)
+            .outerjoin(Topic.articles)
+            .filter(Topic.status == _TS.pending)
+            .group_by(Topic.id)
+            .order_by(_func.count().desc())
+            .limit(50)
+        ).all()
+    ]
+    existing_topic_names: list[str] = approved_names + [n for n in pending_names if n not in approved_names]
 
     processed_count = 0
     for article in raw_articles:
@@ -171,6 +201,9 @@ def process_raw_articles(db: Session) -> int:
 
         article.topic_id = topic.id
         article.status = ArticleStatus.processed
+        article.what_is_it = result.get("what_is_it") or None
+        article.why_it_matters = result.get("why_it_matters") or None
+        article.tags = result.get("tags") or None
         db.commit()
         processed_count += 1
         logger.debug(
@@ -219,7 +252,7 @@ def suggest_industry_positions(topic_id: int, db: Session) -> dict[str, Any]:
         system=_INDUSTRY_POSITIONING_SYSTEM,
         messages=[{"role": "user", "content": user_message}],
     )
-    raw = response.content[0].text.strip()
+    raw = _strip_fences(response.content[0].text)
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
@@ -252,7 +285,7 @@ def generate_topic_summary(topic: Topic, articles: list[Article]) -> str:
         system=_SUMMARIZE_SYSTEM,
         messages=[{"role": "user", "content": user_message}],
     )
-    raw = response.content[0].text.strip()
+    raw = _strip_fences(response.content[0].text)
     try:
         result = json.loads(raw)
         summary_text = (
@@ -264,3 +297,58 @@ def generate_topic_summary(topic: Topic, articles: list[Article]) -> str:
 
     topic.summary = summary_text
     return summary_text
+
+
+_SIGNAL_SYSTEM = """\
+You are a technology trend analyst assessing whether a topic's urgency has changed \
+based on a recent surge in press coverage.
+Given the topic's current adoption state and a list of recent article summaries, \
+determine if the adoption state should be upgraded.
+
+The adoption_state must be exactly one of these 5 values (in escalating order):
+- "Learn About" — early awareness, little action needed yet
+- "Get Ahead Of" — proactive positioning before the trend hits
+- "Get Prepared For" — immediate planning required
+- "Get Your Hands Around" — active implementation underway
+- "Make the Most Of" — fully embraced, optimise for advantage
+
+Respond with valid JSON only — no markdown, no explanation. Schema:
+{
+  "recommend_change": true | false,
+  "suggested_state": "<one of the 5 adoption states above>",
+  "rationale": "<2-3 sentence explanation of why the state should change, or why no change is needed>"
+}"""
+
+
+def evaluate_signal(topic: "Topic", recent_articles: list["Article"]) -> dict[str, Any]:
+    """
+    Use Claude Haiku to assess whether a topic's adoption state should be upgraded
+    based on a recent surge in article velocity.
+
+    Returns dict with keys: recommend_change (bool), suggested_state (str), rationale (str).
+    """
+    article_blurbs = "\n\n".join(
+        f"- {a.title}: {a.what_is_it or a.content or '(no summary)'}"
+        for a in recent_articles[:10]
+    )
+    user_message = (
+        f"Topic: {topic.name}\n"
+        f"Domain: {topic.domain}\n"
+        f"Current adoption state: {topic.adoption_state}\n"
+        f"Current urgency score: {topic.urgency_score}/10\n\n"
+        f"Recent articles ({len(recent_articles)} in last 7 days):\n{article_blurbs}"
+    )
+
+    client = _get_client()
+    response = client.messages.create(
+        model=HAIKU_MODEL,
+        max_tokens=512,
+        system=_SIGNAL_SYSTEM,
+        messages=[{"role": "user", "content": user_message}],
+    )
+    raw = _strip_fences(response.content[0].text)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        logger.warning("Failed to parse evaluate_signal response: %r", raw)
+        return {"recommend_change": False, "suggested_state": topic.adoption_state, "rationale": "Parse error"}

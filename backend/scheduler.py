@@ -33,12 +33,33 @@ def _newsletter_job() -> None:
         db.close()
 
 
+def _signal_job() -> None:
+    """Scheduled job: cleanup empty topics then run the signal scorer."""
+    from .services.signal_service import cleanup_empty_topics, run_signal_scorer
+    db = SessionLocal()
+    try:
+        cleanup_empty_topics(db)
+        run_signal_scorer(db)
+    except Exception:
+        logger.exception("Unhandled error in signal scorer job")
+    finally:
+        db.close()
+
+
 def start_scheduler() -> None:
     scheduler.add_job(
         _ingestion_job,
         trigger="interval",
         hours=1,
         id="rss_ingestion",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _signal_job,
+        trigger="cron",
+        hour=6,        # 06:00 UTC daily — runs before newsletter
+        minute=0,
+        id="signal_scorer",
         replace_existing=True,
     )
     scheduler.add_job(
@@ -50,7 +71,7 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
     scheduler.start()
-    logger.info("Scheduler started — RSS ingestion every hour, newsletter daily at 07:00 UTC")
+    logger.info("Scheduler started — ingestion hourly · signals 06:00 UTC · newsletter 07:00 UTC")
 
 
 def stop_scheduler() -> None:

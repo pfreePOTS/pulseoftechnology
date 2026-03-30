@@ -19,6 +19,12 @@ const INDUSTRIES = [
 
 const DOMAINS = ["AI", "Security", "Cloud", "Finance", "Leadership", "Other"];
 
+interface Role {
+  id: number;
+  name: string;
+  tags: string[] | null;
+}
+
 function authHeader(): Record<string, string> {
   const token =
     typeof window !== "undefined"
@@ -37,6 +43,8 @@ export default function NewsletterSandboxPage() {
   // Simulation controls
   const [industry, setIndustry] = useState("Technology");
   const [selectedDomains, setSelectedDomains] = useState<string[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [selectedRoleId, setSelectedRoleId] = useState<number | "">("");
 
   function toggleDomain(domain: string) {
     setSelectedDomains((prev) =>
@@ -44,13 +52,23 @@ export default function NewsletterSandboxPage() {
     );
   }
 
+  async function loadRoles() {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/roles`, { headers: authHeader() });
+      if (res.ok) setRoles(await res.json());
+    } catch {
+      // roles are optional — fail silently
+    }
+  }
+
   const loadPreview = useCallback(
-    async (ind: string, doms: string[]) => {
+    async (ind: string, doms: string[], roleId: number | "") => {
       setState("loading");
       try {
         const params = new URLSearchParams();
         if (ind && ind !== "All Industries") params.set("industry", ind);
         doms.forEach((d) => params.append("domains", d));
+        if (roleId !== "") params.set("role_id", String(roleId));
 
         const url = `${API_BASE}/api/admin/newsletter/preview${
           params.toString() ? `?${params}` : ""
@@ -67,16 +85,17 @@ export default function NewsletterSandboxPage() {
     [],
   );
 
-  // Load on mount with defaults
   useEffect(() => {
-    loadPreview(industry, selectedDomains);
+    loadRoles();
+    loadPreview(industry, selectedDomains, selectedRoleId);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Subtitle description of the current simulation
-  const simDesc =
-    selectedDomains.length > 0
-      ? `${industry === "All Industries" ? "All Industries" : industry} · ${selectedDomains.join(", ")}`
-      : `${industry === "All Industries" ? "All Industries" : industry} · All Domains`;
+  const selectedRole = roles.find((r) => r.id === selectedRoleId);
+  const rolePart = selectedRole ? selectedRole.name : "No Role";
+  const domainPart =
+    selectedDomains.length > 0 ? selectedDomains.join(", ") : "All Domains";
+  const industryPart = industry === "All Industries" ? "All Industries" : industry;
+  const simDesc = `${rolePart} · ${industryPart} · ${domainPart}`;
 
   return (
     <div className="px-4 py-10 sm:px-6 lg:px-8">
@@ -100,6 +119,42 @@ export default function NewsletterSandboxPage() {
         <div className="flex gap-6">
           {/* ── Simulation Controls ── */}
           <aside className="w-56 shrink-0 space-y-6">
+
+            {/* Role Persona */}
+            <div className="rounded-xl border border-gray-800 bg-gray-900 p-4">
+              <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-500">
+                Role Persona
+              </h2>
+              <select
+                value={selectedRoleId}
+                onChange={(e) =>
+                  setSelectedRoleId(e.target.value === "" ? "" : Number(e.target.value))
+                }
+                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">No Role (All Articles)</option>
+                {roles.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                    {r.tags && r.tags.length > 0 ? ` · ${r.tags.join(", ")}` : ""}
+                  </option>
+                ))}
+              </select>
+              {selectedRole && selectedRole.tags && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {selectedRole.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-xs text-indigo-300"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Industry */}
             <div className="rounded-xl border border-gray-800 bg-gray-900 p-4">
               <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-500">
                 Industry
@@ -121,6 +176,7 @@ export default function NewsletterSandboxPage() {
               </div>
             </div>
 
+            {/* Domain Interests */}
             <div className="rounded-xl border border-gray-800 bg-gray-900 p-4">
               <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-500">
                 Domain Interests
@@ -147,7 +203,7 @@ export default function NewsletterSandboxPage() {
             </div>
 
             <button
-              onClick={() => loadPreview(industry, selectedDomains)}
+              onClick={() => loadPreview(industry, selectedDomains, selectedRoleId)}
               disabled={state === "loading"}
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 disabled:opacity-50"
             >
@@ -170,7 +226,7 @@ export default function NewsletterSandboxPage() {
                     Check that the backend is running and you are logged in.
                   </p>
                   <button
-                    onClick={() => loadPreview(industry, selectedDomains)}
+                    onClick={() => loadPreview(industry, selectedDomains, selectedRoleId)}
                     className="mt-4 rounded-lg bg-gray-800 px-4 py-2 text-sm text-white hover:bg-gray-700"
                   >
                     Try again

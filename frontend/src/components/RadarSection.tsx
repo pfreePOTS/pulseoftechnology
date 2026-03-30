@@ -9,6 +9,7 @@ const INDUSTRY_LIST = Object.keys(INDUSTRY_COLORS);
 export default function RadarSection({ topics }: { topics: RadarTopic[] }) {
   const [selectedIndustry, setSelectedIndustry] = useState<string>("");
   const [selectedDomain, setSelectedDomain] = useState<string>("");
+  const [showLabels, setShowLabels] = useState(false);
 
   const filteredTopics = useMemo(() => {
     let result = topics;
@@ -129,6 +130,17 @@ export default function RadarSection({ topics }: { topics: RadarTopic[] }) {
                 Clear filters
               </button>
             )}
+
+            {/* Label toggle */}
+            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium" style={{ color: "#425B76" }}>
+              <input
+                type="checkbox"
+                checked={showLabels}
+                onChange={(e) => setShowLabels(e.target.checked)}
+                className="h-3.5 w-3.5 rounded accent-[#425B76]"
+              />
+              Show topic names
+            </label>
           </div>
         </div>
       </div>
@@ -136,7 +148,7 @@ export default function RadarSection({ topics }: { topics: RadarTopic[] }) {
       {/* ── Radar Area ─────────────────────────────────────────────────── */}
       <section className="bg-white px-6 py-10 grow">
         <div className="mx-auto max-w-7xl">
-          <RadarChart topics={filteredTopics} />
+          <RadarChart topics={filteredTopics} showLabels={showLabels} />
           {filteredTopics.length === 0 && topics.length > 0 && (
             <p className="mt-4 text-center text-sm text-gray-400">
               No topics match the selected filters.

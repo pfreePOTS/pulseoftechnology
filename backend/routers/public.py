@@ -69,10 +69,10 @@ class SubscribeResponse(BaseModel):
 
 @router.get("/topics/published", response_model=list[TopicPublic])
 def get_published_topics(db: Session = Depends(get_db)):
-    """Return all approved topics for the public Radar."""
+    """Return topics marked as published (live on the public Radar)."""
     return (
         db.query(Topic)
-        .filter(Topic.status == TopicStatus.approved)
+        .filter(Topic.is_published == True)  # noqa: E712
         .order_by(Topic.urgency_score.desc())
         .all()
     )

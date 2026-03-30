@@ -185,7 +185,13 @@ function computePositions(topics: RadarTopic[]): PlotPointXY[] {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function RadarChart({ topics }: { topics: RadarTopic[] }) {
+export default function RadarChart({
+  topics,
+  showLabels = false,
+}: {
+  topics: RadarTopic[];
+  showLabels?: boolean;
+}) {
   const [tooltip, setTooltip] = useState<PlotPointXY | null>(null);
   const positions = computePositions(topics);
 
@@ -269,6 +275,21 @@ export default function RadarChart({ topics }: { topics: RadarTopic[] }) {
               onMouseEnter={() => setTooltip(pt)}
               onMouseLeave={() => setTooltip(null)}
             />
+            {showLabels && (
+              <text
+                x={pt.x + 12}
+                y={pt.y + 4}
+                fontSize="9.5"
+                fill={pt.color}
+                fontWeight="600"
+                fontFamily="Inter,system-ui,sans-serif"
+                style={{ pointerEvents: "none" }}
+              >
+                {pt.topic.name.length > 20
+                  ? pt.topic.name.slice(0, 19) + "…"
+                  : pt.topic.name}
+              </text>
+            )}
           </g>
         ))}
 

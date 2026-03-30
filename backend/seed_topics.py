@@ -467,6 +467,7 @@ def seed() -> None:
                 existing.industry_positions = entry["industry_positions"]
                 existing.urgency_score = entry["urgency_score"]
                 existing.adoption_state = entry["adoption_state"]
+                existing.is_published = True
                 if entry.get("summary"):
                     existing.summary = entry["summary"]
                 updated += 1
@@ -479,6 +480,7 @@ def seed() -> None:
                     status=TopicStatus.approved,
                     adoption_state=entry["adoption_state"],
                     industry_positions=entry["industry_positions"],
+                    is_published=True,
                 )
                 db.add(topic)
                 added += 1

@@ -1,6 +1,6 @@
 import enum
 from datetime import datetime, timezone
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from ..database import Base
 
@@ -27,6 +27,9 @@ class Article(Base):
     status: Mapped[ArticleStatus] = mapped_column(
         Enum(ArticleStatus), default=ArticleStatus.raw, nullable=False, index=True
     )
+    what_is_it: Mapped[str | None] = mapped_column(Text, nullable=True)
+    why_it_matters: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tags: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 
     source: Mapped["Source"] = relationship("Source", back_populates="articles")
     topic: Mapped["Topic | None"] = relationship("Topic", back_populates="articles")

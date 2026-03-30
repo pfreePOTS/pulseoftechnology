@@ -1,36 +1,141 @@
 # Prompt 26: Radar Sizing, Newsletter Filtering, and Publish Pipeline
 
-## Context
-During system testing, three distinct issues were identified that prevent the public radar and newsletter simulation from working as intended:
-1. **Radar Star Sizing:** The radar stars are too small. We previously requested them to be larger, but the `RadarChart.tsx` component is still rendering them with a very small radius.
-2. **Newsletter Article Filtering:** The newsletter sandbox is returning empty articles when filtering by role/industry. The `_build_html` function in `email_service.py` is too strict: if a role has tags, it requires an exact intersection with the article's tags. If there's no intersection, it skips the topic entirely, leading to empty newsletters.
-3. **Public Radar Not Populating:** The public radar page (`frontend/src/app/page.tsx`) fetches from `/api/topics/published`. However, the `public.py` router requires the `Topic` model, but `public.py` does not have access to the DB properly, or the frontend is failing to fetch it because the CORS or route setup is slightly off. Furthermore, the `is_published` toggle in the admin UI works, but the public radar remains empty.
+## Context & Diagnosis
+We need to fix three specific issues with surgical precision. 
+1. **Radar Stars are too small:** The SVG paths for the stars in `RadarChart.tsx` are hardcoded to `outerR=8` and `innerR=3.4`. They need to be roughly doubled in size, and pushed further out from the center.
+2. **Newsletter filtering returns empty:** In `email_service.py`, if a user's role has tags (e.g., CFO), but the topic's articles don't match those tags, the code does a `continue` and skips the topic entirely. This results in empty newsletters. We must implement a fallback to the most recent articles instead of skipping.
+3. **Publishing to Radar is hidden/failing:** The "Publish to Radar" button is currently hidden inside the Topic Editor and only appears *after* a topic is approved. Furthermore, the public Next.js page can fail to fetch from the backend during Server-Side Rendering (SSR) due to Docker networking (`localhost` vs `backend`) and strict CORS rules.
+
+---
 
 ## Instructions for Cursor
 
+Please make the following exact code replacements.
+
 ### 1. Fix Radar Star Sizing
-*   **File:** `frontend/src/components/RadarChart.tsx`
-*   **Fix:**
-    *   In the `starPath` function, increase the default `outerR` and `innerR`. Change `outerR = 8` to `outerR = 14` and `innerR = 3.4` to `innerR = 6`.
-    *   In the `computePositions` function, where it calculates `r = Math.max(18, (pt.urgency / 10) * MAX_R)`, increase the base radius to push stars further out: `r = Math.max(30, (pt.urgency / 10) * MAX_R)`.
-    *   In the `RadarChart` component render, increase the hover target circle radius: `<circle cx={pt.x} cy={pt.y} r={24} fill={pt.color} opacity="0.1" />`.
+**File:** `frontend/src/components/RadarChart.tsx`
+
+**Change A (Lines ~110-114):**
+Find:
+```typescript
+function starPath(cx: number, cy: number, outerR = 8, innerR = 3.4): string {
+  const pts: string[] = [];
+  for (let i = 0; i < 10; i++) {
+    const angle = degToRad(i * 36 - 90);
+    const r = i % 2 === 0 ? outerR : innerR;
+```
+Replace with:
+```typescript
+function starPath(cx: number, cy: number, outerR = 14, innerR = 6): string {
+  const pts: string[] = [];
+  for (let i = 0; i < 10; i++) {
+    const angle = degToRad(i * 36 - 90);
+    const r = i % 2 === 0 ? outerR : innerR;
+```
+
+**Change B (Line ~178):**
+Find:
+```typescript
+      const r = Math.max(18, (pt.urgency / 10) * MAX_R);
+```
+Replace with:
+```typescript
+      const r = Math.max(30, (pt.urgency / 10) * MAX_R);
+```
+
+**Change C (Line ~267):**
+Find:
+```typescript
+            <circle cx={pt.x} cy={pt.y} r={14} fill={pt.color} opacity="0.1" />
+            <path
+              d={starPath(pt.x, pt.y, 8, 3.4)}
+```
+Replace with:
+```typescript
+            <circle cx={pt.x} cy={pt.y} r={24} fill={pt.color} opacity="0.1" />
+            <path
+              d={starPath(pt.x, pt.y, 14, 6)}
+```
+
+---
 
 ### 2. Fix Newsletter Article Filtering (Fallback Logic)
-*   **File:** `backend/services/email_service.py`
-*   **Fix:** In `_build_html`, the role tag filtering is too aggressive.
-    *   Currently, if `role_tags` is present, it does: `matched = [a for a in candidates if {t.lower() for t in (a.tags or [])} & role_tags]`. If `matched` is empty, it does `continue` (skipping the topic entirely).
-    *   **Change this logic:** If `matched` is empty, do NOT skip the topic. Instead, fall back to the top 3 most recent articles for that topic, just like the non-role-filtered path.
-    *   This ensures that if a topic is deemed highly urgent for a subscriber's domain, they still get the topic and its top articles, even if none of the specific articles perfectly matched their specific role tags.
+**File:** `backend/services/email_service.py`
 
-### 3. Fix Public Radar Fetch Pipeline
-*   **File 1:** `frontend/src/app/page.tsx`
-    *   **Fix:** The public page fetches from `${API_BASE}/api/topics/published`. Ensure `API_BASE` is correctly defaulting to the backend URL (it currently defaults to `http://localhost:8000`, which is correct for local dev, but ensure it handles SSR correctly by using `next/cache` or `revalidate: 0` to prevent stale empty states).
-    *   Change the fetch call to: `const res = await fetch(`${API_BASE}/api/topics/published`, { cache: 'no-store' });`
-*   **File 2:** `backend/routers/public.py`
-    *   **Fix:** Ensure the `/topics/published` endpoint correctly joins or loads the `articles` relationship if the frontend expects it, or at least ensure it returns valid JSON. The current endpoint `get_published_topics` is correct (`Topic.is_published == True`), but verify that the `TopicPublic` Pydantic model doesn't strip out required fields that `RadarChart` needs.
-    *   The `RadarTopic` interface in `RadarChart.tsx` expects `id, name, domain, urgency_score, adoption_state, industry_positions, summary`. `TopicPublic` provides these. This is likely just a caching issue on the Next.js side where the initial empty state was cached.
+**Change (Lines ~301-309):**
+Find:
+```python
+                # If no matches, skip this topic entirely for this role
+                if not matched:
+                    continue
+                # Sort by published_at descending, take top 3
+                matched.sort(key=lambda a: a.published_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+                selected = matched[:3]
+```
+Replace with:
+```python
+                # If no matches, fallback to the most recent articles instead of skipping
+                if not matched:
+                    candidates.sort(key=lambda a: a.published_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+                    selected = candidates[:3]
+                else:
+                    # Sort by published_at descending, take top 3
+                    matched.sort(key=lambda a: a.published_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+                    selected = matched[:3]
+```
+
+---
+
+### 3. Fix CORS and Public Radar Fetch
+**File 1:** `backend/main.py`
+Find:
+```python
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:3100"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+Replace with:
+```python
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # Allow all origins to prevent deployment CORS issues
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+**File 2:** `frontend/src/app/page.tsx`
+Find:
+```typescript
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+async function getPublishedTopics(): Promise<RadarTopic[]> {
+  try {
+    const res = await fetch(`${API_BASE}/api/topics/published`, {
+      cache: "no-store",
+    });
+```
+Replace with:
+```typescript
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// Use 127.0.0.1 for SSR to bypass Docker/Node IPv6 localhost resolution issues
+const SSR_API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+
+async function getPublishedTopics(): Promise<RadarTopic[]> {
+  try {
+    const res = await fetch(`${SSR_API_BASE}/api/topics/published`, {
+      cache: "no-store",
+    });
+```
+
+---
 
 ## End-to-End Testing
-1. **Radar Sizing:** Open the Curation Dashboard -> Radar Preview. The stars should be visibly larger and easier to click/hover.
-2. **Newsletter:** Open the Newsletter Simulation Sandbox. Select a Role (e.g., CFO). The newsletter should populate with articles, even if the specific articles don't have CFO-specific tags, ensuring the newsletter is never artificially empty.
-3. **Public Radar:** Go to the Curation Dashboard, approve a topic, and click "Publish to Radar". Open the public homepage (`localhost:3000`). The topic should immediately appear on the radar (thanks to `cache: 'no-store'`).
+1. **Radar Sizing:** Open the Curation Dashboard -> Radar Preview. The stars should be visibly larger (radius 14 instead of 8) and easier to click/hover.
+2. **Newsletter:** Open the Newsletter Simulation Sandbox. Select a Role (e.g., CFO). The newsletter should populate with articles for every topic, falling back to the latest articles if no specific CFO tags were found.
+3. **Public Radar:** Go to the Curation Dashboard, click "Edit" on an approved topic, and click the **"Publish to Radar"** button at the bottom. Open the public homepage (`localhost:3000`). The topic should immediately appear on the radar.

@@ -11,6 +11,7 @@ from ..models.article import Article
 from ..models.source import Source, SourceType
 from ..models.subscriber import Subscriber
 from ..models.topic import AdoptionState, Topic, TopicStatus
+from ..services.ai_service import suggest_industry_positions
 from ..services.email_service import generate_newsletter_preview, run_daily_newsletter
 from ..services.ingestion import run_all_sources
 
@@ -127,6 +128,20 @@ def update_topic(
     db.commit()
     db.refresh(topic)
     return topic
+
+
+@router.post("/topics/{topic_id}/suggest-industry-positions")
+def suggest_positions(
+    topic_id: int,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """Ask Claude to suggest urgency scores and rationales for 6 target industries."""
+    try:
+        result = suggest_industry_positions(topic_id, db)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return result
 
 
 @router.post("/topics/{topic_id}/approve", response_model=TopicOut)

@@ -32,6 +32,20 @@ Respond with valid JSON only — no markdown, no explanation. Schema:
 }
 If the article is not relevant, still return valid JSON with relevant=false and urgency_score=1."""
 
+_INDUSTRY_POSITIONING_SYSTEM = """\
+You are a technology advisor evaluating how a technology topic affects different industries.
+Respond with valid JSON only — no markdown, no explanation. Schema:
+{
+  "industry_suggestions": {
+    "<industry_name>": {
+      "score": <float 1.0-10.0>,
+      "rationale": "<one sentence explaining the urgency and impact for that industry>"
+    }
+  }
+}
+Evaluate exactly these 6 industries: Technology, Finance & Banking, Healthcare, \
+Manufacturing, Government & Public Sector, Retail & E-Commerce."""
+
 _SUMMARIZE_SYSTEM = """\
 You are a trusted C-level technology advisor writing for a weekly executive briefing.
 Your writing is concise, authoritative, and free of jargon.
@@ -122,6 +136,50 @@ def process_raw_articles(db: Session) -> int:
 
     logger.info("Processed %d articles", processed_count)
     return processed_count
+
+
+def suggest_industry_positions(topic_id: int, db: Session) -> dict[str, Any]:
+    """
+    Use Claude Haiku to suggest urgency scores and rationales for 6 target industries.
+
+    Returns a dict with key "industry_suggestions" mapping industry name →
+    {"score": float, "rationale": str}.
+    """
+    topic = db.query(Topic).filter(Topic.id == topic_id).first()
+    if topic is None:
+        raise ValueError(f"Topic {topic_id} not found")
+
+    articles = (
+        db.query(Article)
+        .filter(Article.topic_id == topic_id)
+        .limit(8)
+        .all()
+    )
+
+    article_blurbs = "\n\n".join(
+        f"Article {i + 1}: {a.title}\n{a.content or '(no content)'}"
+        for i, a in enumerate(articles)
+    )
+    user_message = (
+        f"Topic: {topic.name}\n"
+        f"Domain: {topic.domain}\n"
+        f"Summary: {topic.summary or '(no summary yet)'}\n\n"
+        f"Source articles:\n{article_blurbs or '(no articles linked)'}"
+    )
+
+    client = _get_client()
+    response = client.messages.create(
+        model=HAIKU_MODEL,
+        max_tokens=1024,
+        system=_INDUSTRY_POSITIONING_SYSTEM,
+        messages=[{"role": "user", "content": user_message}],
+    )
+    raw = response.content[0].text.strip()
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        logger.warning("Failed to parse suggest_industry_positions response: %r", raw)
+        raise ValueError("AI returned invalid JSON")
 
 
 def generate_topic_summary(topic: Topic, articles: list[Article]) -> str:

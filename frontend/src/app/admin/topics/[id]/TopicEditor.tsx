@@ -87,6 +87,11 @@ export default function TopicEditor({
     "Learn About",
   );
 
+  const [rationales, setRationales] = useState<Record<string, string>>({});
+  const [suggestState, setSuggestState] = useState<
+    "idle" | "loading" | "error"
+  >("idle");
+
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [approveState, setApproveState] = useState<ApproveState>(
     topic.status === "approved" ? "approved" : "idle",
@@ -142,6 +147,48 @@ export default function TopicEditor({
       industry_positions:
         Object.keys(industryPositions).length > 0 ? industryPositions : null,
     };
+  }
+
+  async function handleSuggest() {
+    setSuggestState("loading");
+    try {
+      const res = await fetch(
+        `${apiBase}/api/admin/topics/${topic.id}/suggest-industry-positions`,
+        { method: "POST", headers: authHeader() },
+      );
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      const suggestions: Record<
+        string,
+        { score: number; rationale: string }
+      > = data.industry_suggestions ?? {};
+
+      // Merge suggestions into industryPositions (preserve existing adoption_state)
+      setIndustryPositions((prev) => {
+        const next = { ...prev };
+        for (const [industry, { score }] of Object.entries(suggestions)) {
+          next[industry] = {
+            urgency_score: Math.round(score * 10) / 10,
+            adoption_state: prev[industry]?.adoption_state ?? "Get Prepared For",
+          };
+        }
+        return next;
+      });
+
+      // Store rationales for display
+      setRationales(
+        Object.fromEntries(
+          Object.entries(suggestions).map(([ind, { rationale }]) => [
+            ind,
+            rationale,
+          ]),
+        ),
+      );
+      setSuggestState("idle");
+    } catch {
+      setSuggestState("error");
+      setTimeout(() => setSuggestState("idle"), 3000);
+    }
   }
 
   async function handleSave() {
@@ -288,13 +335,29 @@ export default function TopicEditor({
 
           {/* ── Industry Positions ── */}
           <div>
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-gray-300">
                 Industry Positions
               </h3>
-              <span className="text-xs text-gray-600">
-                Overrides default for specific industries
-              </span>
+              {!isApproved && (
+                <button
+                  type="button"
+                  onClick={handleSuggest}
+                  disabled={suggestState === "loading"}
+                  className="flex items-center gap-1.5 rounded-lg bg-indigo-600/20 px-3 py-1.5 text-xs font-semibold text-indigo-400 ring-1 ring-indigo-500/30 transition-colors hover:bg-indigo-600/30 disabled:opacity-50"
+                >
+                  {suggestState === "loading" ? (
+                    <>
+                      <span className="h-3 w-3 animate-spin rounded-full border border-indigo-400 border-t-transparent" />
+                      Generating…
+                    </>
+                  ) : suggestState === "error" ? (
+                    "⚠ Failed — try again"
+                  ) : (
+                    "✨ Generate AI Suggestions"
+                  )}
+                </button>
+              )}
             </div>
 
             {/* Existing rows */}
@@ -302,57 +365,61 @@ export default function TopicEditor({
               <div className="mb-3 divide-y divide-gray-800 rounded-lg border border-gray-700">
                 {Object.entries(industryPositions).map(
                   ([industry, pos]) => (
-                    <div
-                      key={industry}
-                      className="flex items-center gap-2 px-3 py-2"
-                    >
-                      <span className="w-36 shrink-0 text-xs font-medium text-gray-300">
-                        {industry}
-                      </span>
-                      <input
-                        type="number"
-                        min="1"
-                        max="10"
-                        step="0.1"
-                        value={pos.urgency_score}
-                        disabled={isApproved}
-                        onChange={(e) =>
-                          updateIndustryPosition(
-                            industry,
-                            "urgency_score",
-                            e.target.value,
-                          )
-                        }
-                        className="w-20 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-white focus:outline-none disabled:opacity-50"
-                        title="Urgency (1–10)"
-                      />
-                      <select
-                        value={pos.adoption_state}
-                        disabled={isApproved}
-                        onChange={(e) =>
-                          updateIndustryPosition(
-                            industry,
-                            "adoption_state",
-                            e.target.value,
-                          )
-                        }
-                        className="flex-1 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-white focus:outline-none disabled:opacity-50"
-                      >
-                        {ADOPTION_STATES.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                      </select>
-                      {!isApproved && (
-                        <button
-                          type="button"
-                          onClick={() => removeIndustryPosition(industry)}
-                          className="shrink-0 text-gray-600 hover:text-red-400 transition-colors"
-                          title="Remove"
+                    <div key={industry}>
+                      <div className="flex items-center gap-2 px-3 py-2">
+                        <span className="w-36 shrink-0 text-xs font-medium text-gray-300">
+                          {industry}
+                        </span>
+                        <input
+                          type="number"
+                          min="1"
+                          max="10"
+                          step="0.1"
+                          value={pos.urgency_score}
+                          disabled={isApproved}
+                          onChange={(e) =>
+                            updateIndustryPosition(
+                              industry,
+                              "urgency_score",
+                              e.target.value,
+                            )
+                          }
+                          className="w-20 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-white focus:outline-none disabled:opacity-50"
+                          title="Urgency (1–10)"
+                        />
+                        <select
+                          value={pos.adoption_state}
+                          disabled={isApproved}
+                          onChange={(e) =>
+                            updateIndustryPosition(
+                              industry,
+                              "adoption_state",
+                              e.target.value,
+                            )
+                          }
+                          className="flex-1 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-white focus:outline-none disabled:opacity-50"
                         >
-                          ✕
-                        </button>
+                          {ADOPTION_STATES.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                        {!isApproved && (
+                          <button
+                            type="button"
+                            onClick={() => removeIndustryPosition(industry)}
+                            className="shrink-0 text-gray-600 hover:text-red-400 transition-colors"
+                            title="Remove"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                      {rationales[industry] && (
+                        <p className="px-3 pb-2 text-xs italic leading-relaxed text-gray-500">
+                          {rationales[industry]}
+                        </p>
                       )}
                     </div>
                   ),

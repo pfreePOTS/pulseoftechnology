@@ -3,7 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from ..database import SessionLocal, get_db
 from ..dependencies import require_admin
@@ -65,6 +65,7 @@ class TopicOut(BaseModel):
     status: str
     adoption_state: str
     industry_positions: dict | None = None
+    article_count: int = 0
 
     model_config = {"from_attributes": True}
 
@@ -84,13 +85,12 @@ class TopicUpdate(BaseModel):
 def list_topics(
     db: Session = Depends(get_db),
     _: None = Depends(require_admin),
+    topic_status: TopicStatus | None = Query(default=None, alias="status"),
 ):
-    return (
-        db.query(Topic)
-        .filter(Topic.status == TopicStatus.pending)
-        .order_by(Topic.urgency_score.desc())
-        .all()
-    )
+    q = db.query(Topic)
+    if topic_status is not None:
+        q = q.filter(Topic.status == topic_status)
+    return q.order_by(Topic.urgency_score.desc()).all()
 
 
 @router.get("/topics/{topic_id}", response_model=TopicDetail)
@@ -99,7 +99,12 @@ def get_topic(
     db: Session = Depends(get_db),
     _: None = Depends(require_admin),
 ):
-    topic = db.query(Topic).filter(Topic.id == topic_id).first()
+    topic = (
+        db.query(Topic)
+        .options(joinedload(Topic.articles))
+        .filter(Topic.id == topic_id)
+        .first()
+    )
     if topic is None:
         raise HTTPException(status_code=404, detail="Topic not found")
     return topic

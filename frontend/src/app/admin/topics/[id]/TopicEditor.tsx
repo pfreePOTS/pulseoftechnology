@@ -160,16 +160,16 @@ export default function TopicEditor({
       const data = await res.json();
       const suggestions: Record<
         string,
-        { score: number; rationale: string }
+        { score: number; adoption_state: string; rationale: string }
       > = data.industry_suggestions ?? {};
 
-      // Merge suggestions into industryPositions (preserve existing adoption_state)
+      // Merge suggestions into industryPositions (AI provides both score and adoption_state)
       setIndustryPositions((prev) => {
         const next = { ...prev };
-        for (const [industry, { score }] of Object.entries(suggestions)) {
+        for (const [industry, { score, adoption_state }] of Object.entries(suggestions)) {
           next[industry] = {
             urgency_score: Math.round(score * 10) / 10,
-            adoption_state: prev[industry]?.adoption_state ?? "Get Prepared For",
+            adoption_state: adoption_state ?? prev[industry]?.adoption_state ?? "Get Prepared For",
           };
         }
         return next;
@@ -282,7 +282,6 @@ export default function TopicEditor({
               rows={6}
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
-              disabled={isApproved}
               className={`w-full ${inputCls}`}
               placeholder="AI-generated executive summary will appear here…"
             />
@@ -306,7 +305,6 @@ export default function TopicEditor({
                 step="0.1"
                 value={urgency}
                 onChange={(e) => setUrgency(e.target.value)}
-                disabled={isApproved}
                 className={`w-full ${inputCls}`}
               />
             </div>
@@ -321,7 +319,6 @@ export default function TopicEditor({
                 id="adoption-state"
                 value={adoptionState}
                 onChange={(e) => setAdoptionState(e.target.value)}
-                disabled={isApproved}
                 className={`w-full ${inputCls}`}
               >
                 {ADOPTION_STATES.map((s) => (
@@ -335,12 +332,16 @@ export default function TopicEditor({
 
           {/* ── Industry Positions ── */}
           <div>
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-gray-300">
-                Industry Positions
-              </h3>
-              {!isApproved && (
-                <button
+            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-300">
+                  Industry Positions
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Per-industry overrides — set both urgency and adoption state to control radar placement
+                </p>
+              </div>
+              <button
                   type="button"
                   onClick={handleSuggest}
                   disabled={suggestState === "loading"}
@@ -357,7 +358,6 @@ export default function TopicEditor({
                     "✨ Generate AI Suggestions"
                   )}
                 </button>
-              )}
             </div>
 
             {/* Existing rows */}
@@ -366,46 +366,48 @@ export default function TopicEditor({
                 {Object.entries(industryPositions).map(
                   ([industry, pos]) => (
                     <div key={industry}>
-                      <div className="flex items-center gap-2 px-3 py-2">
-                        <span className="w-36 shrink-0 text-xs font-medium text-gray-300">
-                          {industry}
-                        </span>
-                        <input
-                          type="number"
-                          min="1"
-                          max="10"
-                          step="0.1"
-                          value={pos.urgency_score}
-                          disabled={isApproved}
-                          onChange={(e) =>
-                            updateIndustryPosition(
-                              industry,
-                              "urgency_score",
-                              e.target.value,
-                            )
-                          }
-                          className="w-20 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-white focus:outline-none disabled:opacity-50"
-                          title="Urgency (1–10)"
-                        />
-                        <select
-                          value={pos.adoption_state}
-                          disabled={isApproved}
-                          onChange={(e) =>
-                            updateIndustryPosition(
-                              industry,
-                              "adoption_state",
-                              e.target.value,
-                            )
-                          }
-                          className="flex-1 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-white focus:outline-none disabled:opacity-50"
-                        >
-                          {ADOPTION_STATES.map((s) => (
-                            <option key={s} value={s}>
-                              {s}
-                            </option>
-                          ))}
-                        </select>
-                        {!isApproved && (
+                      <div className="flex flex-col gap-1.5 px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <span className="w-36 shrink-0 text-xs font-medium text-gray-300">
+                            {industry}
+                          </span>
+                          <input
+                            type="range"
+                            min="1"
+                            max="10"
+                            step="0.1"
+                            value={pos.urgency_score}
+                            onChange={(e) =>
+                              updateIndustryPosition(
+                                industry,
+                                "urgency_score",
+                                e.target.value,
+                              )
+                            }
+                            className="flex-1 accent-indigo-500"
+                          />
+                          <span className="w-8 shrink-0 text-right text-xs font-semibold tabular-nums text-indigo-300">
+                            {pos.urgency_score.toFixed(1)}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 pl-[152px]">
+                          <select
+                            value={pos.adoption_state}
+                            onChange={(e) =>
+                              updateIndustryPosition(
+                                industry,
+                                "adoption_state",
+                                e.target.value,
+                              )
+                            }
+                            className="flex-1 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-white focus:outline-none"
+                          >
+                            {ADOPTION_STATES.map((s) => (
+                              <option key={s} value={s}>
+                                {s}
+                              </option>
+                            ))}
+                          </select>
                           <button
                             type="button"
                             onClick={() => removeIndustryPosition(industry)}
@@ -414,13 +416,13 @@ export default function TopicEditor({
                           >
                             ✕
                           </button>
+                        </div>
+                        {rationales[industry] && (
+                          <p className="text-xs italic leading-relaxed text-gray-500">
+                            {rationales[industry]}
+                          </p>
                         )}
                       </div>
-                      {rationales[industry] && (
-                        <p className="px-3 pb-2 text-xs italic leading-relaxed text-gray-500">
-                          {rationales[industry]}
-                        </p>
-                      )}
                     </div>
                   ),
                 )}
@@ -432,7 +434,7 @@ export default function TopicEditor({
             )}
 
             {/* Add-row form */}
-            {!isApproved && availableIndustries.length > 0 && (
+            {availableIndustries.length > 0 && (
               <div className="flex items-center gap-2">
                 <select
                   value={newIndustry}
@@ -485,18 +487,18 @@ export default function TopicEditor({
             </p>
           )}
 
-          {!isApproved && (
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleSave}
-                disabled={saveState === "saving"}
-                className="rounded-lg bg-gray-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-gray-600 disabled:opacity-50"
-              >
-                {saveState === "saving" ? "Saving…" : "Save Changes"}
-              </button>
-              {saveState === "saved" && (
-                <span className="text-sm text-green-400">Saved</span>
-              )}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleSave}
+              disabled={saveState === "saving"}
+              className="rounded-lg bg-gray-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-gray-600 disabled:opacity-50"
+            >
+              {saveState === "saving" ? "Saving…" : "Save Changes"}
+            </button>
+            {saveState === "saved" && (
+              <span className="text-sm text-green-400">Saved</span>
+            )}
+            {!isApproved && (
               <button
                 onClick={handleApprove}
                 disabled={approveState === "approving"}
@@ -506,8 +508,8 @@ export default function TopicEditor({
                   ? "Approving…"
                   : "Approve & Publish"}
               </button>
-            </div>
-          )}
+            )}
+          </div>
 
           {approveState === "approved" && (
             <p className="rounded-lg bg-green-500/10 px-3 py-2 text-sm text-green-400">

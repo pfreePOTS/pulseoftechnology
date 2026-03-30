@@ -7,6 +7,7 @@ import { useState } from "react";
 export interface IndustryPosition {
   urgency_score: number;
   adoption_state: string;
+  rationale?: string;
 }
 
 export interface RadarTopic {
@@ -71,6 +72,7 @@ interface PlotPoint {
   color: string;
   urgency: number;
   adoptionState: string;
+  rationale?: string;
 }
 
 interface PlotPointXY extends PlotPoint {
@@ -138,6 +140,7 @@ function buildPlotPoints(topics: RadarTopic[]): PlotPoint[] {
           color: INDUSTRY_COLORS[industry] ?? DEFAULT_COLOR,
           urgency: pos.urgency_score,
           adoptionState: pos.adoption_state,
+          rationale: pos.rationale,
         });
       }
     } else {
@@ -269,35 +272,52 @@ export default function RadarChart({ topics }: { topics: RadarTopic[] }) {
           </g>
         ))}
 
-        {/* ── Tooltip ── */}
+        {/* ── Tooltip (foreignObject for multi-line rationale) ── */}
         {tooltip && (() => {
           const pt = tooltip;
-          const BOX_W = 192;
-          const BOX_H = 64;
-          const PAD = 12;
+          const BOX_W = 250;
+          const BOX_H = pt.rationale ? 130 : 88;
+          const PAD = 14;
           let bx = pt.x + PAD;
           let by = pt.y - BOX_H - PAD;
           if (bx + BOX_W > SIZE - 6) bx = pt.x - BOX_W - PAD;
           if (by < 6) by = pt.y + PAD;
           if (by + BOX_H > SIZE - 6) by = SIZE - BOX_H - 6;
 
-          const label = pt.industry ?? pt.topic.domain;
           return (
             <g pointerEvents="none">
               <rect
                 x={bx} y={by} width={BOX_W} height={BOX_H} rx="8"
-                fill="white" stroke="#425B76" strokeWidth="2"
+                fill="white" stroke="#425B76" strokeWidth="1.5"
                 filter="url(#ttShadow)"
               />
-              <text x={bx + 12} y={by + 20} fill="#111827" fontSize="12" fontWeight="700" fontFamily="Inter,system-ui,sans-serif">
-                {pt.topic.name.length > 24 ? pt.topic.name.slice(0, 23) + "…" : pt.topic.name}
-              </text>
-              <text x={bx + 12} y={by + 37} fill={pt.color} fontSize="10.5" fontWeight="600" fontFamily="Inter,system-ui,sans-serif">
-                {label} · Urgency {pt.urgency.toFixed(1)}
-              </text>
-              <text x={bx + 12} y={by + 53} fill="#6B7280" fontSize="9.5" fontFamily="Inter,system-ui,sans-serif">
-                {pt.adoptionState}
-              </text>
+              <foreignObject x={bx} y={by} width={BOX_W} height={BOX_H}>
+                <div
+                  // @ts-expect-error xmlns needed for SVG foreignObject
+                  xmlns="http://www.w3.org/1999/xhtml"
+                  style={{
+                    padding: "12px 14px",
+                    fontFamily: "Inter, system-ui, sans-serif",
+                    boxSizing: "border-box",
+                    width: `${BOX_W}px`,
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#111827", marginBottom: 4, lineHeight: 1.3 }}>
+                    {pt.topic.name}
+                  </div>
+                  <div style={{ fontSize: 10.5, fontWeight: 600, color: pt.color, marginBottom: 3 }}>
+                    {pt.topic.domain}{pt.industry ? ` · ${pt.industry}` : ""}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: "#374151", marginBottom: pt.rationale ? 6 : 0 }}>
+                    Urgency {pt.urgency.toFixed(1)} / 10 &nbsp;·&nbsp; {pt.adoptionState}
+                  </div>
+                  {pt.rationale && (
+                    <div style={{ fontSize: 10, color: "#6B7280", lineHeight: 1.5, borderTop: "1px solid #e5e7eb", paddingTop: 6 }}>
+                      {pt.rationale}
+                    </div>
+                  )}
+                </div>
+              </foreignObject>
             </g>
           );
         })()}

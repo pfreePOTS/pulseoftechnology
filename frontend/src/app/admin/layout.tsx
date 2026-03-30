@@ -9,6 +9,7 @@ const NAV = [
   { label: "Manage Sources", href: "/admin/sources" },
   { label: "Subscribers", href: "/admin/subscribers" },
   { label: "System Jobs", href: "/admin/jobs" },
+  { label: "Radar Preview", href: "/admin/radar-preview" },
   { label: "Newsletter Preview", href: "/admin/newsletter" },
 ];
 

@@ -38,5 +38,9 @@ class Topic(Base):
 
     articles: Mapped[list["Article"]] = relationship("Article", back_populates="topic")
 
+    @property
+    def article_count(self) -> int:
+        return len(self.articles)
+
     def __repr__(self) -> str:
         return f"<Topic id={self.id} name={self.name!r} domain={self.domain!r} status={self.status!r} adoption_state={self.adoption_state!r}>"

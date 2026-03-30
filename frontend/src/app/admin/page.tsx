@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+type Tab = "pending" | "approved";
+
 interface Topic {
   id: number;
   name: string;
@@ -12,6 +14,15 @@ interface Topic {
   summary: string | null;
   urgency_score: number;
   status: string;
+  article_count: number;
+}
+
+function authHeader(): Record<string, string> {
+  const token =
+    typeof window !== "undefined"
+      ? (localStorage.getItem("pulse_admin_token") ?? "")
+      : "";
+  return { Authorization: `Bearer ${token}` };
 }
 
 function UrgencyBadge({ score }: { score: number }) {
@@ -50,40 +61,70 @@ function DomainBadge({ domain }: { domain: string }) {
 }
 
 export default function AdminTopicsPage() {
+  const [activeTab, setActiveTab] = useState<Tab>("pending");
   const [topics, setTopics] = useState<Topic[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     const token = localStorage.getItem("pulse_admin_token") ?? "";
-    fetch(`${API_BASE}/api/admin/topics`, {
+    fetch(`${API_BASE}/api/admin/topics?status=${activeTab}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => (r.ok ? r.json() : []))
-      .then(setTopics)
-      .finally(() => setLoading(false));
-  }, []);
+      .then((data) => {
+        setTopics(data);
+        setLoading(false);
+      });
+  }, [activeTab]);
+
+  const tabs: { key: Tab; label: string }[] = [
+    { key: "pending", label: "Trending Topics (AI Discovered)" },
+    { key: "approved", label: "Approved" },
+  ];
 
   return (
     <div className="px-4 py-10 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-5xl">
-        <header className="mb-8">
+        <header className="mb-6">
           <h1 className="text-3xl font-bold tracking-tight text-white">
             Curation Dashboard
           </h1>
           <p className="mt-1 text-sm text-gray-400">
-            Review and approve AI-generated topic briefings before publishing.
+            Review AI-generated topic briefings before publishing.
           </p>
         </header>
 
+        {/* Tabs */}
+        <div className="mb-5 flex gap-1 rounded-xl border border-gray-800 bg-gray-900 p-1 w-fit">
+          {tabs.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
+                activeTab === key
+                  ? "bg-gray-700 text-white"
+                  : "text-gray-500 hover:text-gray-300"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {loading ? (
           <div className="rounded-xl border border-gray-800 bg-gray-900 px-6 py-16 text-center">
-            <p className="text-sm text-gray-500">Loading topics…</p>
+            <p className="text-sm text-gray-500">Loading…</p>
           </div>
         ) : topics.length === 0 ? (
           <div className="rounded-xl border border-gray-800 bg-gray-900 px-6 py-16 text-center">
-            <p className="text-lg font-medium text-gray-300">No pending topics</p>
+            <p className="text-lg font-medium text-gray-300">
+              No {activeTab} topics
+            </p>
             <p className="mt-1 text-sm text-gray-500">
-              All topics have been reviewed, or none have been processed yet.
+              {activeTab === "pending"
+                ? "Run RSS ingestion to discover new trending topics."
+                : "Approve topics from the Pending tab."}
             </p>
           </div>
         ) : (
@@ -93,6 +134,11 @@ export default function AdminTopicsPage() {
                 <tr className="border-b border-gray-800 text-left">
                   <th className="px-4 py-3 font-medium text-gray-400">Topic</th>
                   <th className="px-4 py-3 font-medium text-gray-400">Domain</th>
+                  {activeTab === "pending" && (
+                    <th className="px-4 py-3 text-right font-medium text-gray-400">
+                      Articles
+                    </th>
+                  )}
                   <th className="px-4 py-3 text-right font-medium text-gray-400">
                     Urgency
                   </th>
@@ -118,15 +164,27 @@ export default function AdminTopicsPage() {
                     <td className="px-4 py-3">
                       <DomainBadge domain={topic.domain} />
                     </td>
+                    {activeTab === "pending" && (
+                      <td className="px-4 py-3 text-right">
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-400">
+                          <span className="h-1.5 w-1.5 rounded-full bg-indigo-400" />
+                          {topic.article_count} article{topic.article_count !== 1 ? "s" : ""}
+                        </span>
+                      </td>
+                    )}
                     <td className="px-4 py-3 text-right">
                       <UrgencyBadge score={topic.urgency_score} />
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Link
                         href={`/admin/topics/${topic.id}`}
-                        className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-indigo-500"
+                        className={`rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors ${
+                          activeTab === "approved"
+                            ? "bg-gray-600 hover:bg-gray-500"
+                            : "bg-indigo-600 hover:bg-indigo-500"
+                        }`}
                       >
-                        Review
+                        {activeTab === "approved" ? "Edit" : "Inspect & Promote"}
                       </Link>
                     </td>
                   </tr>
@@ -137,7 +195,8 @@ export default function AdminTopicsPage() {
         )}
 
         <p className="mt-4 text-xs text-gray-600">
-          {topics.length} topic{topics.length !== 1 ? "s" : ""} pending review
+          {topics.length} topic{topics.length !== 1 ? "s" : ""} ·{" "}
+          {activeTab} tab
         </p>
       </div>
     </div>

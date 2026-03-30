@@ -55,76 +55,128 @@ _DOMAIN_COLORS: dict[str, str] = {
 }
 
 _TOPIC_BLOCK = """\
-<div style="background:#1e293b;border-radius:8px;padding:20px;margin-bottom:16px;">
-  <div style="margin-bottom:10px;">
-    <span style="background:{badge_bg};color:{badge_fg};font-size:10px;font-weight:700;
-                 padding:2px 8px;border-radius:4px;letter-spacing:.05em;
-                 text-transform:uppercase;">{domain}</span>
-    <span style="color:#64748b;font-size:11px;margin-left:8px;">
-      Urgency&nbsp;{urgency}
-    </span>
-  </div>
-  <h2 style="margin:0 0 8px;font-size:16px;font-weight:700;color:#f8fafc;">{name}</h2>
-  <p style="margin:0;font-size:14px;color:#94a3b8;line-height:1.7;">{summary}</p>
-</div>
+<tr>
+  <td style="padding:0 0 24px 0;">
+    <table cellpadding="0" cellspacing="0" width="100%">
+      <tr>
+        <td style="border-left:3px solid {domain_color};padding:4px 0 4px 18px;">
+          <p style="margin:0 0 5px;font-size:10px;font-weight:700;letter-spacing:.1em;\
+text-transform:uppercase;color:{domain_color};font-family:Arial,Helvetica,sans-serif;">\
+{domain}</p>
+          <h2 style="margin:0 0 8px;font-size:18px;font-weight:700;color:#111827;\
+font-family:Georgia,'Times New Roman',serif;line-height:1.3;">{name}</h2>
+          <p style="margin:0;font-size:14px;color:#374151;\
+font-family:Arial,Helvetica,sans-serif;line-height:1.75;">{summary}</p>
+        </td>
+      </tr>
+    </table>
+  </td>
+</tr>
 """
 
 _EMAIL_TEMPLATE = """\
 <!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#0f172a;font-family:Arial,Helvetica,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+</head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;">
   <tr>
-    <td align="center" style="padding:32px 16px;">
+    <td align="center" style="padding:24px 16px 40px;">
+
+      <!-- ── Outer card ── -->
       <table width="600" cellpadding="0" cellspacing="0"
-             style="max-width:600px;width:100%;">
-        <!-- HEADER -->
+             style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;
+                    overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);">
+
+        <!-- TOP BAR -->
         <tr>
-          <td style="border-bottom:1px solid #1e293b;padding-bottom:20px;
-                     margin-bottom:24px;">
-            <p style="margin:0 0 4px;font-size:11px;font-weight:700;
-                      letter-spacing:.1em;text-transform:uppercase;
-                      color:#818cf8;">PulseOne Radar</p>
-            <h1 style="margin:0 0 4px;font-size:22px;font-weight:700;
-                       color:#f8fafc;">Your Weekly Intelligence Briefing</h1>
-            <p style="margin:0;font-size:13px;color:#64748b;">
-              For {first_name} {last_name} &middot; {date}
-              {industry_line}
-            </p>
+          <td style="background:#111827;padding:10px 32px;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="color:#9ca3af;font-size:11px;font-family:Arial,Helvetica,sans-serif;">
+                  {date}
+                </td>
+                <td align="right">
+                  <a href="#" style="color:#9ca3af;font-size:11px;
+                     font-family:Arial,Helvetica,sans-serif;text-decoration:none;">
+                    Read online &rarr;
+                  </a>
+                </td>
+              </tr>
+            </table>
           </td>
         </tr>
-        <!-- INTRO -->
+
+        <!-- BRAND HEADER -->
         <tr>
-          <td style="padding:20px 0 8px;">
-            <p style="margin:0;font-size:14px;color:#94a3b8;line-height:1.7;">
-              Here are the top technology signals your team needs to know about this week,
+          <td style="padding:32px 32px 8px;">
+            <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:.12em;
+                      text-transform:uppercase;color:#6b7280;
+                      font-family:Arial,Helvetica,sans-serif;">PulseOne Radar</p>
+            <h1 style="margin:0;font-size:28px;font-weight:700;color:#111827;
+                       font-family:Georgia,'Times New Roman',serif;line-height:1.2;">
+              Your Intelligence Briefing
+            </h1>
+          </td>
+        </tr>
+
+        <!-- GREETING + INTRO -->
+        <tr>
+          <td style="padding:20px 32px 28px;">
+            <p style="margin:0 0 12px;font-size:16px;color:#111827;
+                      font-family:Georgia,'Times New Roman',serif;line-height:1.6;">
+              Good morning, {first_name}.
+            </p>
+            <p style="margin:0;font-size:14px;color:#374151;
+                      font-family:Arial,Helvetica,sans-serif;line-height:1.75;">
+              Here are the top technology signals your team needs to know about{industry_line},
               curated by AI and reviewed by PulseOne experts.
             </p>
           </td>
         </tr>
-        <!-- TOPICS -->
+
+        <!-- SECTION DIVIDER -->
         <tr>
-          <td style="padding:8px 0 24px;">
-            {topics_html}
-          </td>
-        </tr>
-        <!-- FOOTER -->
-        <tr>
-          <td style="border-top:1px solid #1e293b;padding-top:20px;">
-            <p style="margin:0;font-size:12px;color:#475569;line-height:1.6;">
-              You&rsquo;re receiving this because you subscribed to PulseOne Radar.<br>
-              Domains: {domains_label} &middot; Industry: {industry_label}<br>
-              <a href="#" style="color:#818cf8;text-decoration:none;">
-                Manage preferences
-              </a>
-              &nbsp;&middot;&nbsp;
-              <a href="#" style="color:#818cf8;text-decoration:none;">
-                Unsubscribe
-              </a>
+          <td style="padding:0 32px 20px;">
+            <hr style="border:none;border-top:2px solid #111827;margin:0 0 14px;">
+            <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:.12em;
+                      text-transform:uppercase;color:#6b7280;
+                      font-family:Arial,Helvetica,sans-serif;">
+              YOUR DAILY ROLLUP &nbsp;&middot;&nbsp; Top Stories of the Day
             </p>
           </td>
         </tr>
+
+        <!-- TOPIC BLOCKS -->
+        <tr>
+          <td style="padding:0 32px 8px;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              {topics_html}
+            </table>
+          </td>
+        </tr>
+
+        <!-- FOOTER -->
+        <tr>
+          <td style="background:#f9fafb;padding:24px 32px;
+                     border-top:1px solid #e5e7eb;">
+            <p style="margin:0 0 8px;font-size:11px;color:#6b7280;line-height:1.6;
+                      font-family:Arial,Helvetica,sans-serif;">
+              You&rsquo;re receiving this because you subscribed to PulseOne Radar.<br>
+              Domains: {domains_label} &nbsp;&middot;&nbsp; Industry: {industry_label}
+            </p>
+            <p style="margin:0;font-size:11px;font-family:Arial,Helvetica,sans-serif;">
+              <a href="#" style="color:#4f46e5;text-decoration:none;">Manage preferences</a>
+              &nbsp;&nbsp;&middot;&nbsp;&nbsp;
+              <a href="#" style="color:#4f46e5;text-decoration:none;">Unsubscribe</a>
+            </p>
+          </td>
+        </tr>
+
       </table>
     </td>
   </tr>
@@ -137,24 +189,21 @@ _EMAIL_TEMPLATE = """\
 def _build_html(subscriber: Subscriber, topics: list[Topic]) -> str:
     topic_blocks = []
     for topic in topics:
-        color = _DOMAIN_COLORS.get(topic.domain, "#94a3b8")
+        color = _DOMAIN_COLORS.get(topic.domain, "#6b7280")
         topic_blocks.append(
             _TOPIC_BLOCK.format(
-                badge_bg=color + "33",  # 20% opacity hex
-                badge_fg=color,
+                domain_color=color,
                 domain=topic.domain,
-                urgency=f"{topic.urgency_score:.1f}",
                 name=topic.name,
                 summary=topic.summary or "No summary available.",
             )
         )
 
     industry_line = (
-        f"&nbsp;&middot;&nbsp;{subscriber.industry}" if subscriber.industry else ""
+        f" for the {subscriber.industry} sector" if subscriber.industry else ""
     )
     return _EMAIL_TEMPLATE.format(
         first_name=subscriber.first_name,
-        last_name=subscriber.last_name,
         date=datetime.now(timezone.utc).strftime("%B %-d, %Y"),
         industry_line=industry_line,
         topics_html="\n".join(topic_blocks),
@@ -297,9 +346,9 @@ def generate_newsletter_preview(
             else ""
         )
         return (
-            "<!DOCTYPE html><html><body style='background:#0f172a;"
-            "color:#94a3b8;font-family:Arial,sans-serif;padding:40px;'>"
-            f"<h2>No approved topics{no_match}.</h2>"
+            "<!DOCTYPE html><html><body style='background:#f3f4f6;"
+            "color:#374151;font-family:Arial,Helvetica,sans-serif;padding:40px;'>"
+            f"<h2 style='color:#111827;'>No approved topics{no_match}.</h2>"
             "<p>Approve topics in the Curation Dashboard or broaden the domain filter.</p>"
             "</body></html>"
         )

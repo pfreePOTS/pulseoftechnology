@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 
 from ..models.article import Article, ArticleStatus
 from ..models.source import Source
+from ..services.ai_service import process_raw_articles
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,7 @@ def fetch_rss_feed(source: Source, db: Session) -> int:
 
 
 def run_all_sources(db: Session) -> None:
-    """Fetch all active RSS sources and ingest their feeds."""
+    """Fetch all active RSS sources, ingest their feeds, then run AI processing."""
     sources = db.query(Source).filter(Source.is_active == True).all()  # noqa: E712
     logger.info("Running ingestion for %d active sources", len(sources))
     for source in sources:
@@ -92,3 +93,10 @@ def run_all_sources(db: Session) -> None:
             fetch_rss_feed(source, db)
         except Exception:
             logger.exception("Error ingesting source %r", source.name)
+
+    # Process all newly-fetched raw articles with AI classification + topic clustering
+    try:
+        processed = process_raw_articles(db)
+        logger.info("AI processing complete: %d articles assigned to topics", processed)
+    except Exception:
+        logger.exception("Error during AI article processing")

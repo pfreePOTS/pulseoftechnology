@@ -50,12 +50,13 @@ docker compose up
 
 ### 4. Verify
 
-| Service  | URL                              |
-|----------|----------------------------------|
-| Frontend | http://localhost:3000            |
-| Backend API | http://localhost:8000         |
-| API Docs | http://localhost:8000/docs       |
-| Database | localhost:5432 (internal only)   |
+| Service     | URL                               |
+|-------------|-----------------------------------|
+| Frontend    | http://localhost:3100             |
+| Admin Panel | http://localhost:3100/admin       |
+| Backend API | http://localhost:8100             |
+| API Docs    | http://localhost:8100/docs        |
+| Database    | localhost:5532 (host-mapped)      |
 
 ---
 
@@ -88,16 +89,16 @@ docker compose exec db psql -U pulse_user -d pulse_db
 
 ## Database Migrations (Alembic)
 
-Run migrations inside the backend container:
+Run migrations inside the backend container (`alembic.ini` lives in `/app/backend`):
 
 ```bash
-docker compose exec backend python -m alembic upgrade head
+docker compose exec -w /app/backend backend alembic upgrade head
 ```
 
 Generate a new migration after model changes:
 
 ```bash
-docker compose exec backend python -m alembic revision --autogenerate -m "describe change"
+docker compose exec -w /app/backend backend alembic revision --autogenerate -m "describe change"
 ```
 
 ---
@@ -128,12 +129,16 @@ pulseoftechnology/
 
 ## Environment Variables
 
-| Variable          | Default                                              | Description              |
-|-------------------|------------------------------------------------------|--------------------------|
-| `POSTGRES_USER`   | `pulse_user`                                         | DB username              |
-| `POSTGRES_PASSWORD` | `pulse_password`                                   | DB password              |
-| `POSTGRES_DB`     | `pulse_db`                                           | DB name                  |
-| `DATABASE_URL`    | auto-constructed from above                          | Full connection string    |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8000`                          | Browser-facing API URL   |
+| Variable               | Default            | Description                              |
+|------------------------|--------------------|------------------------------------------|
+| `POSTGRES_USER`        | `pulse_user`       | DB username                              |
+| `POSTGRES_PASSWORD`    | `pulse_password`   | DB password                              |
+| `POSTGRES_DB`          | `pulse_db`         | DB name                                  |
+| `DATABASE_URL`         | auto-constructed   | Full connection string (set by Compose)  |
+| `ANTHROPIC_API_KEY`    | —                  | **Required** for AI ingestion pipeline   |
+| `ADMIN_PASSWORD`       | `pulseadmin`       | Admin dashboard login password           |
+| `SENDGRID_API_KEY`     | —                  | Email delivery (optional for dev)        |
+| `HUBSPOT_API_KEY`      | —                  | CRM sync (optional)                      |
+| `NEXT_PUBLIC_API_URL`  | `http://localhost:8100` | Browser-facing API URL             |
 
 > Production deployments should override all defaults via real secrets management.

@@ -38,6 +38,13 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-pulse_user}:${POSTGRES_PASSWORD:-pulse_password}@db:5432/${POSTGRES_DB:-pulse_db}
       ENVIRONMENT: development
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
+      SENDGRID_FROM_EMAIL: ${SENDGRID_FROM_EMAIL:-radar@pulseone.com}
+      SENDGRID_FROM_NAME: ${SENDGRID_FROM_NAME:-PulseOne Radar}
+      SENDGRID_NEWSLETTER_TEMPLATE_ID: ${SENDGRID_NEWSLETTER_TEMPLATE_ID:-}
+      HUBSPOT_API_KEY: ${HUBSPOT_API_KEY:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-pulseadmin}
     ports:
       - "8100:8000"
     volumes:

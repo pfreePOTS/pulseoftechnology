@@ -100,6 +100,8 @@ export default function TopicEditor({
     "idle" | "loading" | "error"
   >("idle");
 
+  const [summaryGenState, setSummaryGenState] = useState<"idle" | "loading" | "error">("idle");
+
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [approveState, setApproveState] = useState<ApproveState>(
     topic.status === "approved" ? "approved" : "idle",
@@ -156,6 +158,23 @@ export default function TopicEditor({
       industry_positions:
         Object.keys(industryPositions).length > 0 ? industryPositions : null,
     };
+  }
+
+  async function handleGenerateSummary() {
+    setSummaryGenState("loading");
+    try {
+      const res = await fetch(
+        `${apiBase}/api/admin/topics/${topic.id}/generate-summary`,
+        { method: "POST", headers: authHeader() },
+      );
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      setSummary(data.summary ?? "");
+      setSummaryGenState("idle");
+    } catch {
+      setSummaryGenState("error");
+      setTimeout(() => setSummaryGenState("idle"), 3000);
+    }
   }
 
   async function handleSuggest() {
@@ -289,12 +308,28 @@ export default function TopicEditor({
 
           {/* Summary */}
           <div>
-            <label
-              htmlFor="summary"
-              className="mb-1.5 block text-sm font-medium text-gray-300"
-            >
-              Executive Summary
-            </label>
+            <div className="mb-1.5 flex items-center justify-between gap-3">
+              <label
+                htmlFor="summary"
+                className="text-sm font-medium text-gray-300"
+              >
+                Executive Summary
+              </label>
+              <button
+                type="button"
+                onClick={handleGenerateSummary}
+                disabled={summaryGenState === "loading"}
+                className="flex items-center gap-1.5 rounded-lg bg-indigo-600/20 px-3 py-1 text-xs font-semibold text-indigo-400 ring-1 ring-indigo-500/30 hover:bg-indigo-600/30 disabled:opacity-50"
+              >
+                {summaryGenState === "loading" ? (
+                  <><span className="h-3 w-3 animate-spin rounded-full border border-indigo-400 border-t-transparent" /> Generating…</>
+                ) : summaryGenState === "error" ? (
+                  "Error — retry"
+                ) : (
+                  "✨ Generate Summary"
+                )}
+              </button>
+            </div>
             <textarea
               id="summary"
               rows={6}

@@ -80,6 +80,10 @@ _ARTICLE_BLOCK = """\
 <table cellpadding="0" cellspacing="0" width="100%" style="margin-top:12px;">
   <tr>
     <td style="background:#f9fafb;border-radius:6px;padding:10px 14px;">
+      <p style="margin:0 0 8px;font-size:14px;font-weight:bold;\
+font-family:Arial,Helvetica,sans-serif;">
+        <a href="{url}" style="color:#4f46e5;text-decoration:none;">{title}</a>
+      </p>
       <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:#6b7280;\
 font-family:Arial,Helvetica,sans-serif;text-transform:uppercase;letter-spacing:.06em;">
         What is it
@@ -306,8 +310,10 @@ def _build_html(
 
             articles_html = "\n".join(
                 _ARTICLE_BLOCK.format(
-                    what_is_it=a.what_is_it,
-                    why_it_matters=a.why_it_matters,
+                    title=a.title or "Read article",
+                    url=a.url or "#",
+                    what_is_it=a.what_is_it or "",
+                    why_it_matters=a.why_it_matters or "",
                 )
                 for a in selected
             )

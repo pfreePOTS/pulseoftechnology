@@ -211,6 +211,29 @@ def unpublish_topic(
 
 
 # ---------------------------------------------------------------------------
+# Topic Executive Summary Generation
+# ---------------------------------------------------------------------------
+
+@router.post("/topics/{topic_id}/generate-summary", response_model=TopicOut)
+def generate_topic_summary_endpoint(
+    topic_id: int,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    from ..services.ai_service import generate_topic_summary  # avoid circular at module level
+
+    topic = db.query(Topic).filter(Topic.id == topic_id).first()
+    if topic is None:
+        raise HTTPException(status_code=404, detail="Topic not found")
+
+    articles = topic.articles  # relationship already loaded
+    generate_topic_summary(topic, list(articles))
+    db.commit()
+    db.refresh(topic)
+    return topic
+
+
+# ---------------------------------------------------------------------------
 # Topic Merge
 # ---------------------------------------------------------------------------
 
@@ -285,11 +308,11 @@ class SignalOut(BaseModel):
 def list_signals(
     db: Session = Depends(get_db),
     _: None = Depends(require_admin),
-    signal_status: str = Query(default="pending"),
+    status: str = Query(default="pending"),
 ):
     rows = (
         db.query(SignalRecommendation)
-        .filter(SignalRecommendation.status == signal_status)
+        .filter(SignalRecommendation.status == status)
         .order_by(SignalRecommendation.created_at.desc())
         .all()
     )

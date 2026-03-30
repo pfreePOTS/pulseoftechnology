@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from ..models.article import Article, ArticleStatus
 from ..models.source import Source
 from ..services.ai_service import process_raw_articles
+from ..services.vector_service import upsert_article
 
 logger = logging.getLogger(__name__)
 
@@ -100,3 +101,28 @@ def run_all_sources(db: Session) -> None:
         logger.info("AI processing complete: %d articles assigned to topics", processed)
     except Exception:
         logger.exception("Error during AI article processing")
+
+    # Embed newly-processed articles into Pinecone (no-op when not configured)
+    try:
+        _embed_processed_articles(db)
+    except Exception:
+        logger.exception("Error during vector embedding — continuing without Pinecone")
+
+
+def _embed_processed_articles(db: Session) -> None:
+    """Upsert all processed articles that haven't been embedded yet."""
+    from ..models.article import ArticleStatus as _AS  # avoid circular at module level
+
+    # Select processed articles with a topic assigned (embedding needs topic metadata)
+    articles = (
+        db.query(Article)
+        .filter(
+            Article.status == _AS.processed,
+            Article.topic_id.isnot(None),
+        )
+        .limit(200)  # batch cap per ingestion run
+        .all()
+    )
+    upserted = sum(1 for a in articles if upsert_article(a))
+    if upserted:
+        logger.info("Pinecone: upserted %d article vectors", upserted)

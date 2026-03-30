@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     sendgrid_newsletter_template_id: str = ""  # optional dynamic template
     # HubSpot
     hubspot_api_key: str = ""  # private app access token
+    # Pinecone vector database (optional — signal scorer degrades gracefully without it)
+    pinecone_api_key: str = ""
+    pinecone_environment: str = ""      # e.g. "us-east-1-aws"
+    pinecone_index_name: str = "pulseone-articles"
     # Admin
     admin_password: str = "pulseadmin"
 

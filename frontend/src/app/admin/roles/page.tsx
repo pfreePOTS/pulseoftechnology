@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -18,7 +18,81 @@ interface Role {
   tags: string[] | null;
 }
 
-const DOMAIN_OPTIONS = ["AI", "Security", "Cloud", "Finance", "Leadership", "Other"];
+// ── Tag chip input ────────────────────────────────────────────────────────────
+
+function TagInput({
+  tags,
+  onChange,
+}: {
+  tags: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [input, setInput] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function addTag(raw: string) {
+    const value = raw.trim().replace(/,+$/, "").trim();
+    if (!value) return;
+    if (tags.some((t) => t.toLowerCase() === value.toLowerCase())) {
+      setInput("");
+      return;
+    }
+    onChange([...tags, value]);
+    setInput("");
+  }
+
+  function removeTag(tag: string) {
+    onChange(tags.filter((t) => t !== tag));
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addTag(input);
+    } else if (e.key === "Backspace" && input === "" && tags.length > 0) {
+      removeTag(tags[tags.length - 1]);
+    }
+  }
+
+  function handleBlur() {
+    if (input.trim()) addTag(input);
+  }
+
+  return (
+    <div
+      className="flex min-h-[2.5rem] flex-wrap gap-1.5 rounded-lg border border-gray-700 bg-gray-800 px-2 py-1.5 cursor-text"
+      onClick={() => inputRef.current?.focus()}
+    >
+      {tags.map((tag) => (
+        <span
+          key={tag}
+          className="inline-flex items-center gap-1 rounded-full bg-indigo-500/25 px-2 py-0.5 text-xs font-medium text-indigo-300"
+        >
+          {tag}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); removeTag(tag); }}
+            className="leading-none text-indigo-400 hover:text-white"
+            aria-label={`Remove ${tag}`}
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      <input
+        ref={inputRef}
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={handleKeyDown}
+        onBlur={handleBlur}
+        placeholder={tags.length === 0 ? "Type a tag and press Enter or ," : ""}
+        className="min-w-[8rem] flex-1 bg-transparent text-sm text-white placeholder-gray-600 focus:outline-none"
+      />
+    </div>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function RolesPage() {
   const [roles, setRoles] = useState<Role[]>([]);
@@ -43,10 +117,6 @@ export default function RolesPage() {
   }
 
   useEffect(() => { fetchRoles(); }, []);
-
-  function toggleTag(tag: string, current: string[], set: (v: string[]) => void) {
-    set(current.includes(tag) ? current.filter((t) => t !== tag) : [...current, tag]);
-  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -102,7 +172,7 @@ export default function RolesPage() {
     <div className="px-6 pt-8 pb-12 max-w-3xl">
       <h1 className="text-2xl font-bold tracking-tight text-white">Role Profiles</h1>
       <p className="mt-1 mb-8 text-sm text-gray-400">
-        Define C-level personas (CEO, CTO, CFO…) with domain tags. Subscribers assigned a role
+        Define C-level personas (CEO, CTO, CFO…) with content tags. Subscribers assigned a role
         receive article summaries matched to those tags.
       </p>
 
@@ -124,23 +194,11 @@ export default function RolesPage() {
           />
         </div>
         <div className="mb-4">
-          <label className="block mb-2 text-xs font-medium text-gray-400">Content Tags</label>
-          <div className="flex flex-wrap gap-2">
-            {DOMAIN_OPTIONS.map((tag) => (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => toggleTag(tag, newTags, setNewTags)}
-                className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                  newTags.includes(tag)
-                    ? "bg-indigo-600 text-white"
-                    : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-                }`}
-              >
-                {tag}
-              </button>
-            ))}
-          </div>
+          <label className="block mb-2 text-xs font-medium text-gray-400">
+            Content Tags
+            <span className="ml-2 font-normal text-gray-600">— press Enter or , to add</span>
+          </label>
+          <TagInput tags={newTags} onChange={setNewTags} />
         </div>
         {createError && <p className="mb-3 text-xs text-red-400">{createError}</p>}
         <button
@@ -171,23 +229,11 @@ export default function RolesPage() {
                   />
                 </div>
                 <div className="mb-4">
-                  <label className="block mb-2 text-xs font-medium text-gray-400">Content Tags</label>
-                  <div className="flex flex-wrap gap-2">
-                    {DOMAIN_OPTIONS.map((tag) => (
-                      <button
-                        key={tag}
-                        type="button"
-                        onClick={() => toggleTag(tag, editTags, setEditTags)}
-                        className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                          editTags.includes(tag)
-                            ? "bg-indigo-600 text-white"
-                            : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-                        }`}
-                      >
-                        {tag}
-                      </button>
-                    ))}
-                  </div>
+                  <label className="block mb-2 text-xs font-medium text-gray-400">
+                    Content Tags
+                    <span className="ml-2 font-normal text-gray-600">— press Enter or , to add</span>
+                  </label>
+                  <TagInput tags={editTags} onChange={setEditTags} />
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -212,7 +258,7 @@ export default function RolesPage() {
               >
                 <div>
                   <p className="font-semibold text-white">{role.name}</p>
-                  <div className="mt-1 flex flex-wrap gap-1">
+                  <div className="mt-1.5 flex flex-wrap gap-1">
                     {role.tags && role.tags.length > 0 ? (
                       role.tags.map((tag) => (
                         <span
@@ -227,7 +273,7 @@ export default function RolesPage() {
                     )}
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 shrink-0 ml-4">
                   <button
                     onClick={() => startEdit(role)}
                     className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-400 hover:bg-gray-800 hover:text-white"

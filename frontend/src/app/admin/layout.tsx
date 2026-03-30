@@ -9,6 +9,7 @@ const NAV = [
   { label: "Manage Sources", href: "/admin/sources" },
   { label: "Subscribers", href: "/admin/subscribers" },
   { label: "System Jobs", href: "/admin/jobs" },
+  { label: "Newsletter Preview", href: "/admin/newsletter" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

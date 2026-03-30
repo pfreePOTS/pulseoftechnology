@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -10,7 +11,7 @@ from ..models.article import Article
 from ..models.source import Source, SourceType
 from ..models.subscriber import Subscriber
 from ..models.topic import AdoptionState, Topic, TopicStatus
-from ..services.email_service import run_daily_newsletter
+from ..services.email_service import generate_newsletter_preview, run_daily_newsletter
 from ..services.ingestion import run_all_sources
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -257,6 +258,19 @@ def list_subscribers(
     _: None = Depends(require_admin),
 ):
     return db.query(Subscriber).order_by(Subscriber.created_at.desc()).all()
+
+
+# ---------------------------------------------------------------------------
+# Newsletter preview
+# ---------------------------------------------------------------------------
+
+@router.get("/newsletter/preview", response_class=HTMLResponse)
+def newsletter_preview(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """Return a fully rendered HTML newsletter for a dummy subscriber."""
+    return HTMLResponse(content=generate_newsletter_preview(db))
 
 
 # ---------------------------------------------------------------------------

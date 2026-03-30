@@ -257,6 +257,45 @@ def assemble_newsletter_topics(
     return sorted(matched, key=lambda t: t.urgency_score, reverse=True)
 
 
+def generate_newsletter_preview(db: Session) -> str:
+    """
+    Build and return a rendered HTML newsletter for a dummy subscriber.
+
+    Uses the 5 most recently approved topics so the preview is always
+    populated regardless of the 24-hour recency window used by the real job.
+    Does NOT write anything to the database or send any email.
+    """
+    dummy = Subscriber(
+        id=-1,
+        email="preview@pulseone.internal",
+        first_name="Jane",
+        last_name="Executive",
+        industry="Technology",
+        domains=["AI", "Security", "Cloud"],
+        is_active=True,
+    )
+
+    topics: list[Topic] = (
+        db.query(Topic)
+        .filter(Topic.status == TopicStatus.approved)
+        .order_by(Topic.urgency_score.desc())
+        .limit(5)
+        .all()
+    )
+
+    if not topics:
+        # Return a placeholder so the iframe always shows something useful
+        return (
+            "<!DOCTYPE html><html><body style='background:#0f172a;"
+            "color:#94a3b8;font-family:Arial,sans-serif;padding:40px;'>"
+            "<h2>No approved topics yet.</h2>"
+            "<p>Approve at least one topic in the Curation Dashboard to see the preview.</p>"
+            "</body></html>"
+        )
+
+    return _build_html(dummy, topics)
+
+
 def run_daily_newsletter(db: Session) -> None:
     """
     Fetch all active subscribers, match them to recently-approved topics, and

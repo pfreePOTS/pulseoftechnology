@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -283,9 +283,17 @@ def list_subscribers(
 def newsletter_preview(
     db: Session = Depends(get_db),
     _: None = Depends(require_admin),
+    industry: str | None = Query(default=None),
+    domains: list[str] = Query(default=[]),
 ):
-    """Return a fully rendered HTML newsletter for a dummy subscriber."""
-    return HTMLResponse(content=generate_newsletter_preview(db))
+    """Return a fully rendered HTML newsletter for a simulated subscriber profile."""
+    return HTMLResponse(
+        content=generate_newsletter_preview(
+            db,
+            industry=industry or None,
+            domains=domains or None,
+        )
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -257,12 +257,18 @@ def assemble_newsletter_topics(
     return sorted(matched, key=lambda t: t.urgency_score, reverse=True)
 
 
-def generate_newsletter_preview(db: Session) -> str:
+def generate_newsletter_preview(
+    db: Session,
+    industry: str | None = None,
+    domains: list[str] | None = None,
+) -> str:
     """
-    Build and return a rendered HTML newsletter for a dummy subscriber.
+    Build and return a rendered HTML newsletter for a simulated subscriber.
 
     Uses the 5 most recently approved topics so the preview is always
     populated regardless of the 24-hour recency window used by the real job.
+    ``industry`` and ``domains`` control the simulated subscriber profile;
+    an empty domains list is treated as "all domains" (no filtering).
     Does NOT write anything to the database or send any email.
     """
     dummy = Subscriber(
@@ -270,26 +276,31 @@ def generate_newsletter_preview(db: Session) -> str:
         email="preview@pulseone.internal",
         first_name="Jane",
         last_name="Executive",
-        industry="Technology",
-        domains=["AI", "Security", "Cloud"],
+        industry=industry or "Technology",
+        domains=domains if domains else None,  # None → assemble_newsletter_topics returns all
         is_active=True,
     )
 
-    topics: list[Topic] = (
+    all_approved: list[Topic] = (
         db.query(Topic)
         .filter(Topic.status == TopicStatus.approved)
         .order_by(Topic.urgency_score.desc())
-        .limit(5)
         .all()
     )
 
+    topics = assemble_newsletter_topics(dummy, all_approved)[:5]
+
     if not topics:
-        # Return a placeholder so the iframe always shows something useful
+        no_match = (
+            f" matching your domain interests ({', '.join(domains)})"
+            if domains
+            else ""
+        )
         return (
             "<!DOCTYPE html><html><body style='background:#0f172a;"
             "color:#94a3b8;font-family:Arial,sans-serif;padding:40px;'>"
-            "<h2>No approved topics yet.</h2>"
-            "<p>Approve at least one topic in the Curation Dashboard to see the preview.</p>"
+            f"<h2>No approved topics{no_match}.</h2>"
+            "<p>Approve topics in the Curation Dashboard or broaden the domain filter.</p>"
             "</body></html>"
         )
 

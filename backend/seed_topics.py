@@ -14,18 +14,19 @@ CORE_DOMAINS = [
     {"name": "Security operations and resilience", "domain": "Security"},
     {"name": "Cloud, infrastructure, and endpoint management", "domain": "Cloud"},
     {"name": "Workflow automation and business systems", "domain": "Other"},
-    {"name": "Compliance, auditability, and third-party risk", "domain": "Compliance"},
+    {"name": "Compliance, auditability, and third-party risk", "domain": "Other"},
     {"name": "Operational technology / IoT / robotics", "domain": "Other"},
 ]
 
-# Default industry positions to make them visible on the Radar immediately
+# industry_positions must use the INDUSTRY_COLORS keys from RadarChart.tsx
+# and the IndustryPosition schema: {urgency_score: float, adoption_state: str}
 DEFAULT_POSITIONS = {
-    "Banking / Finance": 8.0,
-    "Healthcare": 7.5,
-    "All Industries": 6.0,
-    "Manufacturing": 5.0,
-    "Technology": 9.0,
-    "SMBs / Professional Services": 6.5,
+    "Finance & Banking":          {"urgency_score": 8.0, "adoption_state": "Get Prepared For"},
+    "Healthcare":                 {"urgency_score": 7.5, "adoption_state": "Get Prepared For"},
+    "Technology":                 {"urgency_score": 9.0, "adoption_state": "Get Your Hands Around"},
+    "Manufacturing":              {"urgency_score": 5.0, "adoption_state": "Get Ahead Of"},
+    "Government & Public Sector": {"urgency_score": 6.0, "adoption_state": "Get Ahead Of"},
+    "Retail & E-Commerce":        {"urgency_score": 6.5, "adoption_state": "Get Ahead Of"},
 }
 
 def seed() -> None:
@@ -45,7 +46,7 @@ def seed() -> None:
                 urgency_score=7.0,
                 summary=f"Strategic focus area for {entry['name']}. This is a pre-seeded topic from the PulseOne Brand Framework.",
                 status=TopicStatus.approved,
-                adoption_state="Understand It",  # Default posture
+                adoption_state="Get Prepared For",
                 industry_positions=DEFAULT_POSITIONS
             )
             db.add(topic)

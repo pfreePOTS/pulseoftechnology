@@ -1,0 +1,33 @@
+[project]
+name = "pulse-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+readme = "README.md"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# B008: FastAPI uses Depends()/Security()/Query() in parameter defaults by design
+# B904: HTTPException from ValueError is intentional for API responses
+# UP042: str+Enum enums left as-is for SQLAlchemy / API compatibility
+ignore = ["E501", "B008", "B904", "UP042"]
+
+# SQLAlchemy relationship forward refs in Mapped["OtherModel"]
+[tool.ruff.lint.per-file-ignores]
+"models/*.py" = ["F821"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["."]
+omit = ["tests/*", "alembic/*", "seed_*.py"]

@@ -10,6 +10,7 @@ Custom HubSpot properties required (create these in HubSpot Settings → Propert
 Standard HubSpot properties used (exist by default):
   - email, firstname, lastname, industry
 """
+
 import logging
 
 import hubspot
@@ -43,6 +44,7 @@ def _get_hs_client() -> hubspot.Client:
 # Property mapping
 # ---------------------------------------------------------------------------
 
+
 def _build_properties(subscriber: Subscriber) -> dict[str, str]:
     return {
         "email": subscriber.email,
@@ -58,6 +60,7 @@ def _build_properties(subscriber: Subscriber) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def sync_subscriber_to_hubspot(subscriber: Subscriber) -> bool:
     """
@@ -95,9 +98,7 @@ def sync_subscriber_to_hubspot(subscriber: Subscriber) -> bool:
         )
         results = client.crm.contacts.search_api.do_search(search_request)
     except ApiException:
-        logger.exception(
-            "HubSpot search failed for %s", subscriber.email
-        )
+        logger.exception("HubSpot search failed for %s", subscriber.email)
         return False
 
     try:
@@ -109,12 +110,8 @@ def sync_subscriber_to_hubspot(subscriber: Subscriber) -> bool:
         else:
             create_input = SimplePublicObjectInputForCreate(properties=properties)
             created = client.crm.contacts.basic_api.create(create_input)
-            logger.info(
-                "HubSpot contact created: %s (id=%s)", subscriber.email, created.id
-            )
+            logger.info("HubSpot contact created: %s (id=%s)", subscriber.email, created.id)
         return True
     except ApiException:
-        logger.exception(
-            "HubSpot upsert failed for %s", subscriber.email
-        )
+        logger.exception("HubSpot upsert failed for %s", subscriber.email)
         return False

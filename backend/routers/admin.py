@@ -1,13 +1,31 @@
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
-from fastapi.responses import HTMLResponse
+import jwt
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Security,
+    status,
+)
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
+from ..config import settings as app_settings
 from ..database import SessionLocal, get_db
-from ..dependencies import require_admin
+from ..dependencies import (
+    ADMIN_COOKIE_NAME,
+    create_admin_access_token,
+    decode_admin_token,
+    get_token_from_request,
+    require_admin,
+)
 from ..models.article import Article
 from ..models.content import ContentItem
 from ..models.role import Role
@@ -19,6 +37,8 @@ from ..services.ai_service import suggest_industry_positions
 from ..services.email_service import generate_newsletter_preview, run_daily_newsletter
 from ..services.ingestion import run_all_sources
 
+_bearer_optional = HTTPBearer(auto_error=False)
+
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
@@ -26,29 +46,64 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 # Auth
 # ---------------------------------------------------------------------------
 
+
 class LoginRequest(BaseModel):
     password: str
 
 
-class LoginResponse(BaseModel):
-    token: str
-
-
-@router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest) -> LoginResponse:
-    """Validate the admin password and return a token (the password itself)."""
-    from ..config import settings
-    if payload.password != settings.admin_password:
+@router.post("/login")
+def login(payload: LoginRequest) -> JSONResponse:
+    """Issue a JWT and set an httpOnly cookie for browser clients."""
+    if payload.password != app_settings.admin_password:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid password",
         )
-    return LoginResponse(token=payload.password)
+    token = create_admin_access_token()
+    secure = app_settings.environment in ("production", "staging")
+    response = JSONResponse(
+        {"access_token": token, "token_type": "bearer"},
+    )
+    response.set_cookie(
+        key=ADMIN_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        max_age=app_settings.admin_token_expire_minutes * 60,
+        samesite="lax",
+        path="/",
+        secure=secure,
+    )
+    return response
+
+
+@router.post("/logout")
+def logout() -> JSONResponse:
+    """Clear admin session cookie."""
+    response = JSONResponse({"ok": True})
+    response.delete_cookie(key=ADMIN_COOKIE_NAME, path="/")
+    return response
+
+
+@router.get("/session")
+def admin_session(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Security(_bearer_optional),
+) -> dict:
+    """Return whether a valid JWT is present (cookie or Bearer)."""
+    token = get_token_from_request(request, credentials)
+    if not token:
+        return {"authenticated": False}
+    try:
+        decode_admin_token(token)
+        return {"authenticated": True}
+    except jwt.PyJWTError:
+        return {"authenticated": False}
 
 
 # ---------------------------------------------------------------------------
 # Topics
 # ---------------------------------------------------------------------------
+
 
 class ArticleOut(BaseModel):
     id: int
@@ -107,12 +162,7 @@ def get_topic(
     db: Session = Depends(get_db),
     _: None = Depends(require_admin),
 ):
-    topic = (
-        db.query(Topic)
-        .options(joinedload(Topic.articles))
-        .filter(Topic.id == topic_id)
-        .first()
-    )
+    topic = db.query(Topic).options(joinedload(Topic.articles)).filter(Topic.id == topic_id).first()
     if topic is None:
         raise HTTPException(status_code=404, detail="Topic not found")
     return topic
@@ -214,6 +264,7 @@ def unpublish_topic(
 # Topic Executive Summary Generation
 # ---------------------------------------------------------------------------
 
+
 @router.post("/topics/{topic_id}/generate-summary", response_model=TopicOut)
 def generate_topic_summary_endpoint(
     topic_id: int,
@@ -236,6 +287,7 @@ def generate_topic_summary_endpoint(
 # ---------------------------------------------------------------------------
 # Topic Merge
 # ---------------------------------------------------------------------------
+
 
 class TopicMergeRequest(BaseModel):
     source_topic_ids: list[int]
@@ -288,6 +340,7 @@ def merge_topics(
 # Signal Recommendations
 # ---------------------------------------------------------------------------
 
+
 class SignalOut(BaseModel):
     id: int
     topic_id: int
@@ -319,19 +372,21 @@ def list_signals(
     result = []
     for row in rows:
         topic = db.query(Topic).filter(Topic.id == row.topic_id).first()
-        result.append(SignalOut(
-            id=row.id,
-            topic_id=row.topic_id,
-            topic_name=topic.name if topic else "(deleted)",
-            topic_domain=topic.domain if topic else "",
-            current_state=topic.adoption_state if topic else "",
-            suggested_state=row.suggested_state,
-            rationale=row.rationale,
-            velocity_score=row.velocity_score,
-            acceleration_score=row.acceleration_score,
-            status=row.status,
-            created_at=row.created_at,
-        ))
+        result.append(
+            SignalOut(
+                id=row.id,
+                topic_id=row.topic_id,
+                topic_name=topic.name if topic else "(deleted)",
+                topic_domain=topic.domain if topic else "",
+                current_state=topic.adoption_state if topic else "",
+                suggested_state=row.suggested_state,
+                rationale=row.rationale,
+                velocity_score=row.velocity_score,
+                acceleration_score=row.acceleration_score,
+                status=row.status,
+                created_at=row.created_at,
+            )
+        )
     return result
 
 
@@ -381,6 +436,7 @@ def reject_signal(
 # ---------------------------------------------------------------------------
 # Sources
 # ---------------------------------------------------------------------------
+
 
 class SourceOut(BaseModel):
     id: int
@@ -467,6 +523,7 @@ def delete_source(
 # Subscribers
 # ---------------------------------------------------------------------------
 
+
 class SubscriberOut(BaseModel):
     id: int
     email: str
@@ -492,6 +549,7 @@ def list_subscribers(
 # ---------------------------------------------------------------------------
 # Roles
 # ---------------------------------------------------------------------------
+
 
 class RoleOut(BaseModel):
     id: int
@@ -648,7 +706,9 @@ def update_content(
         item.url = payload.url
     if payload.type is not None:
         if payload.type not in CONTENT_TYPES:
-            raise HTTPException(status_code=422, detail=f"type must be one of {sorted(CONTENT_TYPES)}")
+            raise HTTPException(
+                status_code=422, detail=f"type must be one of {sorted(CONTENT_TYPES)}"
+            )
         item.type = payload.type
     if payload.summary is not None:
         item.summary = payload.summary
@@ -678,6 +738,7 @@ def delete_content(
 # Newsletter preview
 # ---------------------------------------------------------------------------
 
+
 @router.get("/newsletter/preview", response_class=HTMLResponse)
 def newsletter_preview(
     db: Session = Depends(get_db),
@@ -700,6 +761,7 @@ def newsletter_preview(
 # ---------------------------------------------------------------------------
 # Jobs
 # ---------------------------------------------------------------------------
+
 
 def _run_ingest() -> None:
     db = SessionLocal()
@@ -736,7 +798,8 @@ def trigger_newsletter(
 
 
 def _run_signals() -> None:
-    from ..services.signal_service import run_signal_scorer, cleanup_empty_topics
+    from ..services.signal_service import cleanup_empty_topics, run_signal_scorer
+
     db = SessionLocal()
     try:
         cleanup_empty_topics(db)

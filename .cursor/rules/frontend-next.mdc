@@ -1,0 +1,12 @@
+---
+description: Next.js admin and public UI
+globs: frontend/**/*.{tsx,ts}
+alwaysApply: false
+---
+
+# Frontend
+
+- Import API base and admin fetches from `@/lib/api` (`API_BASE`, `adminFetch`). Default `API_BASE` matches Compose (`localhost:8100`).
+- Admin routes must use `credentials: "include"` (handled by `adminFetch`) so the httpOnly session cookie is sent to the API.
+- Next.js 16 may differ from older docs; check `frontend/AGENTS.md` and project `node_modules/next` release notes when unsure.
+- Unit tests: Vitest (`npm run test`). E2E: Playwright in `frontend/e2e/` (`npm run test:e2e` with Docker Compose up). ESLint: `npm run lint`.

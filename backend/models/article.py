@@ -1,7 +1,9 @@
 import enum
-from datetime import datetime, timezone
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, JSON, String, Text
+from datetime import UTC, datetime
+
+from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from ..database import Base
 
 
@@ -15,14 +17,18 @@ class Article(Base):
     __tablename__ = "articles"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    source_id: Mapped[int] = mapped_column(Integer, ForeignKey("sources.id"), nullable=False, index=True)
-    topic_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("topics.id"), nullable=True, index=True)
+    source_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("sources.id"), nullable=False, index=True
+    )
+    topic_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("topics.id"), nullable=True, index=True
+    )
     title: Mapped[str] = mapped_column(String(1024), nullable=False)
     url: Mapped[str] = mapped_column(String(2048), unique=True, nullable=False, index=True)
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ingested_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
     status: Mapped[ArticleStatus] = mapped_column(
         Enum(ArticleStatus), default=ArticleStatus.raw, nullable=False, index=True

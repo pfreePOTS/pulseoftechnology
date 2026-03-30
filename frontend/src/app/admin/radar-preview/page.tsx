@@ -4,24 +4,14 @@ import { useEffect, useState } from "react";
 import RadarSection from "@/components/RadarSection";
 import { type RadarTopic } from "@/components/RadarChart";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-function authHeader(): Record<string, string> {
-  const token =
-    typeof window !== "undefined"
-      ? (localStorage.getItem("pulse_admin_token") ?? "")
-      : "";
-  return { Authorization: `Bearer ${token}` };
-}
+import { adminFetch, API_BASE } from "@/lib/api";
 
 export default function RadarPreviewPage() {
   const [topics, setTopics] = useState<RadarTopic[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/admin/topics?status=approved`, {
-      headers: authHeader(),
-    })
+    adminFetch(`${API_BASE}/api/admin/topics?status=approved`)
       .then((r) => (r.ok ? r.json() : []))
       .then((data) => {
         setTopics(data);

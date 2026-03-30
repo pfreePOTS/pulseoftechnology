@@ -2,15 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-function authHeader(): Record<string, string> {
-  const token =
-    typeof window !== "undefined"
-      ? (localStorage.getItem("pulse_admin_token") ?? "")
-      : "";
-  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-}
+import { adminFetch, API_BASE } from "@/lib/api";
 
 interface Role {
   id: number;
@@ -111,7 +103,7 @@ export default function RolesPage() {
   const [saving, setSaving] = useState(false);
 
   async function fetchRoles() {
-    const r = await fetch(`${API_BASE}/api/admin/roles`, { headers: authHeader() });
+    const r = await adminFetch(`${API_BASE}/api/admin/roles`);
     if (r.ok) setRoles(await r.json());
     setLoading(false);
   }
@@ -123,9 +115,8 @@ export default function RolesPage() {
     if (!newName.trim()) return;
     setCreating(true);
     setCreateError("");
-    const r = await fetch(`${API_BASE}/api/admin/roles`, {
+    const r = await adminFetch(`${API_BASE}/api/admin/roles`, {
       method: "POST",
-      headers: authHeader(),
       body: JSON.stringify({ name: newName.trim(), tags: newTags.length ? newTags : null }),
     });
     if (r.ok) {
@@ -141,9 +132,8 @@ export default function RolesPage() {
 
   async function handleSave(id: number) {
     setSaving(true);
-    const r = await fetch(`${API_BASE}/api/admin/roles/${id}`, {
+    const r = await adminFetch(`${API_BASE}/api/admin/roles/${id}`, {
       method: "PUT",
-      headers: authHeader(),
       body: JSON.stringify({ name: editName.trim(), tags: editTags.length ? editTags : null }),
     });
     if (r.ok) {
@@ -155,9 +145,8 @@ export default function RolesPage() {
 
   async function handleDelete(id: number) {
     if (!confirm("Delete this role? Subscribers assigned to it will be unassigned.")) return;
-    await fetch(`${API_BASE}/api/admin/roles/${id}`, {
+    await adminFetch(`${API_BASE}/api/admin/roles/${id}`, {
       method: "DELETE",
-      headers: authHeader(),
     });
     await fetchRoles();
   }

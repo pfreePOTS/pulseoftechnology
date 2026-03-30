@@ -1,0 +1,13 @@
+---
+description: Pulse of Technology — how to run and scope changes
+alwaysApply: true
+---
+
+# Project conventions
+
+- **Run everything with Docker Compose** from the repo root (`docker compose up --build`). Do not rely on ad-hoc host Python/Node for normal dev unless debugging in isolation.
+- **Ports**: Frontend `http://localhost:3100`, API `http://localhost:8100`, Postgres host `5532` (see root `README.md`).
+- **Stack**: Next.js 16 (App Router) + FastAPI + PostgreSQL + Alembic. AI ingestion uses Anthropic; optional SendGrid, HubSpot, Pinecone.
+- **Admin auth**: JWT in httpOnly cookie + optional `Authorization: Bearer` for scripts. Use `src/lib/api.ts` (`adminFetch`, `API_BASE`) for admin UI — never store tokens in `localStorage`.
+- **CORS** is configured via `CORS_ORIGINS` (comma-separated). **Scheduler** (APScheduler) runs in the API process; multiple replicas duplicate jobs unless jobs are externalized.
+- Prefer small, focused diffs; match existing patterns in each folder. Do not add unsolicited markdown docs.

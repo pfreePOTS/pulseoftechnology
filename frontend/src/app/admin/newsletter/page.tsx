@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { adminFetch, API_BASE } from "@/lib/api";
 
 const INDUSTRIES = [
   "All Industries",
@@ -23,14 +23,6 @@ interface Role {
   id: number;
   name: string;
   tags: string[] | null;
-}
-
-function authHeader(): Record<string, string> {
-  const token =
-    typeof window !== "undefined"
-      ? (localStorage.getItem("pulse_admin_token") ?? "")
-      : "";
-  return { Authorization: `Bearer ${token}` };
 }
 
 type LoadState = "idle" | "loading" | "loaded" | "error";
@@ -54,7 +46,7 @@ export default function NewsletterSandboxPage() {
 
   async function loadRoles() {
     try {
-      const res = await fetch(`${API_BASE}/api/admin/roles`, { headers: authHeader() });
+      const res = await adminFetch(`${API_BASE}/api/admin/roles`);
       if (res.ok) setRoles(await res.json());
     } catch {
       // roles are optional — fail silently
@@ -73,7 +65,7 @@ export default function NewsletterSandboxPage() {
         const url = `${API_BASE}/api/admin/newsletter/preview${
           params.toString() ? `?${params}` : ""
         }`;
-        const res = await fetch(url, { headers: authHeader() });
+        const res = await adminFetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         setHtml(await res.text());
         setLastRefreshed(new Date());

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { API_BASE } from "@/lib/api";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -18,6 +18,7 @@ export default function AdminLoginPage() {
     try {
       const res = await fetch(`${API_BASE}/api/admin/login`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
       });
@@ -25,10 +26,6 @@ export default function AdminLoginPage() {
         setError("Invalid password. Please try again.");
         return;
       }
-      const { token } = await res.json();
-      localStorage.setItem("pulse_admin_token", token);
-      // Also store as a cookie so server components can forward it to the API
-      document.cookie = `pulse_admin_token=${token}; path=/; SameSite=Strict`;
       router.replace("/admin");
     } catch {
       setError("Login failed. Check your connection.");

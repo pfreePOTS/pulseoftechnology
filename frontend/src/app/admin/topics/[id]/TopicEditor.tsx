@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { adminFetch, API_BASE } from "@/lib/api";
+
 interface Article {
   id: number;
   title: string;
@@ -58,25 +60,11 @@ interface TopicDetail {
 type SaveState = "idle" | "saving" | "saved" | "error";
 type ApproveState = "idle" | "approving" | "approved" | "error";
 
-function authHeader(): Record<string, string> {
-  const token =
-    typeof window !== "undefined"
-      ? (localStorage.getItem("pulse_admin_token") ?? "")
-      : "";
-  return { Authorization: `Bearer ${token}` };
-}
-
 // ── Shared input styles (dark admin theme)
 const inputCls =
   "rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50";
 
-export default function TopicEditor({
-  topic,
-  apiBase,
-}: {
-  topic: TopicDetail;
-  apiBase: string;
-}) {
+export default function TopicEditor({ topic }: { topic: TopicDetail }) {
   const router = useRouter();
   const [summary, setSummary] = useState(topic.summary ?? "");
   const [urgency, setUrgency] = useState(String(topic.urgency_score));
@@ -163,9 +151,9 @@ export default function TopicEditor({
   async function handleGenerateSummary() {
     setSummaryGenState("loading");
     try {
-      const res = await fetch(
-        `${apiBase}/api/admin/topics/${topic.id}/generate-summary`,
-        { method: "POST", headers: authHeader() },
+      const res = await adminFetch(
+        `${API_BASE}/api/admin/topics/${topic.id}/generate-summary`,
+        { method: "POST" },
       );
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
@@ -180,9 +168,9 @@ export default function TopicEditor({
   async function handleSuggest() {
     setSuggestState("loading");
     try {
-      const res = await fetch(
-        `${apiBase}/api/admin/topics/${topic.id}/suggest-industry-positions`,
-        { method: "POST", headers: authHeader() },
+      const res = await adminFetch(
+        `${API_BASE}/api/admin/topics/${topic.id}/suggest-industry-positions`,
+        { method: "POST" },
       );
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
@@ -212,9 +200,8 @@ export default function TopicEditor({
     setSaveState("saving");
     setErrorMsg("");
     try {
-      const res = await fetch(`${apiBase}/api/admin/topics/${topic.id}`, {
+      const res = await adminFetch(`${API_BASE}/api/admin/topics/${topic.id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json", ...authHeader() },
         body: JSON.stringify(buildPayload()),
       });
       if (!res.ok) throw new Error(await res.text());
@@ -230,14 +217,13 @@ export default function TopicEditor({
     setApproveState("approving");
     setErrorMsg("");
     try {
-      await fetch(`${apiBase}/api/admin/topics/${topic.id}`, {
+      await adminFetch(`${API_BASE}/api/admin/topics/${topic.id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json", ...authHeader() },
         body: JSON.stringify(buildPayload()),
       });
-      const res = await fetch(
-        `${apiBase}/api/admin/topics/${topic.id}/approve`,
-        { method: "POST", headers: authHeader() },
+      const res = await adminFetch(
+        `${API_BASE}/api/admin/topics/${topic.id}/approve`,
+        { method: "POST" },
       );
       if (!res.ok) throw new Error(await res.text());
       setApproveState("approved");
@@ -251,9 +237,9 @@ export default function TopicEditor({
   async function handleTogglePublish() {
     const endpoint = isPublished ? "unpublish" : "publish";
     try {
-      const res = await fetch(
-        `${apiBase}/api/admin/topics/${topic.id}/${endpoint}`,
-        { method: "POST", headers: authHeader() },
+      const res = await adminFetch(
+        `${API_BASE}/api/admin/topics/${topic.id}/${endpoint}`,
+        { method: "POST" },
       );
       if (!res.ok) throw new Error(await res.text());
       setIsPublished(!isPublished);

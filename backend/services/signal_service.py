@@ -13,8 +13,9 @@ Velocity/acceleration are measured in two ways (with automatic fallback):
 
 Also provides topic cleanup utilities.
 """
+
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -66,13 +67,13 @@ def _article_count_in_window(topic_id: int, start: datetime, end: datetime, db: 
         if matches:  # empty list means Pinecone not configured, not "zero articles"
             # Filter to the exact window [start, end)
             end_ts = int(end.timestamp())
-            count = sum(
-                1 for m in matches
-                if since_ts <= m.get("published_at", 0) < end_ts
-            )
+            count = sum(1 for m in matches if since_ts <= m.get("published_at", 0) < end_ts)
             logger.debug(
                 "Pinecone velocity for topic %d [%s→%s]: %d",
-                topic_id, start.date(), end.date(), count,
+                topic_id,
+                start.date(),
+                end.date(),
+                count,
             )
             return count
 
@@ -92,7 +93,7 @@ def run_signal_scorer(db: Session) -> int:
     """
     from ..services.ai_service import evaluate_signal  # avoid circular at import time
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     week_start = now - timedelta(days=7)
     prev_start = now - timedelta(days=14)
 
@@ -181,7 +182,7 @@ def cleanup_empty_topics(db: Session) -> int:
 
     Returns the number of topics deleted.
     """
-    from sqlalchemy import func as sa_func, outerjoin
+    from sqlalchemy import func as sa_func
 
     orphaned: list[Topic] = (
         db.query(Topic)

@@ -1,16 +1,15 @@
 """Unit tests for backend/services/ai_service.py."""
+
 import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from ..services import ai_service
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_message(text: str) -> MagicMock:
     """Return a minimal mock of an anthropic.types.Message."""
@@ -24,6 +23,7 @@ def _make_message(text: str) -> MagicMock:
 # ---------------------------------------------------------------------------
 # evaluate_article
 # ---------------------------------------------------------------------------
+
 
 class TestEvaluateArticle:
     def test_relevant_article_returns_dict(self):
@@ -60,14 +60,17 @@ class TestEvaluateArticle:
 
         assert result is None
 
-    def test_malformed_json_returns_none(self):
+    def test_malformed_json_uses_pipeline_defaults(self):
         mock_client = MagicMock()
         mock_client.messages.create.return_value = _make_message("not json at all")
 
         with patch.object(ai_service, "_get_client", return_value=mock_client):
             result = ai_service.evaluate_article("Some article text.")
 
-        assert result is None
+        assert result is not None
+        assert result["domain"] == "Other"
+        assert result["suggested_topic_name"] == "Other"
+        assert result["urgency_score"] == 5.0
 
     def test_correct_model_used(self):
         payload = {"relevant": False, "domain": "Other", "urgency_score": 1, "reason": "x"}
@@ -84,6 +87,7 @@ class TestEvaluateArticle:
 # ---------------------------------------------------------------------------
 # generate_topic_summary
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateTopicSummary:
     def _make_topic(self) -> SimpleNamespace:

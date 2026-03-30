@@ -1,5 +1,3 @@
-version: "3.9"
-
 # ============================================================
 # IMPORTANT: Always start this project with Docker Compose.
 #   docker compose up --build
@@ -38,6 +36,8 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-pulse_user}:${POSTGRES_PASSWORD:-pulse_password}@db:5432/${POSTGRES_DB:-pulse_db}
       ENVIRONMENT: development
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3100}
+      ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET:-dev-only-set-ADMIN_JWT_SECRET-in-production}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
       SENDGRID_FROM_EMAIL: ${SENDGRID_FROM_EMAIL:-radar@pulseone.com}
@@ -45,6 +45,10 @@ services:
       SENDGRID_NEWSLETTER_TEMPLATE_ID: ${SENDGRID_NEWSLETTER_TEMPLATE_ID:-}
       HUBSPOT_API_KEY: ${HUBSPOT_API_KEY:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-pulseadmin}
+      # Optional — signal intelligence / vectors (see backend/config.py)
+      PINECONE_API_KEY: ${PINECONE_API_KEY:-}
+      PINECONE_ENVIRONMENT: ${PINECONE_ENVIRONMENT:-}
+      PINECONE_INDEX_NAME: ${PINECONE_INDEX_NAME:-pulseone-articles}
     ports:
       - "8100:8000"
     volumes:
@@ -67,8 +71,8 @@ services:
     container_name: pulse_frontend
     restart: unless-stopped
     environment:
-      # Browser-accessible URL — must be localhost, not the service name
-      NEXT_PUBLIC_API_URL: http://localhost:8100
+      # Browser-facing API URL (host port maps backend 8000 → 8100)
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8100}
     ports:
       - "3100:3000"
     volumes:

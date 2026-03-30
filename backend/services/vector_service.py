@@ -16,13 +16,14 @@ To activate:
      metric="cosine", and serverless or pod spec of your choice.
   3. Restart the backend — embeddings will begin flowing automatically.
 """
+
 from __future__ import annotations
 
 import hashlib
 import logging
 import math
 import struct
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from ..config import settings
@@ -37,7 +38,7 @@ logger = logging.getLogger(__name__)
 # and recreate the Pinecone index with the matching dimension.
 EMBEDDING_DIM = 512
 
-_pinecone_index = None   # lazy singleton
+_pinecone_index = None  # lazy singleton
 
 
 def _is_configured() -> bool:
@@ -53,6 +54,7 @@ def _get_index():
         return None
     try:
         from pinecone import Pinecone  # noqa: PLC0415
+
         pc = Pinecone(api_key=settings.pinecone_api_key)
         _pinecone_index = pc.Index(settings.pinecone_index_name)
         logger.info("Pinecone index %r connected", settings.pinecone_index_name)
@@ -63,6 +65,7 @@ def _get_index():
 
 
 # ── Embedding ─────────────────────────────────────────────────────────────────
+
 
 def _placeholder_embed(text: str) -> list[float]:
     """
@@ -79,7 +82,7 @@ def _placeholder_embed(text: str) -> list[float]:
     text = text.lower()
     counts: dict[int, float] = {}
     for i in range(len(text) - 3):
-        shingle = text[i:i + 4]
+        shingle = text[i : i + 4]
         bucket = struct.unpack("<I", hashlib.md5(shingle.encode()).digest()[:4])[0] % EMBEDDING_DIM
         counts[bucket] = counts.get(bucket, 0.0) + 1.0
 
@@ -103,7 +106,8 @@ def embed_text(text: str) -> list[float]:
 
 # ── Pinecone upsert / query ───────────────────────────────────────────────────
 
-def upsert_article(article: "Article") -> bool:
+
+def upsert_article(article: Article) -> bool:
     """
     Generate an embedding for the article and upsert it into Pinecone.
 
@@ -131,7 +135,7 @@ def upsert_article(article: "Article") -> bool:
     published_ts = (
         int(article.published_at.timestamp())
         if article.published_at
-        else int(datetime.now(timezone.utc).timestamp())
+        else int(datetime.now(UTC).timestamp())
     )
 
     metadata = {
@@ -142,11 +146,15 @@ def upsert_article(article: "Article") -> bool:
     }
 
     try:
-        index.upsert(vectors=[{
-            "id": f"article-{article.id}",
-            "values": vector,
-            "metadata": metadata,
-        }])
+        index.upsert(
+            vectors=[
+                {
+                    "id": f"article-{article.id}",
+                    "values": vector,
+                    "metadata": metadata,
+                }
+            ]
+        )
         logger.debug("Upserted article id=%d to Pinecone", article.id)
         return True
     except Exception:

@@ -2,15 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-function authHeader(): Record<string, string> {
-  const token =
-    typeof window !== "undefined"
-      ? (localStorage.getItem("pulse_admin_token") ?? "")
-      : "";
-  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-}
+import { adminFetch, API_BASE } from "@/lib/api";
 
 type ContentType = "article" | "video" | "landing_page";
 
@@ -57,7 +49,7 @@ export default function ContentLibraryPage() {
   const [saveError, setSaveError] = useState("");
 
   async function fetchItems() {
-    const r = await fetch(`${API_BASE}/api/admin/content`, { headers: authHeader() });
+    const r = await adminFetch(`${API_BASE}/api/admin/content`);
     if (r.ok) setItems(await r.json());
     setLoading(false);
   }
@@ -105,9 +97,8 @@ export default function ContentLibraryPage() {
       : `${API_BASE}/api/admin/content`;
     const method = editingItem ? "PUT" : "POST";
 
-    const r = await fetch(url, {
+    const r = await adminFetch(url, {
       method,
-      headers: authHeader(),
       body: JSON.stringify(payload),
     });
 
@@ -122,9 +113,8 @@ export default function ContentLibraryPage() {
   }
 
   async function handleToggleActive(item: ContentItem) {
-    await fetch(`${API_BASE}/api/admin/content/${item.id}`, {
+    await adminFetch(`${API_BASE}/api/admin/content/${item.id}`, {
       method: "PUT",
-      headers: authHeader(),
       body: JSON.stringify({ is_active: !item.is_active }),
     });
     await fetchItems();
@@ -132,9 +122,8 @@ export default function ContentLibraryPage() {
 
   async function handleDelete(item: ContentItem) {
     if (!confirm(`Delete "${item.title}"?`)) return;
-    await fetch(`${API_BASE}/api/admin/content/${item.id}`, {
+    await adminFetch(`${API_BASE}/api/admin/content/${item.id}`, {
       method: "DELETE",
-      headers: authHeader(),
     });
     await fetchItems();
   }

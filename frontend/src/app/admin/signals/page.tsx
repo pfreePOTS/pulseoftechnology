@@ -2,15 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-function authHeader(): Record<string, string> {
-  const token =
-    typeof window !== "undefined"
-      ? (localStorage.getItem("pulse_admin_token") ?? "")
-      : "";
-  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-}
+import { adminFetch, API_BASE } from "@/lib/api";
 
 interface Signal {
   id: number;
@@ -43,9 +35,7 @@ export default function SignalsPage() {
 
   async function fetchSignals(status: string) {
     setLoading(true);
-    const r = await fetch(`${API_BASE}/api/admin/signals?status=${status}`, {
-      headers: authHeader(),
-    });
+    const r = await adminFetch(`${API_BASE}/api/admin/signals?status=${status}`);
     if (r.ok) setSignals(await r.json());
     setLoading(false);
   }
@@ -54,9 +44,8 @@ export default function SignalsPage() {
 
   async function handleApprove(id: number) {
     setActing(id);
-    await fetch(`${API_BASE}/api/admin/signals/${id}/approve`, {
+    await adminFetch(`${API_BASE}/api/admin/signals/${id}/approve`, {
       method: "POST",
-      headers: authHeader(),
     });
     setActing(null);
     await fetchSignals(tab);
@@ -64,9 +53,8 @@ export default function SignalsPage() {
 
   async function handleReject(id: number) {
     setActing(id);
-    await fetch(`${API_BASE}/api/admin/signals/${id}/reject`, {
+    await adminFetch(`${API_BASE}/api/admin/signals/${id}/reject`, {
       method: "POST",
-      headers: authHeader(),
     });
     setActing(null);
     await fetchSignals(tab);
@@ -74,9 +62,8 @@ export default function SignalsPage() {
 
   async function handleRunScorer() {
     setRunning(true);
-    await fetch(`${API_BASE}/api/admin/jobs/signals`, {
+    await adminFetch(`${API_BASE}/api/admin/jobs/signals`, {
       method: "POST",
-      headers: authHeader(),
     });
     // Give the background job a moment then reload
     setTimeout(async () => {

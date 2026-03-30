@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { adminFetch, API_BASE } from "@/lib/api";
 
 interface Source {
   id: number;
@@ -11,14 +11,6 @@ interface Source {
   type: string;
   is_active: boolean;
   created_at: string;
-}
-
-function authHeader(): Record<string, string> {
-  const token =
-    typeof window !== "undefined"
-      ? (localStorage.getItem("pulse_admin_token") ?? "")
-      : "";
-  return { Authorization: `Bearer ${token}` };
 }
 
 export default function SourcesPage() {
@@ -31,21 +23,18 @@ export default function SourcesPage() {
   const [formError, setFormError] = useState("");
 
   async function loadSources() {
-    const res = await fetch(`${API_BASE}/api/admin/sources`, {
-      headers: authHeader(),
-    });
+    const res = await adminFetch(`${API_BASE}/api/admin/sources`);
     if (res.ok) setSources(await res.json());
     setLoading(false);
   }
 
   useEffect(() => {
     loadSources();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   async function toggleActive(source: Source) {
-    await fetch(`${API_BASE}/api/admin/sources/${source.id}`, {
+    await adminFetch(`${API_BASE}/api/admin/sources/${source.id}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json", ...authHeader() },
       body: JSON.stringify({ is_active: !source.is_active }),
     });
     setSources((prev) =>
@@ -57,9 +46,8 @@ export default function SourcesPage() {
 
   async function deleteSource(id: number) {
     if (!confirm("Delete this source? This cannot be undone.")) return;
-    await fetch(`${API_BASE}/api/admin/sources/${id}`, {
+    await adminFetch(`${API_BASE}/api/admin/sources/${id}`, {
       method: "DELETE",
-      headers: authHeader(),
     });
     setSources((prev) => prev.filter((s) => s.id !== id));
   }
@@ -68,9 +56,8 @@ export default function SourcesPage() {
     e.preventDefault();
     setAdding(true);
     setFormError("");
-    const res = await fetch(`${API_BASE}/api/admin/sources`, {
+    const res = await adminFetch(`${API_BASE}/api/admin/sources`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader() },
       body: JSON.stringify({ name: newName, url: newUrl, type: "rss" }),
     });
     if (!res.ok) {

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -20,10 +20,12 @@ class SignalRecommendation(Base):
     # pending | approved | rejected
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
 
     topic: Mapped["Topic"] = relationship("Topic")
 
     def __repr__(self) -> str:
-        return f"<SignalRecommendation id={self.id} topic_id={self.topic_id} status={self.status!r}>"
+        return (
+            f"<SignalRecommendation id={self.id} topic_id={self.topic_id} status={self.status!r}>"
+        )

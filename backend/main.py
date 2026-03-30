@@ -4,11 +4,16 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .config import settings
 from .routers.admin import router as admin_router
 from .routers.public import router as public_router
 from .scheduler import start_scheduler, stop_scheduler
 
 logging.basicConfig(level=logging.INFO)
+
+
+def _cors_origins() -> list[str]:
+    return [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 
 
 @asynccontextmanager
@@ -26,7 +31,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3100"],
+    allow_origins=_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

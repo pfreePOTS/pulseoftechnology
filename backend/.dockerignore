@@ -1,0 +1,13 @@
+# Keep images lean; dev bind-mount still provides full source at runtime
+__pycache__
+*.py[cod]
+*$py.class
+.venv
+venv
+env
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.git
+.gitignore
+.env

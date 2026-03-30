@@ -5,9 +5,9 @@ Public surface:
   send_daily_newsletter(subscriber, topics) -> bool
   run_daily_newsletter(db)               -> None   (called by scheduler)
 """
+
 import logging
-from datetime import datetime, timedelta, timezone
-from textwrap import dedent
+from datetime import UTC, datetime, timedelta
 
 import sendgrid
 from sendgrid.helpers.mail import (
@@ -270,6 +270,7 @@ def _build_html(
     role_obj = getattr(subscriber, "role", None)
     if role_obj is None and db is not None and subscriber.role_id is not None:
         from ..models.role import Role
+
         role_obj = db.query(Role).filter(Role.id == subscriber.role_id).first()
     if role_obj and getattr(role_obj, "tags", None):
         role_tags = {t.lower() for t in role_obj.tags}
@@ -293,19 +294,22 @@ def _build_html(
 
             if role_tags:
                 # Keep only articles whose tags intersect with the role's tags
-                matched = [
-                    a for a in candidates
-                    if {t.lower() for t in (a.tags or [])} & role_tags
-                ]
+                matched = [a for a in candidates if {t.lower() for t in (a.tags or [])} & role_tags]
                 # If no matches, skip this topic entirely for this role
                 if not matched:
                     continue
                 # Sort by published_at descending, take top 3
-                matched.sort(key=lambda a: a.published_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+                matched.sort(
+                    key=lambda a: a.published_at or datetime.min.replace(tzinfo=UTC),
+                    reverse=True,
+                )
                 selected = matched[:3]
             else:
                 # No role filter — show top 3 by published_at
-                candidates.sort(key=lambda a: a.published_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+                candidates.sort(
+                    key=lambda a: a.published_at or datetime.min.replace(tzinfo=UTC),
+                    reverse=True,
+                )
                 selected = candidates[:3]
 
             articles_html = "\n".join(
@@ -336,8 +340,9 @@ def _build_html(
             summary_html = (
                 f'<p style="margin:0;font-size:13px;color:#374151;'
                 f'font-family:Arial,Helvetica,sans-serif;line-height:1.6;">'
-                f'{item.summary}</p>'
-                if item.summary else ""
+                f"{item.summary}</p>"
+                if item.summary
+                else ""
             )
             items_html.append(
                 _PROMO_ITEM_BLOCK.format(
@@ -349,12 +354,10 @@ def _build_html(
             )
         promo_html = _PROMO_SECTION.format(promo_items="\n".join(items_html))
 
-    industry_line = (
-        f" for the {subscriber.industry} sector" if subscriber.industry else ""
-    )
+    industry_line = f" for the {subscriber.industry} sector" if subscriber.industry else ""
     return _EMAIL_TEMPLATE.format(
         first_name=subscriber.first_name,
-        date=datetime.now(timezone.utc).strftime("%B %-d, %Y"),
+        date=datetime.now(UTC).strftime("%B %-d, %Y"),
         industry_line=industry_line,
         topics_html="\n".join(topic_blocks),
         promo_html=promo_html,
@@ -366,6 +369,7 @@ def _build_html(
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def send_daily_newsletter(
     subscriber: Subscriber,
@@ -389,7 +393,7 @@ def send_daily_newsletter(
     )
     subject = (
         f"PulseOne Radar: {len(topics)} signal{'s' if len(topics) != 1 else ''} "
-        f"this week — {datetime.now(timezone.utc).strftime('%b %-d')}"
+        f"this week — {datetime.now(UTC).strftime('%b %-d')}"
     )
 
     if settings.sendgrid_newsletter_template_id:
@@ -430,9 +434,7 @@ def send_daily_newsletter(
         response = sg.send(message)
         accepted = response.status_code == 202
         if accepted:
-            logger.info(
-                "Newsletter sent to %s (%d topics)", subscriber.email, len(topics)
-            )
+            logger.info("Newsletter sent to %s (%d topics)", subscriber.email, len(topics))
         else:
             logger.warning(
                 "Unexpected SendGrid status %d for %s",
@@ -469,8 +471,7 @@ def assemble_promoted_content(
 
     if role_tags:
         matched = [
-            item for item in all_active
-            if {t.lower() for t in (item.tags or [])} & role_tags
+            item for item in all_active if {t.lower() for t in (item.tags or [])} & role_tags
         ]
         return matched[:3]
 
@@ -536,11 +537,7 @@ def generate_newsletter_preview(
     topics = assemble_newsletter_topics(dummy, all_approved)[:5]
 
     if not topics:
-        no_match = (
-            f" matching your domain interests ({', '.join(domains)})"
-            if domains
-            else ""
-        )
+        no_match = f" matching your domain interests ({', '.join(domains)})" if domains else ""
         return (
             "<!DOCTYPE html><html><body style='background:#f3f4f6;"
             "color:#374151;font-family:Arial,Helvetica,sans-serif;padding:40px;'>"
@@ -563,17 +560,13 @@ def run_daily_newsletter(db: Session) -> None:
     """
     from sqlalchemy import exists as sa_exists
 
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    cutoff = datetime.now(UTC) - timedelta(hours=24)
 
     # Approved topics with at least one recently-ingested article
     approved_topics: list[Topic] = (
         db.query(Topic)
         .filter(Topic.status == TopicStatus.approved)
-        .filter(
-            sa_exists().where(
-                (Article.topic_id == Topic.id) & (Article.ingested_at >= cutoff)
-            )
-        )
+        .filter(sa_exists().where((Article.topic_id == Topic.id) & (Article.ingested_at >= cutoff)))
         .all()
     )
 

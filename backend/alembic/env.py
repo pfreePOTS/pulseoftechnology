@@ -2,8 +2,9 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
+
+from alembic import context
 
 # ---------------------------------------------------------------------------
 # Make the backend package importable regardless of where alembic is invoked
@@ -20,9 +21,9 @@ if "/app" not in sys.path:
     sys.path.insert(0, "/app")
 
 # Import settings for the DB URL and Base for autogenerate
+import backend.models  # noqa: E402, F401 — registers all models with Base.metadata
 from backend.config import settings  # noqa: E402
 from backend.database import Base  # noqa: E402
-import backend.models  # noqa: E402, F401 — registers all models with Base.metadata
 
 # ---------------------------------------------------------------------------
 # Alembic config object

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { adminFetch, API_BASE } from "@/lib/api";
 
 type Tab = "pending" | "approved";
 
@@ -15,14 +15,6 @@ interface Topic {
   urgency_score: number;
   status: string;
   article_count: number;
-}
-
-function authHeader(): Record<string, string> {
-  const token =
-    typeof window !== "undefined"
-      ? (localStorage.getItem("pulse_admin_token") ?? "")
-      : "";
-  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
 function UrgencyBadge({ score }: { score: number }) {
@@ -70,10 +62,9 @@ export default function AdminTopicsPage() {
   async function fetchTopics(tab: Tab) {
     setLoading(true);
     setSelected(new Set());
-    const token = localStorage.getItem("pulse_admin_token") ?? "";
-    const data = await fetch(`${API_BASE}/api/admin/topics?status=${tab}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    }).then((r) => (r.ok ? r.json() : []));
+    const data = await adminFetch(`${API_BASE}/api/admin/topics?status=${tab}`).then((r) =>
+      r.ok ? r.json() : [],
+    );
     setTopics(data);
     setLoading(false);
   }
@@ -83,7 +74,8 @@ export default function AdminTopicsPage() {
   function toggleSelect(id: number) {
     setSelected((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }
@@ -101,9 +93,8 @@ export default function AdminTopicsPage() {
     setMerging(true);
     setMergeError("");
     const sources = [...selected].filter((id) => id !== mergeTargetId);
-    const r = await fetch(`${API_BASE}/api/admin/topics/merge`, {
+    const r = await adminFetch(`${API_BASE}/api/admin/topics/merge`, {
       method: "POST",
-      headers: authHeader(),
       body: JSON.stringify({ source_topic_ids: sources, target_topic_id: mergeTargetId }),
     });
     if (r.ok) {

@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import TopicEditor from "./TopicEditor";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { adminFetch, API_BASE } from "@/lib/api";
+import TopicEditor from "./TopicEditor";
 
 interface Article {
   id: number;
@@ -32,9 +32,7 @@ export default function TopicDetailPage() {
   const [topic, setTopic] = useState<TopicDetail | null | "loading">("loading");
 
   useEffect(() => {
-    const token = localStorage.getItem("pulse_admin_token") ?? "";
-    fetch(`${API_BASE}/api/admin/topics/${id}`, {
-      headers: { Authorization: `Bearer ${token}` },
+    adminFetch(`${API_BASE}/api/admin/topics/${id}`, {
       cache: "no-store",
     } as RequestInit)
       .then((r) => (r.status === 404 ? null : r.ok ? r.json() : Promise.reject()))
@@ -61,7 +59,7 @@ export default function TopicDetailPage() {
   return (
     <div className="px-4 py-10 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-5xl">
-        <TopicEditor topic={topic} apiBase={API_BASE} />
+        <TopicEditor topic={topic} />
       </div>
     </div>
   );

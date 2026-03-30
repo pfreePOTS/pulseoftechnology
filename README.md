@@ -6,7 +6,7 @@ AI-powered technology news aggregation and business intelligence platform.
 
 | Layer    | Technology               |
 |----------|--------------------------|
-| Frontend | Next.js 15, TypeScript, Tailwind CSS |
+| Frontend | Next.js 16, TypeScript, Tailwind CSS |
 | Backend  | Python 3.12, FastAPI, SQLAlchemy 2   |
 | Database | PostgreSQL 15                        |
 | Infra    | Docker Compose                       |
@@ -103,26 +103,66 @@ docker compose exec -w /app/backend backend alembic revision --autogenerate -m "
 
 ---
 
+## Testing
+
+| Layer | Command | Notes |
+|-------|---------|--------|
+| **Backend lint** | `cd backend && ruff check . && ruff format --check .` | Requires `requirements-dev.txt` (see below) |
+| **Backend unit tests** | `cd backend && pytest` | Uses mocks; no Postgres needed for most tests |
+| **Frontend lint** | `cd frontend && npm run lint` | ESLint (Next.js config) |
+| **Frontend unit tests** | `cd frontend && npm run test` | Vitest + Testing Library |
+| **End-to-end** | `cd frontend && npm run test:e2e` | Playwright — **requires the stack running** |
+
+One-shot local checks (after `make install-backend-dev` once — see `Makefile`):
+
+```bash
+make lint          # Ruff + ESLint
+make test          # pytest + Vitest (no E2E)
+```
+
+**Backend dev dependencies:** `pip install -r requirements.txt -r requirements-dev.txt` (Ruff, pytest-cov). The runtime image only installs `requirements.txt`.
+
+**E2E (Playwright):** start the app, apply migrations, install browsers once, then run tests:
+
+```bash
+docker compose up -d --build
+docker compose exec -w /app/backend backend alembic upgrade head
+cd frontend && npm run test:e2e:install && npm run test:e2e
+```
+
+Environment variables for Playwright: `PLAYWRIGHT_BASE_URL` (default `http://localhost:3100`), `PLAYWRIGHT_API_URL` (default `http://localhost:8100` for API checks in `e2e/smoke.spec.ts`).
+
+**CI:** `.github/workflows/ci.yml` runs backend Ruff, pytest with coverage, frontend ESLint + Vitest, then Docker Compose + Playwright E2E.
+
+---
+
 ## Project Structure
 
 ```
 pulseoftechnology/
 ├── docker-compose.yml      ← Single source of truth for all services
+├── Makefile                ← lint / test shortcuts (optional)
+├── .github/workflows/ci.yml
 ├── .env.example            ← Copy to .env before first run
 ├── .gitignore
 ├── backend/
 │   ├── Dockerfile
 │   ├── requirements.txt
+│   ├── requirements-dev.txt ← Ruff, pytest-cov (local/CI)
+│   ├── pyproject.toml      ← Ruff + pytest settings
 │   ├── main.py             ← FastAPI entrypoint
 │   ├── config.py
 │   ├── database.py
 │   ├── scheduler.py        ← APScheduler RSS ingestion jobs
 │   ├── models/             ← SQLAlchemy models
-│   └── services/           ← Business logic (ingestion, etc.)
+│   ├── services/           ← Business logic (ingestion, etc.)
+│   └── tests/              ← pytest
 └── frontend/
     ├── Dockerfile
+    ├── e2e/                ← Playwright specs
     ├── src/app/            ← Next.js App Router pages
-    └── ...
+    ├── vitest.config.ts
+    └── playwright.config.ts
 ```
 
 ---
@@ -137,8 +177,21 @@ pulseoftechnology/
 | `DATABASE_URL`         | auto-constructed   | Full connection string (set by Compose)  |
 | `ANTHROPIC_API_KEY`    | —                  | **Required** for AI ingestion pipeline   |
 | `ADMIN_PASSWORD`       | `pulseadmin`       | Admin dashboard login password           |
+| `ADMIN_JWT_SECRET`     | (see `.env.example`) | HS256 signing key for admin JWT sessions |
+| `CORS_ORIGINS`         | `http://localhost:3000,http://localhost:3100` | Allowed browser origins (comma-separated) |
 | `SENDGRID_API_KEY`     | —                  | Email delivery (optional for dev)        |
 | `HUBSPOT_API_KEY`      | —                  | CRM sync (optional)                      |
-| `NEXT_PUBLIC_API_URL`  | `http://localhost:8100` | Browser-facing API URL             |
+| `NEXT_PUBLIC_API_URL`  | `http://localhost:8100` | Browser-facing API URL (Compose `frontend` service) |
+| `PINECONE_*`           | —                  | Optional vector DB for signals (`config.py` names) |
+
+**Dependency lockfiles:** Python packages are installed from `backend/requirements.txt` in `backend/Dockerfile`; Node packages from `frontend/package.json` / `package-lock.json` in `frontend/Dockerfile` (`npm ci`). After changing dependencies, run `docker compose up --build` (or `--build` the affected service).
 
 > Production deployments should override all defaults via real secrets management.
+
+### Scheduler and scaling
+
+Background jobs (RSS ingestion, signal scorer, newsletter) run **inside the FastAPI process** via APScheduler. Running **multiple API replicas** would duplicate scheduled work unless you move jobs to a dedicated worker or add distributed locking.
+
+### Admin authentication
+
+Successful login returns a **short-lived JWT** and sets an **httpOnly cookie** for the browser admin UI. API clients and scripts can use `Authorization: Bearer <access_token>` from the login JSON response. The raw admin password is never used as a long-lived credential.

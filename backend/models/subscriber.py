@@ -1,6 +1,6 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -15,9 +15,11 @@ class Subscriber(Base):
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
     industry: Mapped[str | None] = mapped_column(String(100), nullable=True)
     domains: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
-    role_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("roles.id"), nullable=True, index=True)
+    role_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("roles.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 

@@ -1,0 +1,13 @@
+---
+description: FastAPI backend patterns
+globs: backend/**/*.py
+alwaysApply: false
+---
+
+# Backend
+
+- Routers live under `backend/routers/`; shared auth in `backend/dependencies.py` (`require_admin` validates JWT from Bearer or cookie `pulse_admin`).
+- Settings: `backend/config.py` (pydantic-settings). New env vars belong in `config.py`, `.env.example`, and `docker-compose.yml` when relevant.
+- DB: SQLAlchemy models in `backend/models/`; migrations via Alembic inside the backend container (`alembic upgrade head`).
+- After changing `requirements.txt`, rebuild the backend image. Add tests under `backend/tests/` for new auth or service logic.
+- Lint: `ruff check` + `ruff format` (see `backend/pyproject.toml` and `requirements-dev.txt`). CI runs these on every push.

@@ -36,6 +36,7 @@ def _newsletter_job() -> None:
 def _signal_job() -> None:
     """Scheduled job: cleanup empty topics then run the signal scorer."""
     from .services.signal_service import cleanup_empty_topics, run_signal_scorer
+
     db = SessionLocal()
     try:
         cleanup_empty_topics(db)
@@ -57,7 +58,7 @@ def start_scheduler() -> None:
     scheduler.add_job(
         _signal_job,
         trigger="cron",
-        hour=6,        # 06:00 UTC daily — runs before newsletter
+        hour=6,  # 06:00 UTC daily — runs before newsletter
         minute=0,
         id="signal_scorer",
         replace_existing=True,
@@ -65,7 +66,7 @@ def start_scheduler() -> None:
     scheduler.add_job(
         _newsletter_job,
         trigger="cron",
-        hour=7,        # 07:00 UTC daily
+        hour=7,  # 07:00 UTC daily
         minute=0,
         id="daily_newsletter",
         replace_existing=True,

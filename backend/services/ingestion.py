@@ -1,10 +1,10 @@
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import feedparser
 from bs4 import BeautifulSoup
-from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from ..models.article import Article, ArticleStatus
 from ..models.source import Source
@@ -25,8 +25,9 @@ def _parse_published(entry: feedparser.FeedParserDict) -> datetime | None:
     """Parse published_parsed struct_time from a feed entry into a UTC datetime."""
     if hasattr(entry, "published_parsed") and entry.published_parsed:
         import time
+
         ts = time.mktime(entry.published_parsed)
-        return datetime.fromtimestamp(ts, tz=timezone.utc)
+        return datetime.fromtimestamp(ts, tz=UTC)
     return None
 
 
@@ -57,10 +58,7 @@ def fetch_rss_feed(source: Source, db: Session) -> int:
         if exists:
             continue
 
-        content_raw = (
-            entry.get("content", [{}])[0].get("value")
-            or entry.get("summary")
-        )
+        content_raw = entry.get("content", [{}])[0].get("value") or entry.get("summary")
 
         article = Article(
             source_id=source.id,

@@ -7,6 +7,7 @@ Article evaluation is a 5-node graph:
 Each node is a focused, independently-testable function.  If a non-critical node
 fails the pipeline continues with a safe default so articles are never lost.
 """
+
 import json
 import logging
 from typing import Any
@@ -128,11 +129,12 @@ Respond with valid JSON only — no markdown, no explanation. Schema:
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 
+
 def _strip_fences(text: str) -> str:
     """Remove markdown code fences that Claude sometimes wraps JSON in."""
     text = text.strip()
     if text.startswith("```"):
-        text = text.split("\n", 1)[-1]          # drop the opening ```json line
+        text = text.split("\n", 1)[-1]  # drop the opening ```json line
         text = text.rsplit("```", 1)[0].strip()  # drop the closing ```
     return text
 
@@ -165,6 +167,7 @@ def _parse(raw: str, node_name: str) -> dict | None:
 
 
 # ── Pipeline nodes ────────────────────────────────────────────────────────────
+
 
 def _node_gate(content: str) -> bool:
     """
@@ -272,6 +275,7 @@ def _node_summarize(content: str) -> dict:
 
 # ── Public pipeline entry-point ───────────────────────────────────────────────
 
+
 def evaluate_article(
     article_content: str,
     existing_topics: list[str] | None = None,
@@ -308,7 +312,10 @@ def evaluate_article(
 
     # Node 5 — Summarize
     summary = _node_summarize(article_content)
-    logger.debug("[pipeline] summarize → what_is_it=%r", summary["what_is_it"][:60] if summary["what_is_it"] else "")
+    logger.debug(
+        "[pipeline] summarize → what_is_it=%r",
+        summary["what_is_it"][:60] if summary["what_is_it"] else "",
+    )
 
     return {
         "relevant": True,
@@ -329,22 +336,22 @@ def process_raw_articles(db: Session) -> int:
 
     Returns the number of articles successfully processed.
     """
-    raw_articles = (
-        db.query(Article).filter(Article.status == ArticleStatus.raw).all()
-    )
+    raw_articles = db.query(Article).filter(Article.status == ArticleStatus.raw).all()
     logger.info("Processing %d raw articles through agentic pipeline", len(raw_articles))
 
     # Build a prioritised topic list: approved first, then pending sorted by
     # article count desc.  The clustering node sees the biggest clusters first
     # so it preferentially assigns to them.
-    from ..models.topic import TopicStatus as _TS
     from sqlalchemy import func as _func
+
+    from ..models.topic import TopicStatus as _TS
 
     approved_names: list[str] = [
         row[0] for row in db.query(Topic.name).filter(Topic.status == _TS.approved).all()
     ]
     pending_names: list[str] = [
-        row[0] for row in (
+        row[0]
+        for row in (
             db.query(Topic.name)
             .outerjoin(Topic.articles)
             .filter(Topic.status == _TS.pending)
@@ -385,11 +392,7 @@ def process_raw_articles(db: Session) -> int:
         # Try exact match first, then case-insensitive substring as fallback.
         topic = db.query(Topic).filter(Topic.name == topic_name).first()
         if topic is None:
-            topic = (
-                db.query(Topic)
-                .filter(Topic.name.ilike(f"%{topic_name}%"))
-                .first()
-            )
+            topic = db.query(Topic).filter(Topic.name.ilike(f"%{topic_name}%")).first()
         if topic is None:
             topic = Topic(name=topic_name, domain=domain, urgency_score=urgency)
             db.add(topic)
@@ -409,14 +412,20 @@ def process_raw_articles(db: Session) -> int:
         processed_count += 1
         logger.info(
             "Article id=%d → topic=%r domain=%r urgency=%.1f",
-            article.id, topic_name, domain, urgency,
+            article.id,
+            topic_name,
+            domain,
+            urgency,
         )
 
-    logger.info("Agentic pipeline complete: %d/%d articles processed", processed_count, len(raw_articles))
+    logger.info(
+        "Agentic pipeline complete: %d/%d articles processed", processed_count, len(raw_articles)
+    )
     return processed_count
 
 
 # ── Topic-level helpers (unchanged) ──────────────────────────────────────────
+
 
 def suggest_industry_positions(topic_id: int, db: Session) -> dict[str, Any]:
     """
@@ -427,16 +436,10 @@ def suggest_industry_positions(topic_id: int, db: Session) -> dict[str, Any]:
     if topic is None:
         raise ValueError(f"Topic {topic_id} not found")
 
-    articles = (
-        db.query(Article)
-        .filter(Article.topic_id == topic_id)
-        .limit(8)
-        .all()
-    )
+    articles = db.query(Article).filter(Article.topic_id == topic_id).limit(8).all()
 
     article_blurbs = "\n\n".join(
-        f"Article {i + 1}: {a.title}\n{a.content or '(no content)'}"
-        for i, a in enumerate(articles)
+        f"Article {i + 1}: {a.title}\n{a.content or '(no content)'}" for i, a in enumerate(articles)
     )
     user_message = (
         f"Topic: {topic.name}\n"
@@ -464,10 +467,7 @@ def generate_topic_summary(topic: Topic, articles: list[Article]) -> str:
         f"Article {i + 1}: {a.title}\n{a.content or '(no content)'}"
         for i, a in enumerate(articles[:10])
     )
-    user_message = (
-        f"Topic: {topic.name}\nDomain: {topic.domain}\n\n"
-        f"Articles:\n{article_blurbs}"
-    )
+    user_message = f"Topic: {topic.name}\nDomain: {topic.domain}\n\nArticles:\n{article_blurbs}"
 
     raw = _call(SONNET_MODEL, _SUMMARIZE_SYSTEM, user_message, max_tokens=1024)
     result = _parse(raw, "topic_summary")
@@ -487,8 +487,7 @@ def evaluate_signal(topic: "Topic", recent_articles: list["Article"]) -> dict[st
     based on a recent surge in article velocity.
     """
     article_blurbs = "\n\n".join(
-        f"- {a.title}: {a.what_is_it or a.content or '(no summary)'}"
-        for a in recent_articles[:10]
+        f"- {a.title}: {a.what_is_it or a.content or '(no summary)'}" for a in recent_articles[:10]
     )
     user_message = (
         f"Topic: {topic.name}\n"

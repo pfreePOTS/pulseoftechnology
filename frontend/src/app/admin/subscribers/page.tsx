@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { adminFetch, API_BASE } from "@/lib/api";
 
 interface Subscriber {
   id: number;
@@ -15,21 +15,13 @@ interface Subscriber {
   created_at: string;
 }
 
-function authHeader(): Record<string, string> {
-  const token =
-    typeof window !== "undefined"
-      ? (localStorage.getItem("pulse_admin_token") ?? "")
-      : "";
-  return { Authorization: `Bearer ${token}` };
-}
-
 export default function SubscribersPage() {
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/admin/subscribers`, { headers: authHeader() })
+    adminFetch(`${API_BASE}/api/admin/subscribers`)
       .then((r) => (r.ok ? r.json() : []))
       .then(setSubscribers)
       .finally(() => setLoading(false));

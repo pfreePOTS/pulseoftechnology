@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { API_BASE } from "@/lib/api";
+
 const NAV = [
   { label: "Curate Topics", href: "/admin" },
   { label: "Manage Sources", href: "/admin/sources" },
@@ -19,40 +21,47 @@ const NAV = [
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [ready, setReady] = useState(false);
   const isLoginPage = pathname === "/admin/login";
+  /** null = not checked yet (protected routes only) */
+  const [authenticated, setAuthenticated] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (isLoginPage) {
-      setReady(true);
-      return;
-    }
-    const token = localStorage.getItem("pulse_admin_token");
-    if (!token) {
-      router.replace("/admin/login");
-    } else {
-      setReady(true);
-    }
+    if (isLoginPage) return;
+    let cancelled = false;
+    fetch(`${API_BASE}/api/admin/session`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((data: { authenticated?: boolean }) => {
+        if (cancelled) return;
+        if (!data.authenticated) router.replace("/admin/login");
+        else setAuthenticated(true);
+      })
+      .catch(() => {
+        if (!cancelled) router.replace("/admin/login");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [isLoginPage, router]);
 
-  // Login page renders without sidebar
+  async function handleLogout() {
+    await fetch(`${API_BASE}/api/admin/logout`, {
+      method: "POST",
+      credentials: "include",
+    });
+    setAuthenticated(null);
+    router.replace("/admin/login");
+  }
+
   if (isLoginPage) {
     return <>{children}</>;
   }
 
-  if (!ready) {
+  if (authenticated === null) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
         <span className="text-sm text-gray-600">Loading…</span>
       </div>
     );
-  }
-
-  function handleLogout() {
-    localStorage.removeItem("pulse_admin_token");
-    document.cookie =
-      "pulse_admin_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-    router.replace("/admin/login");
   }
 
   return (
@@ -94,7 +103,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* Logout */}
         <div className="border-t border-gray-800 px-3 py-4">
           <button
-            onClick={handleLogout}
+            type="button"
+            onClick={() => void handleLogout()}
             className="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-500 transition-colors hover:bg-gray-800 hover:text-red-400"
           >
             Logout

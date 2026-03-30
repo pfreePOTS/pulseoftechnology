@@ -8,6 +8,17 @@
 docker compose up --build backend
 ```
 
+## Testing and lint (local)
+
+```bash
+python3 -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt
+ruff check . && ruff format --check .
+pytest
+```
+
+`requirements-dev.txt` adds Ruff and pytest-cov (not installed in the production Docker image).
+
 ## Notes for maintainers
 
 - Entrypoint: `backend.main:app` (run as a Python package, not a script)

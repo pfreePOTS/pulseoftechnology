@@ -1,7 +1,8 @@
 import enum
 
-from sqlalchemy import Boolean, Enum, Float, Integer, JSON, String, Text
+from sqlalchemy import JSON, Boolean, Enum, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from ..database import Base
 
 
@@ -35,7 +36,9 @@ class Topic(Base):
     # Maps industry name → {urgency_score, adoption_state, rationale} for per-industry radar points
     industry_positions: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
     # True = visible on the public radar; False = approved but held in sandbox
-    is_published: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    is_published: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
 
     articles: Mapped[list["Article"]] = relationship("Article", back_populates="topic")
 

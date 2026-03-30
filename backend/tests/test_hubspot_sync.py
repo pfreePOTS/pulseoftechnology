@@ -1,15 +1,14 @@
 """Unit tests for backend/services/hubspot_sync.py."""
+
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from ..services import hubspot_sync
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _sub(**kw) -> SimpleNamespace:
     defaults = dict(
@@ -39,6 +38,7 @@ def _search_result(total: int, contact_id: str = "101") -> MagicMock:
 # ---------------------------------------------------------------------------
 # _build_properties
 # ---------------------------------------------------------------------------
+
 
 class TestBuildProperties:
     def test_standard_fields_mapped(self):
@@ -72,6 +72,7 @@ class TestBuildProperties:
 # ---------------------------------------------------------------------------
 # sync_subscriber_to_hubspot — new contact
 # ---------------------------------------------------------------------------
+
 
 class TestSyncNewContact:
     def test_creates_contact_when_not_found(self):
@@ -113,6 +114,7 @@ class TestSyncNewContact:
 # sync_subscriber_to_hubspot — existing contact
 # ---------------------------------------------------------------------------
 
+
 class TestSyncExistingContact:
     def test_updates_contact_when_found(self):
         mock_client = MagicMock()
@@ -138,6 +140,7 @@ class TestSyncExistingContact:
 # Skip when no API key
 # ---------------------------------------------------------------------------
 
+
 class TestNoApiKey:
     def test_returns_false_when_api_key_empty(self):
         with patch.object(hubspot_sync.settings, "hubspot_api_key", ""):
@@ -158,6 +161,7 @@ class TestNoApiKey:
 # ---------------------------------------------------------------------------
 # API exception handling
 # ---------------------------------------------------------------------------
+
 
 class TestApiExceptions:
     def test_returns_false_on_search_exception(self):

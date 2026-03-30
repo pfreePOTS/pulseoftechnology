@@ -1,8 +1,7 @@
 import RadarSection from "@/components/RadarSection";
 import SubscribeWizard from "@/components/SubscribeWizard";
 import { type RadarTopic, INDUSTRY_COLORS } from "@/components/RadarChart";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { API_BASE } from "@/lib/api";
 
 async function getPublishedTopics(): Promise<RadarTopic[]> {
   try {

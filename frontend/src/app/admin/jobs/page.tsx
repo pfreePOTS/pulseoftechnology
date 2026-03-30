@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { adminFetch, API_BASE } from "@/lib/api";
 
 type JobState = "idle" | "running" | "success" | "error";
 
@@ -10,14 +10,6 @@ interface Toast {
   id: number;
   type: "success" | "error";
   message: string;
-}
-
-function authHeader(): Record<string, string> {
-  const token =
-    typeof window !== "undefined"
-      ? (localStorage.getItem("pulse_admin_token") ?? "")
-      : "";
-  return { Authorization: `Bearer ${token}` };
 }
 
 let toastSeq = 0;
@@ -40,9 +32,8 @@ export default function JobsPage() {
   ) {
     setState("running");
     try {
-      const res = await fetch(`${API_BASE}${endpoint}`, {
+      const res = await adminFetch(`${API_BASE}${endpoint}`, {
         method: "POST",
-        headers: authHeader(),
       });
       if (!res.ok) throw new Error(await res.text());
       const { message } = await res.json();

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models.subscriber import Subscriber
-from ..models.topic import Topic, TopicStatus
+from ..models.topic import Topic
 from ..services.hubspot_sync import sync_subscriber_to_hubspot
 
 logger = logging.getLogger(__name__)
@@ -20,6 +20,7 @@ _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 # ---------------------------------------------------------------------------
 # Schemas
 # ---------------------------------------------------------------------------
+
 
 class TopicPublic(BaseModel):
     id: int
@@ -66,6 +67,7 @@ class SubscribeResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
 
 @router.get("/topics/published", response_model=list[TopicPublic])
 def get_published_topics(db: Session = Depends(get_db)):

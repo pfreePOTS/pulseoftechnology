@@ -1,13 +1,14 @@
 """Unit tests for backend/services/email_service.py."""
+
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from ..services import email_service
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _sub(**kw) -> SimpleNamespace:
     defaults = dict(
@@ -36,6 +37,7 @@ def _topic(domain: str = "AI", urgency: float = 8.0, name: str = "GPT-5 Launch")
 # send_daily_newsletter
 # ---------------------------------------------------------------------------
 
+
 class TestSendDailyNewsletter:
     def _mock_response(self, status_code: int = 202) -> MagicMock:
         resp = MagicMock()
@@ -47,9 +49,7 @@ class TestSendDailyNewsletter:
         mock_sg.send.return_value = self._mock_response(202)
 
         with patch.object(email_service, "_get_sg_client", return_value=mock_sg):
-            result = email_service.send_daily_newsletter(
-                _sub(), [_topic()]
-            )
+            result = email_service.send_daily_newsletter(_sub(), [_topic()])
 
         assert result is True
         mock_sg.send.assert_called_once()
@@ -99,9 +99,7 @@ class TestSendDailyNewsletter:
         assert "2 signals" in str(mail_dict)
 
     def test_uses_dynamic_template_when_configured(self, monkeypatch):
-        monkeypatch.setattr(
-            email_service.settings, "sendgrid_newsletter_template_id", "d-abc123"
-        )
+        monkeypatch.setattr(email_service.settings, "sendgrid_newsletter_template_id", "d-abc123")
         mock_sg = MagicMock()
         mock_sg.send.return_value = self._mock_response(202)
 
@@ -116,6 +114,7 @@ class TestSendDailyNewsletter:
 # ---------------------------------------------------------------------------
 # assemble_newsletter_topics
 # ---------------------------------------------------------------------------
+
 
 class TestAssembleNewsletterTopics:
     def test_filters_by_subscriber_domains(self):
@@ -159,6 +158,7 @@ class TestAssembleNewsletterTopics:
 # run_daily_newsletter integration
 # ---------------------------------------------------------------------------
 
+
 class TestRunDailyNewsletter:
     def test_skips_when_no_recent_topics(self):
         mock_db = MagicMock()
@@ -176,20 +176,29 @@ class TestRunDailyNewsletter:
 
         mock_db = MagicMock()
         # First query returns approved topics, second returns subscribers
-        mock_db.query.return_value.filter.return_value.filter.return_value.all.return_value = [topic]
+        mock_db.query.return_value.filter.return_value.filter.return_value.all.return_value = [
+            topic
+        ]
         mock_db.query.return_value.filter.return_value.all.return_value = [sub]
 
         with patch.object(email_service, "send_daily_newsletter", return_value=True) as mock_send:
             email_service.run_daily_newsletter(mock_db)
 
-        mock_send.assert_called_once_with(sub, [topic])
+        assert mock_send.call_count == 1
+        call = mock_send.call_args
+        assert call[0][0] == sub
+        assert call[0][1] == [topic]
+        assert call.kwargs["db"] is mock_db
+        assert "promoted_content" in call.kwargs
 
     def test_skips_subscriber_with_no_matching_domains(self):
         sub = _sub(domains=["Finance"])
         topic = _topic("AI", 9.0)
 
         mock_db = MagicMock()
-        mock_db.query.return_value.filter.return_value.filter.return_value.all.return_value = [topic]
+        mock_db.query.return_value.filter.return_value.filter.return_value.all.return_value = [
+            topic
+        ]
         mock_db.query.return_value.filter.return_value.all.return_value = [sub]
 
         with patch.object(email_service, "send_daily_newsletter") as mock_send:

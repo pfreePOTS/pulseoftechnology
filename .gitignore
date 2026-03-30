@@ -42,3 +42,7 @@ coverage/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# Playwright / E2E
+playwright-report/
+test-results/

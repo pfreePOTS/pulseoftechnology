@@ -56,6 +56,7 @@ interface TopicDetail {
   id: number;
   name: string;
   domain: string;
+  subdomain?: string;
   summary: string | null;
   urgency_score: number;
   adoption_state: string;
@@ -303,10 +304,18 @@ export default function TopicEditor({ topic }: { topic: TopicDetail }) {
           <h1 className="text-2xl font-bold tracking-tight text-white">
             {topic.name}
           </h1>
-          <div className="mt-1 flex items-center gap-2">
+          <div className="mt-1 flex flex-wrap items-center gap-2">
             <span className="rounded-full bg-slate-700 px-2 py-0.5 text-xs text-slate-300">
               {topic.domain}
             </span>
+            {topic.subdomain?.trim() ? (
+              <span
+                className="max-w-[280px] truncate rounded-full bg-gray-600/60 px-2 py-0.5 text-xs text-gray-300"
+                title={topic.subdomain}
+              >
+                {topic.subdomain}
+              </span>
+            ) : null}
             {isWatched && (
               <span className="rounded-full bg-green-500/20 px-2 py-0.5 text-xs font-medium text-green-400 ring-1 ring-green-500/30">
                 {topic.status === "selected" ? "Selected" : "Watched"}

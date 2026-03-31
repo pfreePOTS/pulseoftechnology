@@ -36,10 +36,10 @@ from ..models.source import Source, SourceType
 from ..models.subscriber import Subscriber
 from ..models.topic import AdoptionState, Topic, TopicStatus
 from ..rate_limits import limiter
-from ..services.ai_service import suggest_industry_positions
+from ..services.ai_service import suggest_industry_positions, suggest_topic_persona_by_role
 from ..services.email_service import generate_newsletter_preview, run_daily_newsletter
 from ..services.hubspot_sync import sync_subscriber_to_hubspot
-from ..services.ingestion import run_all_sources
+from ..services.ingestion import run_all_sources, run_article_processing_pipeline
 
 _bearer_optional = HTTPBearer(auto_error=False)
 
@@ -171,6 +171,7 @@ class ArticleOut(BaseModel):
     url: str
     content: str | None
     status: str
+    subdomain: str = ""
     what_is_it: str | None = None
     why_it_matters: str | None = None
     persona_impacts: dict[str, str] | None = None
@@ -191,6 +192,7 @@ class ArticleOut(BaseModel):
                 "url": data.url,
                 "content": data.content,
                 "status": data.status.value if hasattr(data.status, "value") else str(data.status),
+                "subdomain": getattr(data, "subdomain", None) or "",
                 "what_is_it": data.what_is_it,
                 "why_it_matters": data.why_it_matters,
                 "persona_impacts": data.persona_impacts,
@@ -205,17 +207,19 @@ class TopicOut(BaseModel):
     id: int
     name: str
     domain: str
+    subdomain: str = ""
     summary: str | None
     urgency_score: float
     status: str
     adoption_state: str
     industry_positions: dict | None = None
+    persona_by_role: dict[str, str] | None = None
     article_count: int = 0
     is_published: bool = False
     velocity_score: float | None = None
     acceleration_score: float | None = None
     signal_rationale: str | None = None
-    signal_suggested_state: str | None = None
+    signal_suggested_action: str | None = None
     signal_id: int | None = None
 
     model_config = {"from_attributes": True}
@@ -244,6 +248,8 @@ class TopicUpdate(BaseModel):
     urgency_score: float | None = None
     adoption_state: AdoptionState | None = None
     industry_positions: dict | None = None
+    persona_by_role: dict[str, str] | None = None
+    subdomain: str | None = None
 
 
 @router.get("/topics", response_model=list[TopicOut])
@@ -251,6 +257,7 @@ def list_topics(
     db: Session = Depends(get_db),
     _: None = Depends(require_admin),
     topic_status: TopicStatus | None = Query(default=None, alias="status"),
+    is_published: bool | None = Query(default=None),
 ):
     from sqlalchemy import func
     from sqlalchemy.orm import aliased
@@ -260,6 +267,8 @@ def list_topics(
     q = db.query(Topic)
     if topic_status is not None:
         q = q.filter(Topic.status == topic_status)
+    if is_published is not None:
+        q = q.filter(Topic.is_published == is_published)
     topics = q.order_by(Topic.urgency_score.desc()).all()
 
     topic_ids = [t.id for t in topics]
@@ -293,18 +302,20 @@ def list_topics(
                 id=t.id,
                 name=t.name,
                 domain=t.domain,
+                subdomain=getattr(t, "subdomain", None) or "",
                 summary=t.summary,
                 urgency_score=t.urgency_score,
                 status=t.status.value,
                 adoption_state=t.adoption_state.value if hasattr(t.adoption_state, "value") else str(t.adoption_state),
                 industry_positions=t.industry_positions,
+                persona_by_role=t.persona_by_role,
                 article_count=t.article_count,
                 is_published=t.is_published,
                 velocity_score=vel,
                 acceleration_score=accel,
-                signal_rationale=sig.rationale if sig and sig.status == "pending" else None,
-                signal_suggested_state=sig.suggested_state if sig and sig.status == "pending" else None,
-                signal_id=sig.id if sig and sig.status == "pending" else None,
+                signal_rationale=sig.rationale if sig else None,
+                signal_suggested_action=sig.suggested_action if sig else None,
+                signal_id=sig.id if sig else None,
             )
         )
     return result
@@ -357,6 +368,12 @@ def update_topic(
         topic.adoption_state = payload.adoption_state
     if payload.industry_positions is not None:
         topic.industry_positions = payload.industry_positions
+    if payload.subdomain is not None:
+        topic.subdomain = payload.subdomain.strip()
+
+    patch = payload.model_dump(exclude_unset=True)
+    if "persona_by_role" in patch:
+        topic.persona_by_role = patch["persona_by_role"]
 
     db.commit()
     db.refresh(topic)
@@ -377,6 +394,19 @@ def suggest_positions(
     return result
 
 
+@router.post("/topics/{topic_id}/suggest-persona-by-role")
+def suggest_persona_by_role(
+    topic_id: int,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """Ask Claude to synthesize topic-level persona lines per Role (Analysis Persona tab)."""
+    try:
+        return suggest_topic_persona_by_role(topic_id, db)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @router.post("/topics/{topic_id}/trend-analysis")
 def run_topic_trend_analysis(
     topic_id: int,
@@ -384,16 +414,20 @@ def run_topic_trend_analysis(
     _: None = Depends(require_admin),
 ):
     """
-    Run the Claude Haiku signal agent for this topic: fills pending SignalRecommendation
-    with AI suggested adoption state + rationale (velocity/acceleration are computed from article counts).
+    Run the Claude Haiku trend agent for this topic: fills pending SignalRecommendation
+    with watch | radar | remove + rationale (velocity/acceleration from article counts).
     """
     from ..services.signal_service import upsert_pending_trend_signal
 
     topic = db.query(Topic).filter(Topic.id == topic_id).first()
     if topic is None:
         raise HTTPException(status_code=404, detail="Topic not found")
-    if topic.status != TopicStatus.pending:
-        raise HTTPException(status_code=400, detail="Trend analysis is only for pending topics")
+    if topic.status not in (
+        TopicStatus.pending,
+        TopicStatus.watched,
+        TopicStatus.selected,
+    ):
+        raise HTTPException(status_code=400, detail="Trend analysis is not available for this topic status")
 
     row = upsert_pending_trend_signal(topic_id, db)
     if row is None:
@@ -403,7 +437,7 @@ def run_topic_trend_analysis(
         "signal_id": row.id,
         "velocity_score": row.velocity_score,
         "acceleration_score": row.acceleration_score,
-        "suggested_state": row.suggested_state,
+        "suggested_action": row.suggested_action,
         "rationale": row.rationale,
     }
 
@@ -489,16 +523,21 @@ def approve_topic(
         .order_by(SignalRecommendation.created_at.desc())
         .first()
     )
-    if latest_signal:
-        topic.adoption_state = latest_signal.suggested_state
-        latest_signal.status = "approved"
+    try:
+        if latest_signal:
+            # Adoption state is set in Analysis (per-industry), not from trend signals
+            latest_signal.status = "approved"
 
-    topic.status = TopicStatus.selected
-    db.query(Article).filter(Article.topic_id == topic_id).update(
-        {"status": "published"}, synchronize_session=False
-    )
-    db.commit()
-    db.refresh(topic)
+        topic.status = TopicStatus.selected
+        db.query(Article).filter(Article.topic_id == topic_id).update(
+            {"status": "published"}, synchronize_session=False
+        )
+        db.commit()
+        db.refresh(topic)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}") from e
+
     return topic
 
 
@@ -622,6 +661,7 @@ class SignalOut(BaseModel):
     topic_domain: str
     current_state: str
     suggested_state: str
+    suggested_action: str = "watch"
     rationale: str
     velocity_score: float
     acceleration_score: float
@@ -654,6 +694,7 @@ def list_signals(
                 topic_domain=topic.domain if topic else "",
                 current_state=topic.adoption_state if topic else "",
                 suggested_state=row.suggested_state,
+                suggested_action=row.suggested_action,
                 rationale=row.rationale,
                 velocity_score=row.velocity_score,
                 acceleration_score=row.acceleration_score,
@@ -673,11 +714,10 @@ def approve_signal(
     signal = db.query(SignalRecommendation).filter(SignalRecommendation.id == signal_id).first()
     if signal is None:
         raise HTTPException(status_code=404, detail="Signal not found")
-    topic = db.query(Topic).filter(Topic.id == signal.topic_id).first()
-    if topic:
-        topic.adoption_state = signal.suggested_state
     signal.status = "approved"
     db.commit()
+    topic = db.query(Topic).filter(Topic.id == signal.topic_id).first()
+    db.refresh(signal)
     return SignalOut(
         id=signal.id,
         topic_id=signal.topic_id,
@@ -685,6 +725,7 @@ def approve_signal(
         topic_domain=topic.domain if topic else "",
         current_state=topic.adoption_state if topic else "",
         suggested_state=signal.suggested_state,
+        suggested_action=signal.suggested_action,
         rationale=signal.rationale,
         velocity_score=signal.velocity_score,
         acceleration_score=signal.acceleration_score,
@@ -1071,6 +1112,14 @@ def _run_ingest() -> None:
         db.close()
 
 
+def _run_process_raw() -> None:
+    db = SessionLocal()
+    try:
+        run_article_processing_pipeline(db)
+    finally:
+        db.close()
+
+
 def _run_newsletter() -> None:
     db = SessionLocal()
     try:
@@ -1086,6 +1135,16 @@ def trigger_ingest(
 ):
     background_tasks.add_task(_run_ingest)
     return {"message": "RSS ingestion started in the background."}
+
+
+@router.post("/jobs/process")
+def trigger_process_raw(
+    background_tasks: BackgroundTasks,
+    _: None = Depends(require_admin),
+):
+    """Run AI classification + embeddings on existing raw articles (no RSS fetch)."""
+    background_tasks.add_task(_run_process_raw)
+    return {"message": "Raw article processing started in the background."}
 
 
 @router.post("/jobs/newsletter")
@@ -1125,15 +1184,19 @@ def _run_trend_analysis_all() -> None:
     log = logging.getLogger(__name__)
     db = SessionLocal()
     try:
-        pending = db.query(Topic).filter(Topic.status == TopicStatus.pending).all()
+        queue = (
+            db.query(Topic)
+            .filter(Topic.status.in_([TopicStatus.pending, TopicStatus.watched]))
+            .all()
+        )
         ok = 0
-        for t in pending:
+        for t in queue:
             try:
                 if upsert_pending_trend_signal(t.id, db):
                     ok += 1
             except Exception:
                 log.exception("trend-analysis failed for topic %d", t.id)
-        log.info("Bulk trend analysis: %d / %d topics processed", ok, len(pending))
+        log.info("Bulk trend analysis: %d / %d topics processed", ok, len(queue))
     finally:
         db.close()
 
@@ -1143,6 +1206,6 @@ def trigger_trend_analysis(
     background_tasks: BackgroundTasks,
     _: None = Depends(require_admin),
 ):
-    """Run the AI signal agent for every pending topic (background)."""
+    """Run the AI trend-pick agent for every pending and watching topic (background)."""
     background_tasks.add_task(_run_trend_analysis_all)
     return {"message": "AI trend analysis started for all pending topics."}

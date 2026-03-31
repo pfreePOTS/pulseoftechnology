@@ -16,6 +16,7 @@ let toastSeq = 0;
 
 export default function JobsPage() {
   const [ingestState, setIngestState] = useState<JobState>("idle");
+  const [processState, setProcessState] = useState<JobState>("idle");
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   function addToast(type: "success" | "error", message: string) {
@@ -50,11 +51,20 @@ export default function JobsPage() {
     {
       title: "Run RSS Ingestion Now",
       description:
-        "Fetches the latest articles from all active RSS sources and runs them through the AI pipeline for scoring and topic clustering.",
+        "Fetches the latest articles from all active RSS sources, then runs AI classification, topic clustering, and vector embedding (same as the hourly schedule).",
       endpoint: "/api/admin/jobs/ingest",
       state: ingestState,
       setState: setIngestState,
       icon: "⬇",
+    },
+    {
+      title: "Process Raw Articles Now",
+      description:
+        "Runs only the AI pipeline on articles still marked raw — no RSS fetch. Use if intake brought items in but processing failed or was skipped.",
+      endpoint: "/api/admin/jobs/process",
+      state: processState,
+      setState: setProcessState,
+      icon: "⚙",
     },
   ];
 
@@ -117,9 +127,18 @@ export default function JobsPage() {
             Scheduled Runs
           </h2>
           <ul className="space-y-1 text-sm text-gray-500">
-            <li>RSS Ingestion — every hour (automatic)</li>
-            <li>Daily Newsletter — 07:00 UTC daily (automatic)</li>
+            <li>
+              RSS fetch + AI processing — every hour (automatic, in the API
+              process via APScheduler)
+            </li>
+            <li>Signal scoring + topic cleanup — 06:00 UTC daily</li>
+            <li>Daily newsletter — 07:00 UTC</li>
           </ul>
+          <p className="mt-3 text-xs text-gray-600">
+            There is no separate Celery/Beat worker in Compose; jobs run inside
+            the FastAPI container. Scale-out replicas would duplicate schedules
+            unless jobs are moved to a dedicated worker.
+          </p>
         </div>
       </div>
 

@@ -1,8 +1,8 @@
 """
 Signal Intelligence service.
 
-Calculates article velocity/acceleration per approved topic and uses Claude
-to generate adoption-state upgrade recommendations when thresholds are met.
+Calculates article velocity/acceleration per topic and uses Claude to generate
+watch | radar | remove recommendations when thresholds are met.
 
 Velocity/acceleration are measured in two ways (with automatic fallback):
   1. Semantic (Pinecone) — queries the vector index for semantically similar
@@ -25,6 +25,20 @@ from ..models.signal import SignalRecommendation
 from ..models.topic import Topic, TopicStatus
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_trend_action(raw: str | None) -> str:
+    if not raw:
+        return "watch"
+    x = str(raw).strip().lower()
+    if x in ("watch", "watching", "hold"):
+        return "watch"
+    if x in ("radar", "on_radar", "include", "add", "approve", "yes"):
+        return "radar"
+    if x in ("remove", "drop", "deprioritize", "deprioritise", "no"):
+        return "remove"
+    return "watch"
+
 
 # Thresholds: fire an AI evaluation when a topic's 7-day article count
 # exceeds VELOCITY_THRESHOLD and the ratio vs the prior 7 days exceeds
@@ -49,12 +63,12 @@ def compute_topic_velocity_metrics(topic_id: int, db: Session) -> tuple[float, f
 
 def upsert_pending_trend_signal(topic_id: int, db: Session) -> SignalRecommendation | None:
     """
-    Run the signal AI agent (evaluate_signal) for this topic and create or update a pending
-    SignalRecommendation with computed velocity/acceleration and AI suggested_state + rationale.
+    Run the trend-pick AI agent (evaluate_trend_pick) for this topic and create or update a pending
+    SignalRecommendation with computed velocity/acceleration and watch | radar | remove + rationale.
 
     Unlike run_signal_scorer, this does not require velocity/acceleration thresholds.
     """
-    from ..services.ai_service import evaluate_signal  # avoid circular import
+    from ..services.ai_service import evaluate_trend_pick  # avoid circular import
 
     topic = db.query(Topic).filter(Topic.id == topic_id).first()
     if topic is None:
@@ -74,14 +88,12 @@ def upsert_pending_trend_signal(topic_id: int, db: Session) -> SignalRecommendat
     )
 
     try:
-        result = evaluate_signal(topic, recent_articles)
+        result = evaluate_trend_pick(topic, recent_articles)
     except Exception:
-        logger.exception("evaluate_signal failed for topic %d", topic_id)
+        logger.exception("evaluate_trend_pick failed for topic %d", topic_id)
         return None
 
-    suggested = result.get("suggested_state") or (
-        topic.adoption_state.value if hasattr(topic.adoption_state, "value") else str(topic.adoption_state)
-    )
+    action = _normalize_trend_action(result.get("suggested_action"))
     rationale = result.get("rationale") or ""
 
     existing = (
@@ -93,7 +105,8 @@ def upsert_pending_trend_signal(topic_id: int, db: Session) -> SignalRecommendat
         .first()
     )
     if existing:
-        existing.suggested_state = suggested
+        existing.suggested_state = ""
+        existing.suggested_action = action
         existing.rationale = rationale
         existing.velocity_score = velocity
         existing.acceleration_score = acceleration
@@ -103,7 +116,8 @@ def upsert_pending_trend_signal(topic_id: int, db: Session) -> SignalRecommendat
 
     signal = SignalRecommendation(
         topic_id=topic_id,
-        suggested_state=suggested,
+        suggested_state="",
+        suggested_action=action,
         rationale=rationale,
         velocity_score=velocity,
         acceleration_score=acceleration,
@@ -173,7 +187,7 @@ def run_signal_scorer(db: Session) -> int:
 
     Returns the number of new recommendations created.
     """
-    from ..services.ai_service import evaluate_signal  # avoid circular at import time
+    from ..services.ai_service import evaluate_trend_pick  # avoid circular at import time
 
     now = datetime.now(UTC)
     week_start = now - timedelta(days=7)
@@ -224,19 +238,19 @@ def run_signal_scorer(db: Session) -> int:
         )
 
         try:
-            result = evaluate_signal(topic, recent_articles)
+            result = evaluate_trend_pick(topic, recent_articles)
         except Exception:
-            logger.exception("Error evaluating signal for topic %d", topic.id)
+            logger.exception("Error evaluating trend pick for topic %d", topic.id)
             continue
 
-        if not result.get("recommend_change"):
-            logger.debug("Topic %r — AI found no state change warranted", topic.name)
-            continue
+        action = _normalize_trend_action(result.get("suggested_action"))
+        rationale = result.get("rationale") or ""
 
         signal = SignalRecommendation(
             topic_id=topic.id,
-            suggested_state=result["suggested_state"],
-            rationale=result["rationale"],
+            suggested_state="",
+            suggested_action=action,
+            rationale=rationale,
             velocity_score=float(velocity),
             acceleration_score=float(acceleration),
             status="pending",
@@ -245,9 +259,9 @@ def run_signal_scorer(db: Session) -> int:
         db.commit()
         created += 1
         logger.info(
-            "Signal created for topic %r → %r (velocity=%d)",
+            "Signal created for topic %r → %s (velocity=%d)",
             topic.name,
-            result["suggested_state"],
+            action,
             velocity,
         )
 

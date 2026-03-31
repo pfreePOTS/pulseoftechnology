@@ -83,6 +83,24 @@ def fetch_rss_feed(source: Source, db: Session) -> int:
     return new_count
 
 
+def run_article_processing_pipeline(db: Session) -> int:
+    """
+    Run AI classification on raw articles and upsert vectors. Does not fetch RSS.
+    Use this when raw items exist but were never processed, or after manual intake.
+    """
+    processed = 0
+    try:
+        processed = process_raw_articles(db)
+        logger.info("AI processing complete: %d articles assigned to topics", processed)
+    except Exception:
+        logger.exception("Error during AI article processing")
+    try:
+        _embed_processed_articles(db)
+    except Exception:
+        logger.exception("Error during vector embedding — continuing without Pinecone")
+    return processed
+
+
 def run_all_sources(db: Session) -> None:
     """Fetch all active RSS sources, ingest their feeds, then run AI processing."""
     sources = db.query(Source).filter(Source.is_active == True).all()  # noqa: E712
@@ -93,18 +111,7 @@ def run_all_sources(db: Session) -> None:
         except Exception:
             logger.exception("Error ingesting source %r", source.name)
 
-    # Process all newly-fetched raw articles with AI classification + topic clustering
-    try:
-        processed = process_raw_articles(db)
-        logger.info("AI processing complete: %d articles assigned to topics", processed)
-    except Exception:
-        logger.exception("Error during AI article processing")
-
-    # Embed newly-processed articles into Pinecone (no-op when not configured)
-    try:
-        _embed_processed_articles(db)
-    except Exception:
-        logger.exception("Error during vector embedding — continuing without Pinecone")
+    run_article_processing_pipeline(db)
 
 
 def _embed_processed_articles(db: Session) -> None:

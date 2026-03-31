@@ -1,11 +1,13 @@
 import logging
 import re
+from datetime import datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, field_validator
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
+from ..models.article import Article
 from ..models.role import Role
 from ..models.subscriber import Subscriber
 from ..models.topic import Topic
@@ -28,6 +30,7 @@ class TopicPublic(BaseModel):
     id: int
     name: str
     domain: str
+    subdomain: str = ""
     summary: str | None
     urgency_score: float
     adoption_state: str
@@ -74,6 +77,20 @@ class SubscribeResponse(BaseModel):
     message: str
 
 
+class ArticleTrackedPublic(BaseModel):
+    """Ingested story linked to a live radar topic — same article pool the newsletter uses."""
+
+    id: int
+    title: str
+    url: str
+    published_at: datetime | None
+    ingested_at: datetime
+    domain: str
+    source_name: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -94,6 +111,35 @@ def get_published_topics(db: Session = Depends(get_db)):
         .order_by(Topic.urgency_score.desc())
         .all()
     )
+
+
+@router.get("/articles/tracked", response_model=list[ArticleTrackedPublic])
+def list_tracked_articles_public(
+    db: Session = Depends(get_db),
+    limit: int = Query(default=12, ge=1, le=50),
+):
+    """Recent articles tied to published topics — underlying sources for radar + daily digest."""
+    rows = (
+        db.query(Article)
+        .join(Topic, Article.topic_id == Topic.id)
+        .filter(Topic.is_published == True)  # noqa: E712
+        .options(joinedload(Article.source), joinedload(Article.topic))
+        .order_by(Article.ingested_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        ArticleTrackedPublic(
+            id=a.id,
+            title=a.title,
+            url=a.url,
+            published_at=a.published_at,
+            ingested_at=a.ingested_at,
+            domain=a.topic.domain if a.topic else "Other",
+            source_name=a.source.name if a.source else None,
+        )
+        for a in rows
+    ]
 
 
 @router.post("/subscribe", response_model=SubscribeResponse, status_code=201)

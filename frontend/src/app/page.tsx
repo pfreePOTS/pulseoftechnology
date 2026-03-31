@@ -1,13 +1,16 @@
 import RadarSection from "@/components/RadarSection";
+import TrackedStoriesSection, {
+  type TrackedArticle,
+} from "@/components/TrackedStoriesSection";
 import SubscribeWizard from "@/components/SubscribeWizard";
 import { type RadarTopic, INDUSTRY_COLORS } from "@/components/RadarChart";
+import { API_BASE } from "@/lib/api";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 /** Server-side only: URL the Next.js server uses to call the API (browser still uses NEXT_PUBLIC_API_URL). In Docker, must be http://backend:8000 — localhost would point at this container, not the API. */
 const SSR_API_BASE =
   process.env.SERVER_API_URL ??
   process.env.NEXT_PUBLIC_API_URL ??
-  "http://127.0.0.1:8000";
+  API_BASE;
 
 async function getPublishedTopics(): Promise<RadarTopic[]> {
   try {
@@ -16,6 +19,19 @@ async function getPublishedTopics(): Promise<RadarTopic[]> {
     });
     if (!res.ok) return [];
     return res.json();
+  } catch {
+    return [];
+  }
+}
+
+async function getTrackedArticles(): Promise<TrackedArticle[]> {
+  try {
+    const res = await fetch(`${SSR_API_BASE}/api/articles/tracked?limit=12`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return [];
+    const data: unknown = await res.json();
+    return Array.isArray(data) ? data : [];
   } catch {
     return [];
   }
@@ -52,29 +68,30 @@ const ADOPTION_STATES = [
 ];
 
 export default async function Home() {
-  const topics = await getPublishedTopics();
+  const [topics, trackedArticles] = await Promise.all([
+    getPublishedTopics(),
+    getTrackedArticles(),
+  ]);
 
   return (
     <div className="min-h-screen flex flex-col bg-white text-gray-900">
-      {/* ── Dark Teal Header ─────────────────────────────────────────────────── */}
-      <header style={{ backgroundColor: "#425B76" }} className="px-6 py-4 shrink-0">
+      {/* ── Header (brand: white bar + logo) ─────────────────────────────── */}
+      <header className="shrink-0 border-b border-gray-200 bg-white px-6 py-4">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
           <div className="flex items-center gap-3">
-            <span
-              className="inline-block h-2.5 w-2.5 rounded-full"
-              style={{ backgroundColor: "#E91D24" }}
+            <img
+              src="/pulseone_logo_main.webp"
+              alt="PulseOne"
+              width={200}
+              height={40}
+              className="h-8 w-auto"
             />
-            <span className="text-lg font-bold tracking-wide text-white">
-              PulseOne
-            </span>
-            <span className="hidden text-sm text-white/60 sm:inline">
-              Industry Radar
-            </span>
+            <span className="hidden text-sm text-gray-500 sm:inline">Industry Radar</span>
           </div>
           <nav>
             <a
               href="/admin"
-              className="text-sm text-white/70 transition-colors hover:text-white"
+              className="text-sm text-gray-600 transition-colors hover:text-gray-900"
             >
               Curation Dashboard →
             </a>
@@ -82,8 +99,37 @@ export default async function Home() {
         </div>
       </header>
 
+      {/* ── Hero ───────────────────────────────────────────────────────────── */}
+      <section className="bg-white px-6 py-16 text-center">
+        <div className="mx-auto max-w-4xl">
+          <h2 className="text-4xl font-bold text-pulse-teal sm:text-5xl">
+            Technology Intelligence for C-Suite Leaders
+          </h2>
+          <p className="mx-auto mt-4 max-w-3xl text-lg text-gray-600">
+            Cut through the noise. Know exactly which emerging technologies matter
+            to your industry, what your posture should be, and when to act.
+          </p>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+            <a
+              href="#radar"
+              className="inline-flex rounded-lg bg-pulse-teal px-6 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+            >
+              Explore the Radar
+            </a>
+            <a
+              href="#subscribe"
+              className="inline-flex rounded-lg border-2 border-pulse-teal bg-white px-6 py-3 text-sm font-semibold text-pulse-teal transition-colors hover:bg-pulse-teal/5"
+            >
+              Get the Briefing
+            </a>
+          </div>
+        </div>
+      </section>
+
       {/* ── Control Bar + Radar (rendered by RadarSection) ─────────────────── */}
-      <RadarSection topics={topics} />
+      <div id="radar" className="scroll-mt-4">
+        <RadarSection topics={topics} />
+      </div>
 
       {/* ── Light Gray Legend Bar ───────────────────────────────────────────── */}
       <div
@@ -91,10 +137,7 @@ export default async function Home() {
         className="border-y border-gray-300 px-6 py-3 shrink-0"
       >
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2">
-          <span
-            className="text-xs font-bold uppercase tracking-wider"
-            style={{ color: "#425B76" }}
-          >
+          <span className="text-xs font-bold uppercase tracking-wider text-pulse-teal">
             Domains
           </span>
           {INDUSTRY_LEGEND.map(({ name, color }) => (
@@ -115,11 +158,9 @@ export default async function Home() {
       </div>
 
       {/* ── How to Read the Radar ───────────────────────────────────────────── */}
-      <section className="bg-white px-6 py-12">
+      <section className="bg-pulse-surface px-6 py-12">
         <div className="mx-auto max-w-7xl">
-          <h2 className="mb-6 text-lg font-bold" style={{ color: "#425B76" }}>
-            How to Read the Radar
-          </h2>
+          <h2 className="mb-6 text-lg font-bold text-pulse-teal">How to Read the Radar</h2>
           <p className="mb-6 text-sm text-gray-600">
             Each star represents a technology signal for an industry. Its position on a spoke
             indicates the recommended adoption posture. Distance from the centre combines{" "}
@@ -131,12 +172,9 @@ export default async function Home() {
             {ADOPTION_STATES.map(({ label, desc }, i) => (
               <div
                 key={label}
-                className="rounded-xl border border-gray-100 bg-gray-50 p-4"
+                className="rounded-xl border border-gray-100 bg-white p-4"
               >
-                <div
-                  className="mb-2 inline-block rounded-full px-3 py-0.5 text-xs font-semibold text-white"
-                  style={{ backgroundColor: "#425B76" }}
-                >
+                <div className="mb-2 inline-block rounded-full bg-pulse-teal px-3 py-0.5 text-xs font-semibold text-white">
                   {i + 1}. {label}
                 </div>
                 <p className="text-sm leading-relaxed text-gray-600">{desc}</p>
@@ -146,61 +184,9 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* ── Published Briefings ─────────────────────────────────────────────── */}
-      {topics.length > 0 && (
-        <section
-          style={{ backgroundColor: "#E5E5E5" }}
-          className="border-t border-gray-300 px-6 py-12"
-        >
-          <div className="mx-auto max-w-7xl">
-            <h2
-              className="mb-6 text-lg font-bold"
-              style={{ color: "#425B76" }}
-            >
-              Published Briefings
-            </h2>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {topics.map((topic) => {
-                // Use the first industry position's colour if available, else domain fallback
-                const firstIndustry = topic.industry_positions
-                  ? Object.keys(topic.industry_positions)[0]
-                  : null;
-                const color = firstIndustry
-                  ? (INDUSTRY_COLORS[firstIndustry] ?? "#6B7280")
-                  : "#6B7280";
-                return (
-                  <article
-                    key={topic.id}
-                    className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm"
-                  >
-                    <div className="mb-3 flex items-center gap-2">
-                      <span
-                        className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-white"
-                        style={{ backgroundColor: color }}
-                      >
-                        {topic.domain}
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        Urgency {topic.urgency_score.toFixed(1)}
-                      </span>
-                    </div>
-                    <h3
-                      className="font-semibold"
-                      style={{ color: "#425B76" }}
-                    >
-                      {topic.name}
-                    </h3>
-                    {topic.summary && (
-                      <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-gray-600">
-                        {topic.summary}
-                      </p>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
-          </div>
-        </section>
+      {/* ── Tracked stories (ingested articles for published topics) ───────────── */}
+      {trackedArticles.length > 0 && (
+        <TrackedStoriesSection articles={trackedArticles} />
       )}
 
       {/* ── Subscribe Section ───────────────────────────────────────────────── */}
@@ -209,10 +195,7 @@ export default async function Home() {
         className="scroll-mt-4 bg-white px-6 py-14"
       >
         <div className="mx-auto max-w-2xl">
-          <h2
-            className="mb-2 text-center text-2xl font-bold"
-            style={{ color: "#425B76" }}
-          >
+          <h2 className="mb-2 text-center text-2xl font-bold text-pulse-teal">
             Get Personalised Intelligence
           </h2>
           <p className="mb-8 text-center text-gray-600">

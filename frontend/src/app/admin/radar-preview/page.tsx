@@ -11,27 +11,39 @@ export default function RadarPreviewPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     adminFetch(`${API_BASE}/api/admin/topics?status=selected`)
-      .then((r) => (r.ok ? r.json() : []))
+      .then((r) => (r.ok ? r.json() : Promise.resolve([])))
       .then((data) => {
-        setTopics(data);
-        setLoading(false);
+        if (!cancelled) {
+          setTopics(Array.isArray(data) ? data : []);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTopics([]);
+          setLoading(false);
+        }
       });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
-    <div className="flex min-h-full flex-col">
-      <div className="pb-4">
-        <p className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100/90">
-          This is a read-only preview. To publish topics to the radar, go to
-          Step 4: Publishing.
+    <div className="flex min-h-full flex-col -mt-2">
+      <div className="pb-2">
+        <p className="mb-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-sm text-amber-100/90">
+          Read-only preview using topics in the radar pipeline (approved / selected). The live site only shows topics
+          you publish — use Step 4: Publishing to go live.
         </p>
         <h1 className="text-2xl font-bold tracking-tight text-white">
           Radar Preview
         </h1>
         <p className="mt-1 text-sm text-gray-400">
-          Live preview of selected topics on the public radar — filters and
-          label toggle work identically to the public page.
+          Preview how selected topics will look on the public radar (same layout and filters as the live page). You do
+          not need to publish first.
           {loading && (
             <span className="ml-2 text-xs text-gray-600">Loading…</span>
           )}
@@ -40,7 +52,11 @@ export default function RadarPreviewPage() {
 
       {/* RadarSection owns the control bar + chart — identical to public page */}
       <div className="flex-1 overflow-hidden">
-        <RadarSection topics={topics} />
+        <RadarSection
+          topics={topics}
+          emptyMessage="No selected topics in the pipeline yet"
+          layout="compact"
+        />
       </div>
     </div>
   );

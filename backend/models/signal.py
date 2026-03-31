@@ -14,6 +14,8 @@ class SignalRecommendation(Base):
         Integer, ForeignKey("topics.id", ondelete="CASCADE"), nullable=False, index=True
     )
     suggested_state: Mapped[str] = mapped_column(String(100), nullable=False)
+    # watch | radar | remove — executive “stock picker” for Trend Discovery (not adoption stage)
+    suggested_action: Mapped[str] = mapped_column(String(32), nullable=False, default="watch")
     rationale: Mapped[str] = mapped_column(Text, nullable=False)
     velocity_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     acceleration_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)

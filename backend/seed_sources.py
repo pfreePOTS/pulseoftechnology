@@ -1,5 +1,5 @@
 """
-Seed the sources table with 10 real-world technology RSS feeds.
+Seed the sources table with curated RSS feeds (security, IT, and broader news).
 
 Run from the project root (inside Docker or with a local .env):
 
@@ -24,6 +24,15 @@ SOURCES = [
     {"name": "The Hacker News", "url": "https://thehackernews.com/feeds/posts/default"},
     {"name": "Bleeping Computer", "url": "https://www.bleepingcomputer.com/feed/"},
     {"name": "ZDNet", "url": "https://www.zdnet.com/news/rss.xml"},
+    # Broader news wires + verticals (beyond pure tech blogs)
+    {"name": "Reuters Technology", "url": "https://feeds.reuters.com/reuters/technologyNews"},
+    {"name": "BBC Technology", "url": "https://feeds.bbci.co.uk/news/technology/rss.xml"},
+    {"name": "MIT Technology Review", "url": "https://www.technologyreview.com/feed/"},
+    {"name": "Ars Technica", "url": "https://feeds.arstechnica.com/arstechnica/index"},
+    {"name": "The Verge", "url": "https://www.theverge.com/rss/index.xml"},
+    {"name": "NPR Technology", "url": "https://feeds.npr.org/1019/rss.xml"},
+    {"name": "Healthcare IT News", "url": "https://www.healthcareitnews.com/rss.xml"},
+    {"name": "GovTech", "url": "https://www.govtech.com/rss/top-news"},
 ]
 
 

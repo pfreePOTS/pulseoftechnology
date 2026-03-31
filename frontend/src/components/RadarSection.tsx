@@ -8,7 +8,17 @@ import RadarChart, { type RadarTopic, INDUSTRY_COLORS } from "./RadarChart";
 const DOMAINS = ["AI", "Security", "Cloud", "Finance", "Leadership", "Other"];
 const INDUSTRY_LIST = Object.keys(INDUSTRY_COLORS);
 
-export default function RadarSection({ topics }: { topics: RadarTopic[] }) {
+export default function RadarSection({
+  topics,
+  emptyMessage,
+  layout = "default",
+}: {
+  topics: RadarTopic[];
+  emptyMessage?: string;
+  /** `compact`: less padding, wider radar (admin preview). */
+  layout?: "default" | "compact";
+}) {
+  const compact = layout === "compact";
   const isClient = useIsClient();
   const [selectedIndustry, setSelectedIndustry] = useState<string>("");
   const [selectedDomain, setSelectedDomain] = useState<string>("");
@@ -46,29 +56,50 @@ export default function RadarSection({ topics }: { topics: RadarTopic[] }) {
       {/* ── Control Bar ─────────────────────────────────────────────────── */}
       <div
         style={{ backgroundColor: "#E5E5E5" }}
-        className="border-b border-gray-300 px-6 py-2 shrink-0"
+        className={
+          "border-b border-gray-300 shrink-0 " +
+          (compact ? "px-3 py-1.5 sm:px-4" : "px-6 py-2")
+        }
       >
-        <div className="mx-auto max-w-7xl flex flex-wrap items-end justify-between gap-4">
+        <div
+          className={
+            "mx-auto flex flex-wrap items-end justify-between gap-3 " +
+            (compact ? "max-w-none gap-x-4 gap-y-2" : "max-w-7xl gap-4")
+          }
+        >
           {/* Title block */}
-          <div>
-            <h1 className="text-2xl font-bold" style={{ color: "#425B76" }}>
+          <div className="min-w-0">
+            <h1
+              className={
+                "font-bold text-pulse-teal " +
+                (compact ? "text-xl leading-snug" : "text-2xl")
+              }
+            >
               C-Level Technology Intelligence Radar
             </h1>
-            <p className="mt-1 text-sm text-gray-600">
-              AI-curated signals scored by urgency · Click or tap a star to lock
-              details (tap again to clear) · Updated daily
+            <p
+              className={
+                "text-gray-600 " +
+                (compact ? "mt-0.5 text-xs leading-snug" : "mt-1 text-sm")
+              }
+            >
+              Wedge = adoption stage · Distance = impact band (9+ toward centre, ≤5 on the outer ring) · Click a star to
+              lock details · Updated daily
             </p>
           </div>
 
           {/* Filters — render after mount so password-manager extensions cannot inject fdprocessedid during hydration */}
           {isClient ? (
-            <div className="flex flex-wrap items-center gap-4">
+            <div
+              className={
+                "flex flex-wrap items-center " + (compact ? "gap-3" : "gap-4")
+              }
+            >
               {/* Industry filter */}
               <div className="flex items-center gap-2">
                 <label
                   htmlFor="industry-filter"
-                  className="shrink-0 text-sm font-semibold"
-                  style={{ color: "#425B76" }}
+                  className="shrink-0 text-sm font-semibold text-pulse-teal"
                 >
                   Industry
                 </label>
@@ -76,13 +107,7 @@ export default function RadarSection({ topics }: { topics: RadarTopic[] }) {
                   id="industry-filter"
                   value={selectedIndustry}
                   onChange={(e) => setSelectedIndustry(e.target.value)}
-                  className="rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                  style={{
-                    borderColor: "#425B76",
-                    color: "#425B76",
-                    backgroundColor: "white",
-                    minWidth: "200px",
-                  }}
+                  className="min-w-[200px] rounded-lg border border-pulse-teal bg-white px-3 py-2 text-sm text-pulse-teal focus:outline-none focus:ring-2 focus:ring-pulse-teal/40"
                 >
                   <option value="">All Industries</option>
                   {INDUSTRY_LIST.map((ind) => (
@@ -97,8 +122,7 @@ export default function RadarSection({ topics }: { topics: RadarTopic[] }) {
               <div className="flex items-center gap-2">
                 <label
                   htmlFor="domain-filter"
-                  className="shrink-0 text-sm font-semibold"
-                  style={{ color: "#425B76" }}
+                  className="shrink-0 text-sm font-semibold text-pulse-teal"
                 >
                   Domain
                 </label>
@@ -106,13 +130,7 @@ export default function RadarSection({ topics }: { topics: RadarTopic[] }) {
                   id="domain-filter"
                   value={selectedDomain}
                   onChange={(e) => setSelectedDomain(e.target.value)}
-                  className="rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                  style={{
-                    borderColor: "#425B76",
-                    color: "#425B76",
-                    backgroundColor: "white",
-                    minWidth: "155px",
-                  }}
+                  className="min-w-[155px] rounded-lg border border-pulse-teal bg-white px-3 py-2 text-sm text-pulse-teal focus:outline-none focus:ring-2 focus:ring-pulse-teal/40"
                 >
                   <option value="">All Domains</option>
                   {DOMAINS.map((d) => (
@@ -137,12 +155,12 @@ export default function RadarSection({ topics }: { topics: RadarTopic[] }) {
               )}
 
               {/* Label toggle */}
-              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium" style={{ color: "#425B76" }}>
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-pulse-teal">
                 <input
                   type="checkbox"
                   checked={showLabels}
                   onChange={(e) => setShowLabels(e.target.checked)}
-                  className="h-3.5 w-3.5 rounded accent-[#425B76]"
+                  className="h-3.5 w-3.5 rounded accent-[var(--color-pulse-teal)]"
                 />
                 Show topic names
               </label>
@@ -161,9 +179,19 @@ export default function RadarSection({ topics }: { topics: RadarTopic[] }) {
       </div>
 
       {/* ── Radar Area ─────────────────────────────────────────────────── */}
-      <section className="bg-white px-6 pt-2 pb-2 shrink-0">
-        <div className="mx-auto max-w-7xl">
-          <RadarChart topics={filteredTopics} showLabels={showLabels} />
+      <section
+        className={
+          "bg-white shrink-0 " +
+          (compact ? "px-2 py-0 sm:px-3" : "px-6 pt-2 pb-2")
+        }
+      >
+        <div className={compact ? "mx-auto w-full max-w-none" : "mx-auto max-w-[96rem]"}>
+          <RadarChart
+            topics={filteredTopics}
+            showLabels={showLabels}
+            emptyMessage={emptyMessage}
+            layout={layout}
+          />
           {filteredTopics.length === 0 && topics.length > 0 && (
             <p className="mt-2 text-center text-sm text-gray-400">
               No topics match the selected filters.

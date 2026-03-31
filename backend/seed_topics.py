@@ -11,7 +11,7 @@ Run from inside Docker:
 from .database import SessionLocal
 from .models.topic import Topic, TopicStatus
 
-# INDUSTRY_COLORS keys from RadarChart.tsx — all 10 must be covered.
+# Industry keys should align with `INDUSTRY_GRID_LABELS` / `frontend/src/lib/industryGrid.ts`.
 # Per-topic: {industry: {urgency_score, adoption_state, rationale}}
 
 CORE_TOPICS = [
@@ -556,6 +556,7 @@ def seed() -> None:
                 topic = Topic(
                     name=entry["name"],
                     domain=entry["domain"],
+                    subdomain="",
                     urgency_score=entry["urgency_score"],
                     summary=entry["summary"],
                     status=TopicStatus.selected,

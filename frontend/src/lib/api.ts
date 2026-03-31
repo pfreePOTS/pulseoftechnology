@@ -1,9 +1,16 @@
 /**
  * Browser-facing API base (Compose maps backend to host port 8100).
  * Admin calls use credentials: "include" for httpOnly JWT cookie.
+ *
+ * Note: `??` does not treat "" as missing — an empty env var would break URLs. We normalize that.
  */
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8100";
+function resolveApiBase(): string {
+  const raw = process.env.NEXT_PUBLIC_API_URL?.trim();
+  if (raw) return raw.replace(/\/$/, "");
+  return "http://localhost:8100";
+}
+
+export const API_BASE = resolveApiBase();
 
 /**
  * Authenticated admin fetch — sends httpOnly cookie set by POST /api/admin/login.

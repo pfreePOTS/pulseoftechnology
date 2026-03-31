@@ -35,12 +35,17 @@ function formatPublished(iso: string | null): string {
   }).format(new Date(iso));
 }
 
+type JobState = "idle" | "running" | "success" | "error";
+
 export default function ResearchCollectionPage() {
   const [articles, setArticles] = useState<ArticleRow[]>([]);
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [canLoadMore, setCanLoadMore] = useState(false);
+  const [ingestJob, setIngestJob] = useState<JobState>("idle");
+  const [processJob, setProcessJob] = useState<JobState>("idle");
+  const [jobToast, setJobToast] = useState<string | null>(null);
 
   const fetchPage = useCallback(
     async (offset: number, append: boolean) => {
@@ -84,6 +89,33 @@ export default function ResearchCollectionPage() {
     setLoadingMore(false);
   }
 
+  async function refreshList() {
+    setLoading(true);
+    await fetchPage(0, false);
+    setLoading(false);
+  }
+
+  async function runBackgroundJob(
+    endpoint: string,
+    setState: (s: JobState) => void,
+    okHint: string,
+  ) {
+    setState("running");
+    setJobToast(null);
+    try {
+      const res = await adminFetch(`${API_BASE}${endpoint}`, { method: "POST" });
+      if (!res.ok) throw new Error(await res.text());
+      const data: { message?: string } = await res.json();
+      setState("success");
+      setJobToast(data.message ?? okHint);
+      setTimeout(() => setState("idle"), 2500);
+    } catch (e) {
+      setState("error");
+      setJobToast(e instanceof Error ? e.message : "Request failed");
+      setTimeout(() => setState("idle"), 4000);
+    }
+  }
+
   const showLoadMore = !loading && canLoadMore;
 
   return (
@@ -96,6 +128,73 @@ export default function ResearchCollectionPage() {
           Raw articles from RSS feeds — monitor the ingestion engine&apos;s
           output.
         </p>
+        <p className="mt-3 max-w-3xl text-sm leading-relaxed text-gray-500">
+          The API runs{" "}
+          <strong className="font-medium text-gray-400">
+            scheduled jobs in-process
+          </strong>{" "}
+          (APScheduler, not Celery): RSS fetch + AI processing run{" "}
+          <strong className="font-medium text-gray-400">every hour</strong>.
+          Signal scoring runs daily at 06:00 UTC; newsletter at 07:00 UTC. Use
+          the buttons below for manual runs — large batches may take minutes.
+        </p>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              runBackgroundJob(
+                "/api/admin/jobs/ingest",
+                setIngestJob,
+                "RSS ingestion started.",
+              )
+            }
+            disabled={ingestJob === "running" || processJob === "running"}
+            className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${
+              ingestJob === "success"
+                ? "bg-emerald-700 text-white"
+                : ingestJob === "error"
+                  ? "bg-red-600 text-white"
+                  : "bg-[#019E7C] text-white hover:opacity-90"
+            }`}
+          >
+            {ingestJob === "running" ? "Starting fetch…" : "Fetch RSS now"}
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              runBackgroundJob(
+                "/api/admin/jobs/process",
+                setProcessJob,
+                "Processing started.",
+              )
+            }
+            disabled={ingestJob === "running" || processJob === "running"}
+            className={`rounded-lg border border-gray-600 bg-gray-900 px-3 py-2 text-sm font-semibold text-gray-100 transition-colors hover:bg-gray-800 disabled:opacity-50 ${
+              processJob === "success"
+                ? "border-emerald-600 text-emerald-300"
+                : processJob === "error"
+                  ? "border-red-500 text-red-300"
+                  : ""
+            }`}
+          >
+            {processJob === "running"
+              ? "Starting process…"
+              : "Process raw articles"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void refreshList()}
+            disabled={loading}
+            className="rounded-lg px-3 py-2 text-sm font-medium text-[#019E7C] hover:underline disabled:opacity-50"
+          >
+            Refresh list
+          </button>
+        </div>
+        {jobToast ? (
+          <p className="mt-2 text-sm text-gray-400" role="status">
+            {jobToast}
+          </p>
+        ) : null}
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2">

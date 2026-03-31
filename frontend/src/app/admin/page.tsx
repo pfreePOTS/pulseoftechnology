@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { adminFetch, API_BASE } from "@/lib/api";
@@ -10,6 +10,7 @@ export interface TopicRow {
   id: number;
   name: string;
   domain: string;
+  subdomain?: string;
   summary: string | null;
   urgency_score: number;
   status: string;
@@ -19,7 +20,7 @@ export interface TopicRow {
   velocity_score: number | null;
   acceleration_score: number | null;
   signal_rationale: string | null;
-  signal_suggested_state: string | null;
+  signal_suggested_action: string | null;
   signal_id: number | null;
 }
 
@@ -35,13 +36,14 @@ interface TopicDetailResponse {
   id: number;
   name: string;
   domain: string;
+  subdomain?: string;
   summary: string | null;
   articles: TopicDetailArticle[];
 }
 
-type TabId = "pending" | "approved";
+type TabId = "pending" | "watching" | "radar";
 
-const TAB_IDS = new Set<TabId>(["pending", "approved"]);
+const TAB_IDS = new Set<TabId>(["pending", "watching", "radar"]);
 
 function DomainPill({ domain }: { domain: string }) {
   const palette: Record<string, string> = {
@@ -171,6 +173,78 @@ function VelocityMini({
   );
 }
 
+type SortColumn = "velocity" | "acceleration" | "articles";
+
+function SubdomainPill({ text }: { text: string | null | undefined }) {
+  const s = (text || "").trim();
+  if (!s) {
+    return <span className="text-xs text-gray-600">—</span>;
+  }
+  return (
+    <span
+      className="inline-flex max-w-[160px] truncate rounded-md bg-gray-800/80 px-2 py-0.5 text-xs text-gray-300 ring-1 ring-gray-700"
+      title={s}
+    >
+      {s}
+    </span>
+  );
+}
+
+function SortHeader({
+  label,
+  column,
+  sortColumn,
+  sortDir,
+  onSort,
+}: {
+  label: string;
+  column: SortColumn;
+  sortColumn: SortColumn;
+  sortDir: "asc" | "desc";
+  onSort: (c: SortColumn) => void;
+}) {
+  const active = sortColumn === column;
+  return (
+    <th className="px-3 py-3">
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        className={`inline-flex items-center gap-1 font-semibold uppercase tracking-wide hover:text-gray-300 ${
+          active ? "text-indigo-300" : "text-gray-500"
+        }`}
+      >
+        {label}
+        <span className="text-[10px] tabular-nums" aria-hidden>
+          {active ? (sortDir === "asc" ? "↑" : "↓") : "↕"}
+        </span>
+      </button>
+    </th>
+  );
+}
+
+function TrendPickBadge({ action }: { action: string | null | undefined }) {
+  const a = (action ?? "").toLowerCase();
+  const label =
+    a === "radar" ? "Radar" : a === "remove" ? "Remove" : a === "watch" ? "Watch" : null;
+  if (!label) {
+    return <span className="text-gray-600">—</span>;
+  }
+  const cls =
+    a === "radar"
+      ? "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30"
+      : a === "remove"
+        ? "bg-rose-500/15 text-rose-300 ring-rose-500/30"
+        : "bg-amber-500/15 text-amber-200 ring-amber-500/30";
+  return (
+    <span
+      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${cls}`}
+      title="AI trend pick (watch / radar / remove)"
+    >
+      {label}
+    </span>
+  );
+}
+
 function TrendDiscoveryInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -178,10 +252,15 @@ function TrendDiscoveryInner() {
 
   useEffect(() => {
     const q = searchParams.get("tab");
+    if (q === "approved") {
+      setTabState("radar");
+      router.replace("/admin?tab=radar", { scroll: false });
+      return;
+    }
     if (q && TAB_IDS.has(q as TabId)) {
       setTabState(q as TabId);
     }
-  }, [searchParams]);
+  }, [searchParams, router]);
 
   function setTab(next: TabId) {
     setTabState(next);
@@ -192,6 +271,8 @@ function TrendDiscoveryInner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [approvingId, setApprovingId] = useState<number | null>(null);
+  const [watchingId, setWatchingId] = useState<number | null>(null);
+  const [demotingId, setDemotingId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [mergeOpen, setMergeOpen] = useState(false);
   const [mergeTargetId, setMergeTargetId] = useState<number | null>(null);
@@ -203,10 +284,16 @@ function TrendDiscoveryInner() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [drawerEntered, setDrawerEntered] = useState(false);
+  const [filterDomain, setFilterDomain] = useState("");
+  const [filterSubdomain, setFilterSubdomain] = useState("");
+  const [filterAction, setFilterAction] = useState("");
+  const [sortColumn, setSortColumn] = useState<SortColumn>("velocity");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const selectedTopicIdRef = useRef<number | null>(null);
   selectedTopicIdRef.current = selectedTopicId;
 
-  const statusParam = tab === "pending" ? "pending" : "selected";
+  const statusParam =
+    tab === "pending" ? "pending" : tab === "watching" ? "watched" : "selected";
 
   const loadTopics = useCallback(async () => {
     setLoading(true);
@@ -293,6 +380,71 @@ function TrendDiscoveryInner() {
     return () => cancelAnimationFrame(id);
   }, [selectedTopicId]);
 
+  const displayedTopics = useMemo(() => {
+    const list = topics.filter((t) => {
+      if (filterDomain && t.domain !== filterDomain) return false;
+      const sub = (t.subdomain || "").trim();
+      if (filterSubdomain) {
+        if (filterSubdomain === "__general__") {
+          if (sub.length > 0) return false;
+        } else if (sub !== filterSubdomain) return false;
+      }
+      if (filterAction) {
+        const a = (t.signal_suggested_action || "").toLowerCase();
+        if (a !== filterAction) return false;
+      }
+      return true;
+    });
+    const cmp = (a: TopicRow, b: TopicRow) => {
+      const dir = sortDir === "asc" ? 1 : -1;
+      if (sortColumn === "velocity") {
+        const va = a.velocity_score ?? -1;
+        const vb = b.velocity_score ?? -1;
+        return (va - vb) * dir;
+      }
+      if (sortColumn === "acceleration") {
+        const va = a.acceleration_score ?? -1;
+        const vb = b.acceleration_score ?? -1;
+        return (va - vb) * dir;
+      }
+      return (a.article_count - b.article_count) * dir;
+    };
+    return [...list].sort(cmp);
+  }, [topics, filterDomain, filterSubdomain, filterAction, sortColumn, sortDir]);
+
+  const groupedBySubdomain = useMemo(() => {
+    const m = new Map<string, TopicRow[]>();
+    for (const t of displayedTopics) {
+      const k = (t.subdomain || "").trim() || "General";
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(t);
+    }
+    return [...m.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [displayedTopics]);
+
+  const domainOptions = useMemo(() => {
+    const s = new Set(topics.map((t) => t.domain));
+    return [...s].sort();
+  }, [topics]);
+
+  const subdomainOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const t of topics) {
+      const u = (t.subdomain || "").trim();
+      if (u) s.add(u);
+    }
+    return [...s].sort();
+  }, [topics]);
+
+  function toggleSort(column: SortColumn) {
+    if (sortColumn === column) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortColumn(column);
+      setSortDir("desc");
+    }
+  }
+
   const checkedTopics = useMemo(() => {
     return topics.filter((t) => selectedIds.has(t.id));
   }, [topics, selectedIds]);
@@ -311,7 +463,7 @@ function TrendDiscoveryInner() {
       setSelectedIds(new Set());
       return;
     }
-    setSelectedIds(new Set(topics.map((t) => t.id)));
+    setSelectedIds(new Set(displayedTopics.map((t) => t.id)));
   }
 
   async function approveTopic(id: number) {
@@ -336,6 +488,51 @@ function TrendDiscoveryInner() {
       setError(e instanceof Error ? e.message : "Approve failed");
     } finally {
       setApprovingId(null);
+    }
+  }
+
+  async function watchTopic(id: number) {
+    setWatchingId(id);
+    setError(null);
+    try {
+      const res = await adminFetch(`${API_BASE}/api/admin/topics/${id}/watch`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        setError(await res.text().catch(() => res.statusText));
+        return;
+      }
+      setSelectedTopicId((cur) => (cur === id ? null : cur));
+      await loadTopics();
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Watch failed");
+    } finally {
+      setWatchingId(null);
+    }
+  }
+
+  async function demoteTopic(id: number) {
+    setDemotingId(id);
+    setError(null);
+    try {
+      const res = await adminFetch(`${API_BASE}/api/admin/topics/${id}/deselect`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        setError(await res.text().catch(() => res.statusText));
+        return;
+      }
+      setSelectedTopicId((cur) => (cur === id ? null : cur));
+      await loadTopics();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Demote failed");
+    } finally {
+      setDemotingId(null);
     }
   }
 
@@ -420,7 +617,9 @@ function TrendDiscoveryInner() {
   }
 
   const allPendingSelected =
-    tab === "pending" && topics.length > 0 && topics.every((t) => selectedIds.has(t.id));
+    tab === "pending" &&
+    displayedTopics.length > 0 &&
+    displayedTopics.every((t) => selectedIds.has(t.id));
 
   const selectedRow = useMemo(
     () => (selectedTopicId === null ? undefined : topics.find((t) => t.id === selectedTopicId)),
@@ -441,9 +640,12 @@ function TrendDiscoveryInner() {
       <header className="mb-8">
         <h1 className="text-3xl font-bold tracking-tight text-white">Trend Discovery</h1>
         <p className="mt-1 max-w-3xl text-sm text-gray-400">
-          Velocity = articles linked to this topic in the last 7 days; acceleration = ratio vs the prior 7 days.
-          Use <span className="text-gray-300">AI analyze</span> to run Claude on each topic for suggested adoption state
-          and rationale (or run the bulk job below). Approve to move topics into the analysis pipeline.
+          Velocity = articles linked in the last 7 days; acceleration = ratio vs the prior 7 days.{" "}
+          <span className="text-gray-300">AI analyze</span> returns a trend pick — <strong className="text-gray-300">Watch</strong>{" "}
+          (track), <strong className="text-gray-300">Radar</strong> (ready for the pipeline), or{" "}
+          <strong className="text-gray-300">Remove</strong> (deprioritise). Per-industry adoption is set in Analysis. Use{" "}
+          <span className="text-gray-300">Watch</span> to park a candidate, <span className="text-gray-300">Approve</span> to add
+          it to the radar list, and review <span className="text-gray-300">On radar</span> to demote when momentum fades.
         </p>
       </header>
 
@@ -472,13 +674,24 @@ function TrendDiscoveryInner() {
           <button
             type="button"
             role="tab"
-            aria-selected={tab === "approved"}
-            onClick={() => setTab("approved")}
+            aria-selected={tab === "watching"}
+            onClick={() => setTab("watching")}
             className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-              tab === "approved" ? "bg-gray-800 text-white shadow-sm" : "text-gray-400 hover:text-white"
+              tab === "watching" ? "bg-gray-800 text-white shadow-sm" : "text-gray-400 hover:text-white"
             }`}
           >
-            Approved
+            Watching
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "radar"}
+            onClick={() => setTab("radar")}
+            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+              tab === "radar" ? "bg-gray-800 text-white shadow-sm" : "text-gray-400 hover:text-white"
+            }`}
+          >
+            On radar
           </button>
         </div>
 
@@ -492,7 +705,7 @@ function TrendDiscoveryInner() {
           </button>
         )}
 
-        {tab === "pending" && topics.length > 0 && (
+        {(tab === "pending" || tab === "watching") && topics.length > 0 && (
           <button
             type="button"
             disabled={bulkAnalyzing}
@@ -505,8 +718,68 @@ function TrendDiscoveryInner() {
                 Starting bulk AI…
               </>
             ) : (
-              "Run AI analysis (all pending)"
+              "Run AI analysis (pending & watching)"
             )}
+          </button>
+        )}
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-gray-800 bg-gray-900/30 px-4 py-3">
+        <label className="flex flex-col gap-1 text-xs font-medium text-gray-500">
+          Domain
+          <select
+            value={filterDomain}
+            onChange={(e) => setFilterDomain(e.target.value)}
+            className="min-w-[140px] rounded-lg border border-gray-700 bg-gray-950 px-2 py-1.5 text-sm text-gray-200"
+          >
+            <option value="">All</option>
+            {domainOptions.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium text-gray-500">
+          Sub-domain
+          <select
+            value={filterSubdomain}
+            onChange={(e) => setFilterSubdomain(e.target.value)}
+            className="min-w-[180px] rounded-lg border border-gray-700 bg-gray-950 px-2 py-1.5 text-sm text-gray-200"
+          >
+            <option value="">All</option>
+            <option value="__general__">General (none)</option>
+            {subdomainOptions.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium text-gray-500">
+          AI pick
+          <select
+            value={filterAction}
+            onChange={(e) => setFilterAction(e.target.value)}
+            className="min-w-[120px] rounded-lg border border-gray-700 bg-gray-950 px-2 py-1.5 text-sm text-gray-200"
+          >
+            <option value="">All</option>
+            <option value="watch">Watch</option>
+            <option value="radar">Radar</option>
+            <option value="remove">Remove</option>
+          </select>
+        </label>
+        {(filterDomain || filterSubdomain || filterAction) && (
+          <button
+            type="button"
+            onClick={() => {
+              setFilterDomain("");
+              setFilterSubdomain("");
+              setFilterAction("");
+            }}
+            className="ml-auto text-xs font-medium text-indigo-400 hover:text-indigo-300"
+          >
+            Clear filters
           </button>
         )}
       </div>
@@ -518,9 +791,11 @@ function TrendDiscoveryInner() {
           <p className="py-12 text-center text-sm text-gray-500">
             No pending topics. New clusters will appear here after signal ingestion.
           </p>
+        ) : displayedTopics.length === 0 ? (
+          <p className="py-12 text-center text-sm text-gray-500">No topics match the current filters.</p>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-gray-800">
-            <table className="w-full min-w-[880px] text-left text-sm">
+            <table className="w-full min-w-[1040px] text-left text-sm">
               <thead className="bg-gray-900 text-xs uppercase tracking-wide text-gray-500">
                 <tr>
                   <th className="w-10 px-3 py-3">
@@ -533,109 +808,306 @@ function TrendDiscoveryInner() {
                     />
                   </th>
                   <th className="px-3 py-3">Domain</th>
+                  <th className="px-3 py-3">Sub-domain</th>
                   <th className="px-3 py-3">Topic</th>
-                  <th className="px-3 py-3">Velocity</th>
-                  <th className="px-3 py-3">Acceleration</th>
-                  <th className="px-3 py-3">Articles</th>
-                  <th className="px-3 py-3">Suggested State</th>
+                  <SortHeader
+                    label="Velocity"
+                    column="velocity"
+                    sortColumn={sortColumn}
+                    sortDir={sortDir}
+                    onSort={toggleSort}
+                  />
+                  <SortHeader
+                    label="Acceleration"
+                    column="acceleration"
+                    sortColumn={sortColumn}
+                    sortDir={sortDir}
+                    onSort={toggleSort}
+                  />
+                  <SortHeader
+                    label="Articles"
+                    column="articles"
+                    sortColumn={sortColumn}
+                    sortDir={sortDir}
+                    onSort={toggleSort}
+                  />
+                  <th className="px-3 py-3">AI pick</th>
                   <th className="px-3 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800 bg-gray-950">
-                {topics.map((row) => (
-                  <tr
-                    key={row.id}
-                    tabIndex={0}
-                    onClick={() => setSelectedTopicId(row.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        setSelectedTopicId(row.id);
-                      }
-                    }}
-                    className={`cursor-pointer border-l-2 transition-colors hover:bg-gray-900/40 ${
-                      selectedTopicId === row.id
-                        ? "border-indigo-500 bg-indigo-500/5"
-                        : "border-transparent"
-                    }`}
-                  >
-                    <td className="px-3 py-3 align-top" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        className="rounded border-gray-600 bg-gray-900 text-indigo-500 focus:ring-indigo-500/40"
-                        checked={selectedIds.has(row.id)}
-                        onChange={(e) => toggleRow(row.id, e.target.checked)}
-                      />
-                    </td>
-                    <td className="px-3 py-3 align-top">
-                      <DomainPill domain={row.domain} />
-                    </td>
-                    <td className="max-w-xs px-3 py-3 align-top">
-                      <p className="font-semibold text-white">{row.name}</p>
-                      {row.signal_rationale?.trim() ? (
-                        <p className="mt-1 line-clamp-2 text-xs italic text-gray-400">{row.signal_rationale}</p>
-                      ) : null}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
-                      {fmtOneDecimal(row.velocity_score)}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
-                      {row.acceleration_score === null || Number.isNaN(row.acceleration_score)
-                        ? "—"
-                        : `${row.acceleration_score.toFixed(1)}x`}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">{row.article_count}</td>
-                    <td className="px-3 py-3 align-top">
-                      {row.signal_suggested_state?.trim() ? (
-                        <span className="inline-flex rounded-full bg-gray-800 px-2 py-0.5 text-xs text-gray-200 ring-1 ring-gray-700">
-                          {row.signal_suggested_state}
-                        </span>
-                      ) : (
-                        <span className="text-gray-600">—</span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3 align-top text-right" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex flex-wrap items-center justify-end gap-2">
-                        <button
-                          type="button"
-                          disabled={analyzingId === row.id || approvingId === row.id}
-                          onClick={() => void analyzeTopicTrend(row.id)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/50 bg-indigo-500/15 px-2.5 py-1.5 text-xs font-medium text-indigo-200 hover:bg-indigo-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+                {groupedBySubdomain.map(([subLabel, rows]) => (
+                  <Fragment key={`g-${subLabel}`}>
+                    <tr className="bg-gray-900/80">
+                      <td
+                        colSpan={9}
+                        className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400"
+                      >
+                        Sub-domain: {subLabel}
+                      </td>
+                    </tr>
+                    {rows.map((row) => {
+                  const rowBusy =
+                    analyzingId === row.id ||
+                    approvingId === row.id ||
+                    watchingId === row.id ||
+                    demotingId === row.id;
+                  return (
+                    <tr
+                      key={row.id}
+                      tabIndex={0}
+                      onClick={() => setSelectedTopicId(row.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelectedTopicId(row.id);
+                        }
+                      }}
+                      className={`cursor-pointer border-l-2 transition-colors hover:bg-gray-900/40 ${
+                        selectedTopicId === row.id
+                          ? "border-indigo-500 bg-indigo-500/5"
+                          : "border-transparent"
+                      }`}
+                    >
+                      <td className="px-3 py-3 align-top" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          className="rounded border-gray-600 bg-gray-900 text-indigo-500 focus:ring-indigo-500/40"
+                          checked={selectedIds.has(row.id)}
+                          onChange={(e) => toggleRow(row.id, e.target.checked)}
+                        />
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        <DomainPill domain={row.domain} />
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        <SubdomainPill text={row.subdomain} />
+                      </td>
+                      <td className="max-w-xs px-3 py-3 align-top">
+                        <p className="font-semibold text-white">{row.name}</p>
+                        {row.signal_rationale?.trim() ? (
+                          <p className="mt-1 line-clamp-2 text-xs italic text-gray-400">{row.signal_rationale}</p>
+                        ) : null}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
+                        {fmtOneDecimal(row.velocity_score)}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
+                        {row.acceleration_score === null || Number.isNaN(row.acceleration_score)
+                          ? "—"
+                          : `${row.acceleration_score.toFixed(1)}x`}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">{row.article_count}</td>
+                      <td className="px-3 py-3 align-top">
+                        <TrendPickBadge action={row.signal_suggested_action} />
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3 align-top text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            disabled={rowBusy}
+                            onClick={() => void analyzeTopicTrend(row.id)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/50 bg-indigo-500/15 px-2.5 py-1.5 text-xs font-medium text-indigo-200 hover:bg-indigo-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {analyzingId === row.id ? (
+                              <>
+                                <Spinner className="h-3.5 w-3.5" />
+                                AI…
+                              </>
+                            ) : (
+                              "AI analyze"
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={rowBusy}
+                            onClick={() => void watchTopic(row.id)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/50 bg-amber-500/15 px-2.5 py-1.5 text-xs font-medium text-amber-200 hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {watchingId === row.id ? (
+                              <>
+                                <Spinner className="h-3.5 w-3.5" />
+                                …
+                              </>
+                            ) : (
+                              "Watch"
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={rowBusy}
+                            onClick={() => void approveTopic(row.id)}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {approvingId === row.id ? (
+                              <>
+                                <Spinner className="h-3.5 w-3.5" />
+                                <span>Approving…</span>
+                              </>
+                            ) : (
+                              "Approve"
+                            )}
+                          </button>
+                          <Link
+                            href={`/admin/topics/${row.id}`}
+                            className="inline-flex items-center gap-1 text-xs font-medium text-indigo-400 hover:text-indigo-300"
+                          >
+                            <IconPencil className="h-4 w-4" />
+                            Edit
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                    })}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      ) : tab === "watching" ? (
+        topics.length === 0 ? (
+          <p className="py-12 text-center text-sm text-gray-500">
+            No watching topics. Use <span className="text-gray-400">Watch</span> from Pending to track candidates without
+            adding them to the radar yet.
+          </p>
+        ) : displayedTopics.length === 0 ? (
+          <p className="py-12 text-center text-sm text-gray-500">No topics match the current filters.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-gray-800">
+            <table className="w-full min-w-[1000px] text-left text-sm">
+              <thead className="bg-gray-900 text-xs uppercase tracking-wide text-gray-500">
+                <tr>
+                  <th className="px-3 py-3">Domain</th>
+                  <th className="px-3 py-3">Sub-domain</th>
+                  <th className="px-3 py-3">Topic</th>
+                  <SortHeader
+                    label="Velocity"
+                    column="velocity"
+                    sortColumn={sortColumn}
+                    sortDir={sortDir}
+                    onSort={toggleSort}
+                  />
+                  <SortHeader
+                    label="Acceleration"
+                    column="acceleration"
+                    sortColumn={sortColumn}
+                    sortDir={sortDir}
+                    onSort={toggleSort}
+                  />
+                  <SortHeader
+                    label="Articles"
+                    column="articles"
+                    sortColumn={sortColumn}
+                    sortDir={sortDir}
+                    onSort={toggleSort}
+                  />
+                  <th className="px-3 py-3">AI pick</th>
+                  <th className="px-3 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800 bg-gray-950">
+                {groupedBySubdomain.map(([subLabel, rows]) => (
+                  <Fragment key={`wg-${subLabel}`}>
+                    <tr className="bg-gray-900/80">
+                      <td
+                        colSpan={8}
+                        className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400"
+                      >
+                        Sub-domain: {subLabel}
+                      </td>
+                    </tr>
+                    {rows.map((row) => {
+                      const rowBusy =
+                        analyzingId === row.id ||
+                        approvingId === row.id ||
+                        watchingId === row.id ||
+                        demotingId === row.id;
+                      return (
+                        <tr
+                          key={row.id}
+                          tabIndex={0}
+                          onClick={() => setSelectedTopicId(row.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setSelectedTopicId(row.id);
+                            }
+                          }}
+                          className={`cursor-pointer border-l-2 transition-colors hover:bg-gray-900/40 ${
+                            selectedTopicId === row.id ? "border-indigo-500 bg-indigo-500/5" : "border-transparent"
+                          }`}
                         >
-                          {analyzingId === row.id ? (
-                            <>
-                              <Spinner className="h-3.5 w-3.5" />
-                              AI…
-                            </>
-                          ) : (
-                            "AI analyze"
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={approvingId === row.id || analyzingId === row.id}
-                          onClick={() => void approveTopic(row.id)}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {approvingId === row.id ? (
-                            <>
-                              <Spinner className="h-3.5 w-3.5" />
-                              <span>Approving…</span>
-                            </>
-                          ) : (
-                            "Approve"
-                          )}
-                        </button>
-                        <Link
-                          href={`/admin/topics/${row.id}`}
-                          className="inline-flex items-center gap-1 text-xs font-medium text-indigo-400 hover:text-indigo-300"
-                        >
-                          <IconPencil className="h-4 w-4" />
-                          Edit
-                        </Link>
-                      </div>
-                    </td>
-                  </tr>
+                          <td className="px-3 py-3 align-top">
+                            <DomainPill domain={row.domain} />
+                          </td>
+                          <td className="px-3 py-3 align-top">
+                            <SubdomainPill text={row.subdomain} />
+                          </td>
+                          <td className="max-w-xs px-3 py-3 align-top">
+                            <p className="font-semibold text-white">{row.name}</p>
+                            {row.signal_rationale?.trim() ? (
+                              <p className="mt-1 line-clamp-2 text-xs italic text-gray-400">{row.signal_rationale}</p>
+                            ) : null}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
+                            {fmtOneDecimal(row.velocity_score)}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
+                            {row.acceleration_score === null || Number.isNaN(row.acceleration_score)
+                              ? "—"
+                              : `${row.acceleration_score.toFixed(1)}x`}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">{row.article_count}</td>
+                          <td className="px-3 py-3 align-top">
+                            <TrendPickBadge action={row.signal_suggested_action} />
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-3 align-top text-right" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                disabled={rowBusy}
+                                onClick={() => void analyzeTopicTrend(row.id)}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/50 bg-indigo-500/15 px-2.5 py-1.5 text-xs font-medium text-indigo-200 hover:bg-indigo-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {analyzingId === row.id ? (
+                                  <>
+                                    <Spinner className="h-3.5 w-3.5" />
+                                    AI…
+                                  </>
+                                ) : (
+                                  "AI analyze"
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={rowBusy}
+                                onClick={() => void approveTopic(row.id)}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {approvingId === row.id ? (
+                                  <>
+                                    <Spinner className="h-3.5 w-3.5" />
+                                    <span>Approving…</span>
+                                  </>
+                                ) : (
+                                  "Approve"
+                                )}
+                              </button>
+                              <Link
+                                href={`/admin/topics/${row.id}`}
+                                className="inline-flex items-center gap-1 text-xs font-medium text-indigo-400 hover:text-indigo-300"
+                              >
+                                <IconPencil className="h-4 w-4" />
+                                Edit
+                              </Link>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -643,70 +1115,157 @@ function TrendDiscoveryInner() {
         )
       ) : topics.length === 0 ? (
         <p className="py-12 text-center text-sm text-gray-500">
-          No approved topics yet. Approve items from the Pending tab to see them here.
+          No topics on the radar yet. Approve items from Pending or Watching to add them here.
         </p>
+      ) : displayedTopics.length === 0 ? (
+        <p className="py-12 text-center text-sm text-gray-500">No topics match the current filters.</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-gray-800">
-          <table className="w-full min-w-[720px] text-left text-sm">
+          <table className="w-full min-w-[1080px] text-left text-sm">
             <thead className="bg-gray-900 text-xs uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="px-3 py-3">Domain</th>
+                <th className="px-3 py-3">Sub-domain</th>
                 <th className="px-3 py-3">Topic</th>
-                <th className="px-3 py-3">Urgency</th>
-                <th className="px-3 py-3">Articles</th>
-                <th className="px-3 py-3">Adoption State</th>
+                <SortHeader
+                  label="Velocity"
+                  column="velocity"
+                  sortColumn={sortColumn}
+                  sortDir={sortDir}
+                  onSort={toggleSort}
+                />
+                <SortHeader
+                  label="Acceleration"
+                  column="acceleration"
+                  sortColumn={sortColumn}
+                  sortDir={sortDir}
+                  onSort={toggleSort}
+                />
+                <SortHeader
+                  label="Articles"
+                  column="articles"
+                  sortColumn={sortColumn}
+                  sortDir={sortDir}
+                  onSort={toggleSort}
+                />
+                <th className="px-3 py-3">AI pick</th>
                 <th className="px-3 py-3">Published</th>
-                <th className="px-3 py-3 text-right"> </th>
+                <th className="px-3 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800 bg-gray-950">
-              {topics.map((row) => (
-                <tr
-                  key={row.id}
-                  tabIndex={0}
-                  onClick={() => setSelectedTopicId(row.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      setSelectedTopicId(row.id);
-                    }
-                  }}
-                  className={`cursor-pointer border-l-2 transition-colors hover:bg-gray-900/40 ${
-                    selectedTopicId === row.id ? "border-indigo-500 bg-indigo-500/5" : "border-transparent"
-                  }`}
-                >
-                  <td className="px-3 py-3 align-top">
-                    <DomainPill domain={row.domain} />
-                  </td>
-                  <td className="max-w-md px-3 py-3 align-top">
-                    <p className="font-semibold text-white">{row.name}</p>
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
-                    {row.urgency_score.toFixed(1)}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">{row.article_count}</td>
-                  <td className="px-3 py-3 align-top text-gray-300">{row.adoption_state}</td>
-                  <td className="px-3 py-3 align-top">
-                    {row.is_published ? (
-                      <span className="inline-flex rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400 ring-1 ring-emerald-500/30">
-                        Yes
-                      </span>
-                    ) : (
-                      <span className="inline-flex rounded-full bg-gray-800 px-2 py-0.5 text-xs font-medium text-gray-400 ring-1 ring-gray-700">
-                        No
-                      </span>
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-3 align-top text-right" onClick={(e) => e.stopPropagation()}>
-                    <Link
-                      href={`/admin/topics/${row.id}`}
-                      className="inline-flex items-center gap-1 text-xs font-medium text-indigo-400 hover:text-indigo-300"
+              {groupedBySubdomain.map(([subLabel, rows]) => (
+                <Fragment key={`rg-${subLabel}`}>
+                  <tr className="bg-gray-900/80">
+                    <td
+                      colSpan={9}
+                      className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400"
                     >
-                      <IconPencil className="h-4 w-4" />
-                      Edit
-                    </Link>
-                  </td>
-                </tr>
+                      Sub-domain: {subLabel}
+                    </td>
+                  </tr>
+                  {rows.map((row) => {
+                    const rowBusy =
+                      analyzingId === row.id ||
+                      approvingId === row.id ||
+                      watchingId === row.id ||
+                      demotingId === row.id;
+                    return (
+                      <tr
+                        key={row.id}
+                        tabIndex={0}
+                        onClick={() => setSelectedTopicId(row.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setSelectedTopicId(row.id);
+                          }
+                        }}
+                        className={`cursor-pointer border-l-2 transition-colors hover:bg-gray-900/40 ${
+                          selectedTopicId === row.id ? "border-indigo-500 bg-indigo-500/5" : "border-transparent"
+                        }`}
+                      >
+                        <td className="px-3 py-3 align-top">
+                          <DomainPill domain={row.domain} />
+                        </td>
+                        <td className="px-3 py-3 align-top">
+                          <SubdomainPill text={row.subdomain} />
+                        </td>
+                        <td className="max-w-md px-3 py-3 align-top">
+                          <p className="font-semibold text-white">{row.name}</p>
+                          {row.signal_rationale?.trim() ? (
+                            <p className="mt-1 line-clamp-2 text-xs italic text-gray-400">{row.signal_rationale}</p>
+                          ) : null}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
+                          {fmtOneDecimal(row.velocity_score)}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
+                          {row.acceleration_score === null || Number.isNaN(row.acceleration_score)
+                            ? "—"
+                            : `${row.acceleration_score.toFixed(1)}x`}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">{row.article_count}</td>
+                        <td className="px-3 py-3 align-top">
+                          <TrendPickBadge action={row.signal_suggested_action} />
+                        </td>
+                        <td className="px-3 py-3 align-top">
+                          {row.is_published ? (
+                            <span className="inline-flex rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400 ring-1 ring-emerald-500/30">
+                              Yes
+                            </span>
+                          ) : (
+                            <span className="inline-flex rounded-full bg-gray-800 px-2 py-0.5 text-xs font-medium text-gray-400 ring-1 ring-gray-700">
+                              No
+                            </span>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 align-top text-right" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              disabled={rowBusy}
+                              onClick={() => void analyzeTopicTrend(row.id)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/50 bg-indigo-500/15 px-2.5 py-1.5 text-xs font-medium text-indigo-200 hover:bg-indigo-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {analyzingId === row.id ? (
+                                <>
+                                  <Spinner className="h-3.5 w-3.5" />
+                                  AI…
+                                </>
+                              ) : (
+                                "AI analyze"
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={rowBusy}
+                              onClick={() => void demoteTopic(row.id)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/50 bg-rose-500/15 px-2.5 py-1.5 text-xs font-medium text-rose-200 hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+                              title="Move back to Watching (unpublish)"
+                            >
+                              {demotingId === row.id ? (
+                                <>
+                                  <Spinner className="h-3.5 w-3.5" />
+                                  …
+                                </>
+                              ) : (
+                                "Demote"
+                              )}
+                            </button>
+                            <Link
+                              href={`/admin/topics/${row.id}`}
+                              className="inline-flex items-center gap-1 text-xs font-medium text-indigo-400 hover:text-indigo-300"
+                            >
+                              <IconPencil className="h-4 w-4" />
+                              Edit
+                            </Link>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -733,8 +1292,11 @@ function TrendDiscoveryInner() {
                   {selectedRow?.name ?? topicDetail?.name ?? "Topic"}
                 </h2>
                 {(selectedRow ?? topicDetail) && (
-                  <div className="mt-2">
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
                     <DomainPill domain={(selectedRow ?? topicDetail)!.domain} />
+                    {(selectedRow ?? topicDetail)?.subdomain?.trim() ? (
+                      <SubdomainPill text={(selectedRow ?? topicDetail)!.subdomain} />
+                    ) : null}
                   </div>
                 )}
               </div>
@@ -762,18 +1324,16 @@ function TrendDiscoveryInner() {
                     acceleration={selectedRow.acceleration_score}
                   />
                   <div className="mt-4">
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Signal rationale</h3>
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">AI trend pick</h3>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <TrendPickBadge action={selectedRow.signal_suggested_action} />
+                    </div>
+                    <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-gray-500">Rationale</h3>
                     <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-gray-300">
                       {selectedRow.signal_rationale?.trim() ||
                         "No AI rationale yet. Use “AI analyze” in the table to generate one."}
                     </p>
                   </div>
-                  {selectedRow.signal_suggested_state?.trim() ? (
-                    <p className="mt-3 text-xs text-gray-500">
-                      Suggested state:{" "}
-                      <span className="text-gray-300">{selectedRow.signal_suggested_state}</span>
-                    </p>
-                  ) : null}
                 </>
               )}
 
@@ -806,7 +1366,7 @@ function TrendDiscoveryInner() {
               )}
             </div>
 
-            {selectedRow?.status === "pending" && (
+            {(selectedRow?.status === "pending" || selectedRow?.status === "watched") && (
               <div className="border-t border-gray-800 px-4 py-3">
                 <button
                   type="button"
@@ -820,7 +1380,7 @@ function TrendDiscoveryInner() {
                       Approving…
                     </>
                   ) : (
-                    "Approve"
+                    "Approve to radar"
                   )}
                 </button>
               </div>

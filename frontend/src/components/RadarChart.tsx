@@ -2,7 +2,10 @@
 
 import { useMemo, useState } from "react";
 
+import { industryColor, INDUSTRY_COLORS } from "@/lib/industryGrid";
 import { scrollToSubscribe } from "@/lib/subscribeNavigation";
+
+export { INDUSTRY_COLORS };
 
 // ── Public types ───────────────────────────────────────────────────────────────
 
@@ -30,8 +33,8 @@ export interface RadarTopic {
 }
 
 // ── Chart geometry ─────────────────────────────────────────────────────────────
-/** 1.5 = 50% larger than original 680px canvas / 175px radius design */
-const SCALE = 1.5;
+/** Base 1.5 × 1.25 = 25% larger radar than previous shipped size */
+const SCALE = 1.875;
 const SIZE = 680 * SCALE;
 const CX = SIZE / 2;
 const CY = SIZE / 2;
@@ -42,8 +45,8 @@ const MIN_URGENCY_R = 30 * SCALE;
 const STAR_OUTER_R = 14 * SCALE;
 const STAR_INNER_R = 6 * SCALE;
 const STAR_HALO_R = 24 * SCALE;
-/** Invisible target so hover is easy to trigger (SVG star path is small). */
-const STAR_HIT_R = STAR_HALO_R * 2.35;
+/** Hover/click target: tight to the star shape (visual halo stays large; hit area is not the halo). */
+const STAR_HIT_R = STAR_OUTER_R * 1.22;
 const STAR_HOVER_SCALE = 1.14;
 const STAR_STROKE_W = 1.25 * SCALE;
 const STAR_STROKE_HOVER_W = STAR_STROKE_W * 1.35;
@@ -69,27 +72,14 @@ const ADOPTION_AXES = [
 // Domain accent colours (fallback when no industry_positions are set)
 const DOMAIN_COLORS: Record<string, string> = {
   AI: "#7C3AED",
-  Security: "#DC2626",
+  Security: "#E91D24",
   Cloud: "#0284C7",
-  Finance: "#059669",
+  Finance: "#019E7C",
   Leadership: "#D97706",
   Other: "#6B7280",
 };
 
-// Per-industry colours used when industry_positions are defined
-export const INDUSTRY_COLORS: Record<string, string> = {
-  "Technology": "#2563EB",
-  "Healthcare": "#0891B2",
-  "Finance & Banking": "#059669",
-  "Manufacturing": "#9333EA",
-  "Education": "#D97706",
-  "Retail & E-Commerce": "#EA580C",
-  "Government & Public Sector": "#475569",
-  "Media & Entertainment": "#DB2777",
-  "Energy & Utilities": "#CA8A04",
-  "Other": "#6B7280",
-};
-
+// Per-industry colours: `INDUSTRY_COLORS` + `industryColor()` from `@/lib/industryGrid`
 const DEFAULT_COLOR = "#6B7280";
 
 // ── Internal plot-point type ───────────────────────────────────────────────────
@@ -140,26 +130,33 @@ function adoptionStateToAxisIndex(state: string): number {
   return ADOPTION_STATE_INDEX[state] ?? 0;
 }
 
-/** Impact drives base radius; higher risk pulls inward (core concern). */
-function industryEffectiveRadius(
-  pos: IndustryPosition,
-  topicFallbackUrgency: number,
-): number {
+/**
+ * Discrete impact bands: higher impact sits closer to the centre (priority).
+ * ≤5 outer · (5,6] · (6,7] · (7,8] · [8,9) · 9+ centre zone — one step inward per band.
+ */
+export function impactScoreToRadius(impact: number): number {
+  const x = Math.min(10, Math.max(1, impact));
+  let fracFromCentre: number;
+  if (x >= 9) fracFromCentre = 0.16;
+  else if (x >= 8) fracFromCentre = 0.33;
+  else if (x >= 7) fracFromCentre = 0.5;
+  else if (x >= 6) fracFromCentre = 0.67;
+  else if (x > 5) fracFromCentre = 0.84;
+  else fracFromCentre = 1.0;
+  return Math.max(MIN_URGENCY_R, fracFromCentre * MAX_R);
+}
+
+/** Ring guide radii (fractions of MAX_R from centre) — boundaries between impact bands. */
+const IMPACT_RING_GUIDE_FRACS = [0.84, 0.67, 0.5, 0.33, 0.16] as const;
+
+function radiusFromIndustryImpact(pos: IndustryPosition, topicFallbackUrgency: number): number {
   const impact =
     typeof pos.impact_score === "number"
       ? pos.impact_score
       : typeof pos.urgency_score === "number"
         ? pos.urgency_score
         : topicFallbackUrgency;
-  const risk =
-    typeof pos.risk_level === "number" ? pos.risk_level : 5;
-  const clampedImpact = Math.min(10, Math.max(1, impact));
-  const clampedRisk = Math.min(10, Math.max(1, risk));
-  const base = (clampedImpact / 10) * MAX_R;
-  // Higher risk → closer to centre (multiply radius down); neutral risk=5 → ~0.8x..1x band
-  const riskFactor = (clampedRisk - 1) / 9;
-  const inward = 1 - 0.5 * riskFactor;
-  return Math.max(MIN_URGENCY_R, base * inward);
+  return impactScoreToRadius(impact);
 }
 
 function axisAngleDeg(idx: number): number {
@@ -214,7 +211,7 @@ function buildPlotPoints(topics: RadarTopic[]): PlotPoint[] {
           key: `${topic.id}-${industry}`,
           topic,
           industry,
-          color: INDUSTRY_COLORS[industry] ?? DEFAULT_COLOR,
+          color: industryColor(industry),
           urgency: impact,
           adoptionState: pos.adoption_state ?? topic.adoption_state,
           rationale: pos.rationale,
@@ -254,9 +251,9 @@ function computePositions(topics: RadarTopic[]): PlotPointXY[] {
         group.length === 1 ? 0 : -spread / 2 + (spread / (group.length - 1)) * i;
       let r: number;
       if (pt.industry && pt.topic.industry_positions?.[pt.industry]) {
-        r = industryEffectiveRadius(pt.topic.industry_positions[pt.industry], pt.topic.urgency_score);
+        r = radiusFromIndustryImpact(pt.topic.industry_positions[pt.industry], pt.topic.urgency_score);
       } else {
-        r = Math.max(MIN_URGENCY_R, (pt.urgency / 10) * MAX_R);
+        r = impactScoreToRadius(pt.urgency);
       }
       const [x, y] = polarToXY(baseAngle + offset, r);
       result.push({ ...pt, x, y });
@@ -265,10 +262,122 @@ function computePositions(topics: RadarTopic[]): PlotPointXY[] {
   return result;
 }
 
-function topTopicsByUrgency(topics: RadarTopic[], n: number): RadarTopic[] {
-  return [...topics]
-    .sort((a, b) => b.urgency_score - a.urgency_score)
-    .slice(0, n);
+/**
+ * Same basis the chart uses for star distance when industry rows exist: max impact (1–10) across
+ * approved industries; otherwise topic-level urgency (matches fallback stars).
+ */
+export function topicRankScore(topic: RadarTopic): number {
+  const pos = topic.industry_positions;
+  if (!pos || Object.keys(pos).length === 0) {
+    return topic.urgency_score;
+  }
+  let max = 0;
+  let anyApproved = false;
+  for (const row of Object.values(pos)) {
+    if (!row || row.impact_approved === false) continue;
+    anyApproved = true;
+    const imp =
+      typeof row.impact_score === "number"
+        ? row.impact_score
+        : typeof row.urgency_score === "number"
+          ? row.urgency_score
+          : 0;
+    max = Math.max(max, imp);
+  }
+  if (!anyApproved) return topic.urgency_score;
+  return max > 0 ? max : topic.urgency_score;
+}
+
+function topTopicsForSidebar(topics: RadarTopic[], n: number): RadarTopic[] {
+  return [...topics].sort((a, b) => topicRankScore(b) - topicRankScore(a)).slice(0, n);
+}
+
+/** Label for the score shown next to each topic in the default sidebar. */
+function sidebarScoreLabel(topic: RadarTopic): string {
+  const pos = topic.industry_positions;
+  if (!pos || Object.keys(pos).length === 0) return "topic urgency";
+  for (const row of Object.values(pos)) {
+    if (row && row.impact_approved !== false) return "max impact";
+  }
+  return "topic urgency";
+}
+
+function legendEntriesForTopics(topics: RadarTopic[]): {
+  mode: "industry" | "domain";
+  entries: { label: string; color: string }[];
+} {
+  const industries = new Set<string>();
+  for (const t of topics) {
+    const pos = t.industry_positions;
+    if (!pos) continue;
+    for (const [name, row] of Object.entries(pos)) {
+      if (row?.impact_approved !== false) industries.add(name);
+    }
+  }
+  if (industries.size > 0) {
+    return {
+      mode: "industry",
+      entries: [...industries]
+        .sort((a, b) => a.localeCompare(b))
+        .map((name) => ({
+          label: name,
+          color: industryColor(name),
+        })),
+    };
+  }
+  const domains = new Set<string>();
+  for (const t of topics) domains.add(t.domain);
+  return {
+    mode: "domain",
+    entries: [...domains]
+      .sort((a, b) => a.localeCompare(b))
+      .map((d) => ({
+        label: d,
+        color: DOMAIN_COLORS[d] ?? DEFAULT_COLOR,
+      })),
+  };
+}
+
+function RadarColorLegend({
+  topics,
+  compact,
+}: {
+  topics: RadarTopic[];
+  compact?: boolean;
+}) {
+  const { mode, entries } = useMemo(() => legendEntriesForTopics(topics), [topics]);
+  if (topics.length === 0 || entries.length === 0) return null;
+
+  return (
+    <nav
+      aria-label="Star color legend"
+      className={
+        "w-full shrink-0 rounded-xl border border-gray-200 bg-gray-50/90 text-left font-sans shadow-sm lg:sticky lg:top-4 lg:max-h-[min(85vh,720px)] lg:overflow-y-auto lg:self-start " +
+        (compact
+          ? "px-2 py-2 lg:w-40"
+          : "px-3 py-3 lg:w-52")
+      }
+    >
+      <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">Star colors</p>
+      <p className="mt-0.5 text-xs text-gray-600">
+        {mode === "industry" ? "By industry" : "By topic domain"}
+      </p>
+      <ul className={compact ? "mt-2 space-y-2" : "mt-3 space-y-2.5"}>
+        {entries.map(({ label, color }) => (
+          <li key={label} className="flex items-start gap-2.5 text-sm leading-snug text-gray-800">
+            <span
+              className="mt-0.5 inline-block text-[15px] leading-none"
+              style={{ color }}
+              aria-hidden
+            >
+              ★
+            </span>
+            <span>{label}</span>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -276,10 +385,17 @@ function topTopicsByUrgency(topics: RadarTopic[], n: number): RadarTopic[] {
 export default function RadarChart({
   topics,
   showLabels = false,
+  emptyMessage = "No published topics yet",
+  layout = "default",
 }: {
   topics: RadarTopic[];
   showLabels?: boolean;
+  /** Shown when there are zero topics (e.g. admin preview vs public). */
+  emptyMessage?: string;
+  /** Tighter gaps, wider chart column, smaller legend — for admin preview. */
+  layout?: "default" | "compact";
 }) {
+  const compact = layout === "compact";
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [lockedKey, setLockedKey] = useState<string | null>(null);
   const positions = computePositions(topics);
@@ -291,7 +407,7 @@ export default function RadarChart({
     [positions, displayKey],
   );
 
-  const topThree = useMemo(() => topTopicsByUrgency(topics, 3), [topics]);
+  const topThree = useMemo(() => topTopicsForSidebar(topics, 3), [topics]);
 
   function handleStarPointerDown(ptKey: string) {
     setLockedKey((prev) => (prev === ptKey ? null : ptKey));
@@ -299,24 +415,36 @@ export default function RadarChart({
 
   return (
     <div
-      className="flex w-full max-w-7xl flex-col items-stretch justify-start gap-5 lg:flex-row lg:items-start lg:gap-6 mx-auto select-none"
+      className={
+        "mx-auto flex w-full select-none flex-col items-stretch justify-start lg:flex-row lg:items-start " +
+        (compact
+          ? "max-w-none gap-3 lg:gap-4"
+          : "max-w-[min(100%,96rem)] gap-6 lg:gap-5")
+      }
       style={
         {
           ["--radar-top-pill-offset" as string]: String(RADAR_TOP_PILL_OFFSET_RATIO),
         } as React.CSSProperties
       }
     >
-      <div className="mx-auto w-full max-w-[930px] shrink-0 lg:mx-0">
+      <RadarColorLegend topics={topics} compact={compact} />
+
+      <div
+        className={
+          "mx-auto w-full min-w-0 shrink-0 lg:mx-0 lg:flex-1 " +
+          (compact ? "max-w-[min(100%,1520px)]" : "max-w-[1163px]")
+        }
+      >
       <svg
         viewBox={`0 0 ${SIZE} ${SIZE}`}
         className="w-full h-auto"
-        aria-label="PulseOne Industry Radar — topics plotted by adoption state and urgency"
+        aria-label="PulseOne Industry Radar — wedge shows adoption stage; distance shows impact band (9+ toward centre)"
       >
         <defs>
           <radialGradient id="radarBg" cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor="#f0fdf9" />
             <stop offset="60%" stopColor="#ccfbf1" />
-            <stop offset="100%" stopColor="#0d9488" stopOpacity="0.55" />
+            <stop offset="100%" stopColor="var(--color-radar-bg)" stopOpacity="0.55" />
           </radialGradient>
           <filter id="starGlow" x="-80%" y="-80%" width="260%" height="260%">
             <feGaussianBlur in="SourceGraphic" stdDeviation={3.5 * SCALE} result="blur" />
@@ -337,16 +465,20 @@ export default function RadarChart({
         <g pointerEvents="none">
         {/* ── Radar background ── */}
         <circle cx={CX} cy={CY} r={MAX_R + RADAR_PAD} fill="url(#radarBg)" />
-        <circle cx={CX} cy={CY} r={MAX_R + RADAR_PAD} fill="none" stroke="#0d9488" strokeWidth={1.5 * SCALE} strokeOpacity="0.4" />
+        <circle cx={CX} cy={CY} r={MAX_R + RADAR_PAD} fill="none" stroke="var(--color-radar-bg)" strokeWidth={1.5 * SCALE} strokeOpacity="0.4" />
 
-        {/* ── Urgency rings ── */}
-        {[2, 4, 6, 8, 10].map((u) => (
+        {/* Impact band guides: boundaries between ≤5 · (5,6] · (6,7] · (7,8] · [8,9) · 9+ */}
+        {IMPACT_RING_GUIDE_FRACS.map((frac) => (
           <circle
-            key={u}
-            cx={CX} cy={CY} r={(u / 10) * MAX_R}
-            fill="none" stroke="#0d9488" strokeWidth={0.75 * SCALE}
-            strokeOpacity={u === 10 ? 0.5 : 0.25}
-            strokeDasharray={u < 10 ? "4 3" : undefined}
+            key={frac}
+            cx={CX}
+            cy={CY}
+            r={frac * MAX_R}
+            fill="none"
+            stroke="var(--color-radar-bg)"
+            strokeWidth={0.75 * SCALE}
+            strokeOpacity={0.35}
+            strokeDasharray="4 3"
           />
         ))}
 
@@ -361,13 +493,13 @@ export default function RadarChart({
           const pillTop = svgCoord(ly - pillH / 2);
           return (
             <g key={label}>
-              <line x1={CX} y1={CY} x2={sx} y2={sy} stroke="#0d9488" strokeWidth={1 * SCALE} strokeOpacity="0.35" />
-              <rect x={pillLeft} y={pillTop} width={pillW} height={pillH} rx={PILL_RX} fill="#425B76" />
+              <line x1={CX} y1={CY} x2={sx} y2={sy} stroke="var(--color-radar-bg)" strokeWidth={1 * SCALE} strokeOpacity="0.35" />
+              <rect x={pillLeft} y={pillTop} width={pillW} height={pillH} rx={PILL_RX} fill="var(--color-pulse-teal)" />
               <text
                 x={lx} y={svgCoord(ly + 1 * SCALE)}
                 textAnchor="middle" dominantBaseline="middle"
                 fill="white" fontSize={PILL_FONT} fontWeight="600"
-                fontFamily="Inter,system-ui,sans-serif" letterSpacing="0.01em"
+                fontFamily="'IBM Plex Sans',system-ui,sans-serif" letterSpacing="0.01em"
               >
                 {label}
               </text>
@@ -376,7 +508,7 @@ export default function RadarChart({
         })}
 
         {/* ── Centre pip ── */}
-        <circle cx={CX} cy={CY} r={4 * SCALE} fill="#425B76" opacity="0.45" />
+        <circle cx={CX} cy={CY} r={4 * SCALE} fill="var(--color-pulse-teal)" opacity="0.45" />
 
         {/* ── Stars (per-industry or domain fallback) — visuals first; see hit-target pass below ── */}
         {positions.map((pt) => {
@@ -416,7 +548,7 @@ export default function RadarChart({
                   fontSize={9.5 * SCALE}
                   fill={pt.color}
                   fontWeight="600"
-                  fontFamily="Inter,system-ui,sans-serif"
+                  fontFamily="'IBM Plex Sans',system-ui,sans-serif"
                   style={{ pointerEvents: "none", opacity: isHighlighted ? 1 : 0.92 }}
                 >
                   {pt.topic.name.length > 20
@@ -431,8 +563,8 @@ export default function RadarChart({
         {/* ── Empty state ── */}
         {topics.length === 0 && (
           <text x={CX} y={CY} textAnchor="middle" dominantBaseline="middle"
-            fill="#0d9488" fontSize={14 * SCALE} opacity="0.6" fontFamily="Inter,system-ui,sans-serif">
-            No published topics yet
+            fill="var(--color-radar-bg)" fontSize={14 * SCALE} opacity="0.6" fontFamily="'IBM Plex Sans',system-ui,sans-serif">
+            {emptyMessage}
           </text>
         )}
         </g>
@@ -476,15 +608,19 @@ export default function RadarChart({
       {/* ── Detail panel: lg top padding matches SVG “Learn About” pill (not the raw SVG box top) ── */}
       <aside
         className={
-          "w-full min-w-0 flex-1 lg:max-w-md max-lg:pt-0 " +
-          "lg:pt-[calc(var(--radar-top-pill-offset)*min(930px,calc(100vw-3rem)))]"
+          "w-full min-w-0 shrink-0 max-lg:pt-0 " +
+          (compact ? "lg:max-w-sm " : "lg:max-w-md ") +
+          (compact
+            ? "lg:pt-[calc(var(--radar-top-pill-offset)*min(1520px,calc(100vw-3rem)))]"
+            : "lg:pt-[calc(var(--radar-top-pill-offset)*min(1163px,calc(100vw-3rem)))]")
         }
         aria-live="polite"
       >
         <div
           className={[
-            "rounded-2xl border-2 bg-white px-6 py-5 shadow-lg transition-shadow",
-            activePoint ? "border-[#425B76] shadow-[#425B76]/10" : "border-gray-200",
+            "rounded-2xl border-2 bg-white shadow-lg transition-shadow",
+            compact ? "px-4 py-4" : "px-6 py-5",
+            activePoint ? "border-pulse-teal ring-1 ring-pulse-teal/20" : "border-gray-200",
           ].join(" ")}
         >
           {activePoint ? (
@@ -510,15 +646,24 @@ function RadarDefaultPanel({
 }) {
   return (
     <div className="text-center font-sans lg:text-left">
-      <p className="text-base font-semibold text-[#425B76]">PulseOne Technology Radar</p>
+      <p className="text-base font-semibold text-pulse-teal">PulseOne Technology Radar</p>
       <p className="mt-3 text-sm leading-relaxed text-gray-600">
         The PulseOne Technology Radar tracks the signals that matter most to your business.
       </p>
       {topics.length > 0 ? (
         <>
+          <p className="mt-4 text-left text-xs leading-relaxed text-gray-500">
+            <span className="font-semibold text-gray-600">How to read this chart:</span> each{" "}
+            <span className="text-gray-700">wedge</span> is an adoption stage for that industry.{" "}
+            <span className="text-gray-700">Distance from the center</span> uses discrete impact bands:{" "}
+            <span className="text-gray-700">9+</span> sits in the centre zone,{" "}
+            <span className="text-gray-700">5 and below</span> on the outer ring, with one ring inward for each band{" "}
+            (5–6, 6–7, 7–8, 8–9). Dashed circles mark those bands. Risk is shown in the detail panel only. The list below
+            ranks by the same impact score (max across industries when several stars exist).
+          </p>
           <div className="mt-5 border-t border-gray-200 pt-5">
             <p className="text-xs font-bold uppercase tracking-wide text-gray-400">
-              Top 3 highest impact
+              Top 3 (chart impact)
             </p>
             <ul className="mt-3 space-y-3 text-left">
               {topThree.map((t) => (
@@ -537,7 +682,7 @@ function RadarDefaultPanel({
                   </span>
                   <span className="font-medium text-gray-900">{t.name}</span>
                   <span className="ml-auto rounded-md bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-800">
-                    {t.urgency_score.toFixed(1)} urgency
+                    {topicRankScore(t).toFixed(1)} {sidebarScoreLabel(t)}
                   </span>
                 </li>
               ))}
@@ -546,7 +691,7 @@ function RadarDefaultPanel({
           <button
             type="button"
             onClick={() => scrollToSubscribe()}
-            className="mt-6 w-full rounded-lg border-2 border-[#425B76] bg-white px-4 py-2.5 text-sm font-semibold text-[#425B76] transition-colors hover:bg-[#425B76]/5"
+            className="mt-6 w-full rounded-lg border-2 border-pulse-teal bg-white px-4 py-2.5 text-sm font-semibold text-pulse-teal transition-colors hover:bg-pulse-teal/5"
           >
             Subscribe for personalized briefings
           </button>
@@ -605,7 +750,7 @@ function RadarTooltipPanel({ point: pt }: { point: PlotPointXY }) {
       <button
         type="button"
         onClick={() => scrollToSubscribe(pt.topic.domain)}
-        className="mt-5 w-full rounded-lg border border-[#425B76]/30 bg-[#425B76]/5 px-3 py-2.5 text-left text-sm font-semibold text-[#425B76] transition-colors hover:bg-[#425B76]/10"
+        className="mt-5 w-full rounded-lg border border-pulse-teal/30 bg-pulse-teal/5 px-3 py-2.5 text-left text-sm font-semibold text-pulse-teal transition-colors hover:bg-pulse-teal/10"
       >
         Get briefings on {pt.topic.name} →
       </button>

@@ -30,7 +30,7 @@ const DOMAIN_OPTIONS = [
   { value: "Other", label: "Other Topics", color: "#6b7280" },
 ];
 
-type Step = 1 | 2 | 3 | 4;
+type Step = 1 | 2 | 3 | 4 | 5;
 
 interface PublicRole {
   id: number;
@@ -66,16 +66,16 @@ function StepIndicator({ current, total }: { current: Step; total: number }) {
             <div
               className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold transition-colors ${
                 active
-                  ? "bg-indigo-600 text-white"
+                  ? "bg-pulse-teal text-white"
                   : done
-                    ? "bg-indigo-900 text-indigo-300"
-                    : "bg-gray-800 text-gray-500"
+                    ? "bg-gray-100 text-pulse-teal"
+                    : "bg-gray-100 text-gray-400"
               }`}
             >
               {done ? "✓" : n}
             </div>
             {i < total - 1 && (
-              <div className={`h-px w-8 ${done ? "bg-indigo-700" : "bg-gray-800"}`} />
+              <div className={`h-px w-8 ${done ? "bg-pulse-teal" : "bg-gray-200"}`} />
             )}
           </div>
         );
@@ -101,6 +101,7 @@ export default function SubscribeWizard({ apiBase }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState("");
   const [done, setDone] = useState(false);
+  const [duplicateEmail, setDuplicateEmail] = useState(false);
 
   useEffect(() => {
     if (!isClient) return;
@@ -180,7 +181,28 @@ export default function SubscribeWizard({ apiBase }: Props) {
     if (step === 1 && !validateStep1()) return;
     if (step === 2 && !validateStep2()) return;
     if (step === 3 && !validateStep3()) return;
-    setStep((prev) => (prev < 4 ? ((prev + 1) as Step) : prev));
+    setStep((prev) => (prev < 5 ? ((prev + 1) as Step) : prev));
+  }
+
+  function goToStep(next: Step) {
+    setApiError("");
+    setStep(next);
+  }
+
+  function startOver() {
+    setForm({
+      email: "",
+      first_name: "",
+      last_name: "",
+      role_id: null,
+      industry: "",
+      domains: [],
+    });
+    setStep(1);
+    setErrors({});
+    setApiError("");
+    setDone(false);
+    setDuplicateEmail(false);
   }
 
   async function handleSubmit() {
@@ -199,6 +221,10 @@ export default function SubscribeWizard({ apiBase }: Props) {
           domains: form.domains.length > 0 ? form.domains : null,
         }),
       });
+      if (res.status === 409) {
+        setDuplicateEmail(true);
+        return;
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(
@@ -213,23 +239,59 @@ export default function SubscribeWizard({ apiBase }: Props) {
     }
   }
 
+  if (duplicateEmail) {
+    const displayEmail = form.email.trim().toLowerCase();
+    return (
+      <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-sky-100">
+          <svg
+            className="h-8 w-8 text-sky-600"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            aria-hidden
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+        </div>
+        <h3 className="text-xl font-bold text-pulse-teal">You&apos;re already subscribed!</h3>
+        <p className="mt-3 text-sm leading-relaxed text-gray-600">
+          The email <span className="font-medium text-gray-900">{displayEmail}</span> is already on
+          our list. Keep an eye on your inbox for the next briefing.
+        </p>
+        <button
+          type="button"
+          onClick={startOver}
+          className="mt-8 rounded-lg border-2 border-pulse-teal bg-white px-6 py-2.5 text-sm font-semibold text-pulse-teal transition-colors hover:bg-pulse-teal/5"
+        >
+          Start Over
+        </button>
+      </div>
+    );
+  }
+
   if (done) {
     const roleLabel = roles.find((r) => r.id === form.role_id)?.name ?? "your role";
     return (
-      <div className="rounded-2xl border border-gray-800 bg-gray-900 p-8 text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600/20">
-          <svg className="h-7 w-7 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-pulse-teal/10">
+          <svg className="h-7 w-7 text-pulse-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
         </div>
-        <h3 className="text-xl font-bold text-white">You&apos;re on the Radar</h3>
-        <p className="mt-2 text-sm text-gray-400">
+        <h3 className="text-xl font-bold text-pulse-teal">You&apos;re on the Radar</h3>
+        <p className="mt-2 text-sm text-gray-600">
           Welcome, {form.first_name}. We&apos;ll tailor the Pulse for{" "}
-          <strong className="text-gray-300">{roleLabel}</strong>
+          <strong className="font-semibold text-gray-900">{roleLabel}</strong>
           {form.domains.length > 0 ? (
             <>
               {" "}
-              across <strong className="text-gray-300">{form.domains.join(", ")}</strong>
+              across <strong className="font-semibold text-gray-900">{form.domains.join(", ")}</strong>
             </>
           ) : null}
           .
@@ -240,28 +302,32 @@ export default function SubscribeWizard({ apiBase }: Props) {
 
   const allDomainsMode = form.domains.length === 0;
 
+  const roleLabel =
+    roles.find((r) => r.id === form.role_id)?.name ??
+    (roles.length === 0 ? "Not specified" : "—");
+
   const inputCls =
-    "w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
-  const errorCls = "mt-1 text-xs text-red-400";
+    "w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:border-pulse-teal focus:outline-none focus:ring-2 focus:ring-pulse-teal";
+  const errorCls = "mt-1 text-xs text-red-600";
 
   return (
-    <div className="rounded-2xl border border-gray-800 bg-gray-900 p-6 sm:p-8">
-      <h2 className="mb-1 text-xl font-bold text-white">Subscribe to the Pulse</h2>
-      <p className="mb-6 text-sm text-gray-400">
+    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
+      <h2 className="mb-1 text-xl font-bold text-pulse-teal">Subscribe to the Pulse</h2>
+      <p className="mb-6 text-sm text-gray-600">
         Get a weekly C-level briefing tailored to your role, industry, and interests.
       </p>
 
       {!isClient ? (
-        <div className="min-h-[280px] rounded-lg bg-gray-800/40 animate-pulse" aria-busy aria-label="Loading form" />
+        <div className="min-h-[280px] rounded-lg bg-gray-200/80 animate-pulse" aria-busy aria-label="Loading form" />
       ) : (
         <>
-          <StepIndicator current={step} total={4} />
+          <StepIndicator current={step} total={5} />
 
           {step === 1 && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-400">First name</label>
+                  <label className="mb-1 block text-xs font-medium text-gray-700">First name</label>
                   <input
                     type="text"
                     placeholder="Jane"
@@ -273,7 +339,7 @@ export default function SubscribeWizard({ apiBase }: Props) {
                   {errors.first_name && <p className={errorCls}>{errors.first_name}</p>}
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-400">Last name</label>
+                  <label className="mb-1 block text-xs font-medium text-gray-700">Last name</label>
                   <input
                     type="text"
                     placeholder="Smith"
@@ -285,7 +351,7 @@ export default function SubscribeWizard({ apiBase }: Props) {
                 </div>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-400">Work email</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Work email</label>
                 <input
                   type="email"
                   placeholder="jane@company.com"
@@ -301,15 +367,15 @@ export default function SubscribeWizard({ apiBase }: Props) {
 
           {step === 2 && (
             <div>
-              <label className="mb-2 block text-xs font-medium text-gray-400">Your role</label>
+              <label className="mb-2 block text-xs font-medium text-gray-700">Your role</label>
               {!rolesError && roles.length === 0 && (
-                <p className="mb-2 text-sm text-gray-500">
+                <p className="mb-2 text-sm text-gray-600">
                   Role options are not available yet; you can continue and we&apos;ll still personalize your briefing by
                   industry and domains.
                 </p>
               )}
               {rolesError ? (
-                <p className="text-sm text-red-400">{rolesError}</p>
+                <p className="text-sm text-red-600">{rolesError}</p>
               ) : roles.length > 0 ? (
                 <select
                   value={form.role_id ?? ""}
@@ -334,7 +400,7 @@ export default function SubscribeWizard({ apiBase }: Props) {
 
           {step === 3 && (
             <div>
-              <label className="mb-2 block text-xs font-medium text-gray-400">Your industry</label>
+              <label className="mb-2 block text-xs font-medium text-gray-700">Your industry</label>
               <select
                 value={form.industry}
                 onChange={(e) => set("industry", e.target.value)}
@@ -355,7 +421,7 @@ export default function SubscribeWizard({ apiBase }: Props) {
 
           {step === 4 && (
             <div>
-              <p className="mb-3 text-xs text-gray-400">
+              <p className="mb-3 text-xs text-gray-600">
                 Choose the full briefing across all domains, or pick specific topics below:
               </p>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -367,15 +433,15 @@ export default function SubscribeWizard({ apiBase }: Props) {
                   }}
                   className={`col-span-2 flex items-start gap-3 rounded-lg border-2 px-3 py-3 text-left text-xs transition-all sm:col-span-3 ${
                     allDomainsMode
-                      ? "border-indigo-500 bg-indigo-950/40 ring-1 ring-indigo-500/30"
-                      : "border-gray-600 bg-gray-800/50 hover:border-gray-500"
+                      ? "border-pulse-teal bg-pulse-teal/5 ring-1 ring-pulse-teal/20"
+                      : "border-gray-200 bg-white hover:border-gray-300"
                   }`}
                 >
                   <span
                     className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${
                       allDomainsMode
-                        ? "border-indigo-400 bg-indigo-600/30 text-indigo-300"
-                        : "border-gray-600 bg-gray-800 text-transparent"
+                        ? "border-pulse-teal bg-pulse-teal/10 text-pulse-teal"
+                        : "border-gray-300 bg-white text-transparent"
                     }`}
                     aria-hidden
                   >
@@ -384,10 +450,10 @@ export default function SubscribeWizard({ apiBase }: Props) {
                     </svg>
                   </span>
                   <span className="min-w-0">
-                    <span className={`block font-semibold ${allDomainsMode ? "text-indigo-100" : "text-gray-400"}`}>
+                    <span className={`block font-semibold ${allDomainsMode ? "text-pulse-teal" : "text-gray-700"}`}>
                       All Domains — get the full briefing
                     </span>
-                    <span className="mt-0.5 block text-[11px] leading-snug text-gray-500">
+                    <span className="mt-0.5 block text-[11px] leading-snug text-gray-600">
                       {allDomainsMode
                         ? "You'll receive coverage across every topic we track."
                         : "Switch back to include all topics in your Pulse."}
@@ -404,23 +470,110 @@ export default function SubscribeWizard({ apiBase }: Props) {
                       onClick={() => toggleDomain(value)}
                       className={`flex flex-col items-start rounded-lg border px-3 py-2.5 text-left text-xs transition-all ${
                         dimmed
-                          ? "cursor-pointer border-gray-700/80 bg-gray-800/40 opacity-45 hover:border-gray-600 hover:opacity-70"
+                          ? "cursor-pointer border-gray-200 bg-white opacity-45 hover:border-gray-300 hover:opacity-70"
                           : active
-                            ? "border-indigo-500 bg-indigo-600/20 opacity-100"
-                            : "border-gray-700 bg-gray-800 opacity-100 hover:border-gray-600"
+                            ? "border-pulse-teal bg-pulse-teal/5 opacity-100"
+                            : "border-gray-200 bg-white text-gray-700 opacity-100 hover:border-gray-300"
                       }`}
                     >
                       <span className="mb-1 h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
-                      <span className={`font-semibold ${!dimmed && active ? "text-white" : "text-gray-300"}`}>
+                      <span
+                        className={`font-semibold ${
+                          !dimmed && active ? "text-pulse-teal" : "text-gray-700"
+                        }`}
+                      >
                         {value}
                       </span>
-                      <span className="text-gray-500">{label}</span>
+                      <span className="text-gray-600">{label}</span>
                     </button>
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {step === 5 && (
+            <div>
+              <p className="mb-4 text-sm font-medium text-pulse-teal">
+                Review your subscription details
+              </p>
+              <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4">
+                <dl className="divide-y divide-gray-200">
+                  <div className="flex flex-wrap items-start justify-between gap-2 py-3 first:pt-0">
+                    <div>
+                      <dt className="text-xs font-medium text-gray-500">Name</dt>
+                      <dd className="mt-0.5 text-sm text-gray-900">
+                        {form.first_name.trim()} {form.last_name.trim()}
+                      </dd>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => goToStep(1)}
+                      className="shrink-0 text-sm font-medium text-pulse-teal underline decoration-pulse-teal/40 underline-offset-2 hover:decoration-pulse-teal"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap items-start justify-between gap-2 py-3">
+                    <div>
+                      <dt className="text-xs font-medium text-gray-500">Email</dt>
+                      <dd className="mt-0.5 text-sm text-gray-900">{form.email.trim()}</dd>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => goToStep(1)}
+                      className="shrink-0 text-sm font-medium text-pulse-teal underline decoration-pulse-teal/40 underline-offset-2 hover:decoration-pulse-teal"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap items-start justify-between gap-2 py-3">
+                    <div>
+                      <dt className="text-xs font-medium text-gray-500">Role</dt>
+                      <dd className="mt-0.5 text-sm text-gray-900">{roleLabel}</dd>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => goToStep(2)}
+                      className="shrink-0 text-sm font-medium text-pulse-teal underline decoration-pulse-teal/40 underline-offset-2 hover:decoration-pulse-teal"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap items-start justify-between gap-2 py-3">
+                    <div>
+                      <dt className="text-xs font-medium text-gray-500">Industry</dt>
+                      <dd className="mt-0.5 text-sm text-gray-900">{form.industry}</dd>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => goToStep(3)}
+                      className="shrink-0 text-sm font-medium text-pulse-teal underline decoration-pulse-teal/40 underline-offset-2 hover:decoration-pulse-teal"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap items-start justify-between gap-2 py-3 last:pb-0">
+                    <div className="min-w-0 flex-1">
+                      <dt className="text-xs font-medium text-gray-500">Domains</dt>
+                      <dd className="mt-0.5 text-sm text-gray-900">
+                        {form.domains.length === 0
+                          ? "All Domains"
+                          : form.domains.join(", ")}
+                      </dd>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => goToStep(4)}
+                      className="shrink-0 text-sm font-medium text-pulse-teal underline decoration-pulse-teal/40 underline-offset-2 hover:decoration-pulse-teal"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                </dl>
+              </div>
               {apiError && (
-                <p className="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{apiError}</p>
+                <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{apiError}</p>
               )}
             </div>
           )}
@@ -430,7 +583,7 @@ export default function SubscribeWizard({ apiBase }: Props) {
               <button
                 type="button"
                 onClick={() => setStep((prev) => (prev > 1 ? ((prev - 1) as Step) : prev))}
-                className="text-sm text-gray-500 transition-colors hover:text-gray-300"
+                className="text-sm text-gray-600 transition-colors hover:text-pulse-teal"
               >
                 ← Back
               </button>
@@ -438,7 +591,7 @@ export default function SubscribeWizard({ apiBase }: Props) {
               <span />
             )}
 
-            {step < 4 ? (
+            {step < 5 ? (
               <button
                 type="button"
                 onClick={handleNext}

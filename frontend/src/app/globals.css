@@ -8,39 +8,40 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-ibm-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   /* PulseOne brand palette */
-  --color-pulse-red: #E91D24;
-  --color-pulse-teal: #425B76;
-  --color-pulse-gray: #E5E5E5;
+  --color-pulse-red: #e91d24;
+  --color-pulse-teal: #019e7c;
+  --color-pulse-gray: #e5e5e5;
+  --color-pulse-surface: #f4f8fa;
 
   /* Radar chart gradient stops */
-  --color-radar-bg: #0d9488;
+  --color-radar-bg: #019e7c;
   --color-radar-mid: #ccfbf1;
   --color-radar-inner: #f0fdf9;
   --color-radar-center: #ffffff;
 
   /* Domain accent colors (radar stars) */
-  --color-industry-ai: #7C3AED;
-  --color-industry-security: #DC2626;
-  --color-industry-cloud: #0284C7;
-  --color-industry-finance: #059669;
-  --color-industry-leadership: #D97706;
-  --color-industry-other: #6B7280;
+  --color-industry-ai: #7c3aed;
+  --color-industry-security: #e91d24;
+  --color-industry-cloud: #0284c7;
+  --color-industry-finance: #019e7c;
+  --color-industry-leadership: #d97706;
+  --color-industry-other: #6b7280;
 
   /* Subscriber industry accent colors */
-  --color-ind-tech: #2563EB;
-  --color-ind-health: #0891B2;
-  --color-ind-finance: #059669;
-  --color-ind-mfg: #9333EA;
-  --color-ind-smb: #F59E0B;
-  --color-ind-all: #425B76;
+  --color-ind-tech: #2563eb;
+  --color-ind-health: #0891b2;
+  --color-ind-finance: #019e7c;
+  --color-ind-mfg: #9333ea;
+  --color-ind-smb: #f59e0b;
+  --color-ind-all: #019e7c;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Inter, Roboto, system-ui, sans-serif;
+  font-family: var(--font-sans), sans-serif;
 }

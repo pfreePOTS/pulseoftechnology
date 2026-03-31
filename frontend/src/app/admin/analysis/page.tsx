@@ -1,8 +1,16 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Fragment,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import { adminFetch, API_BASE } from "@/lib/api";
+import { INDUSTRY_OPTIONS } from "@/lib/industryGrid";
 
 const DOMAIN_COLORS: Record<string, string> = {
   AI: "bg-violet-500/20 text-violet-400",
@@ -12,29 +20,8 @@ const DOMAIN_COLORS: Record<string, string> = {
   Leadership: "bg-indigo-500/20 text-indigo-400",
 };
 
-/** Column headers for the master industry grid — must match backend / AI suggestions. */
-export const INDUSTRY_OPTIONS = [
-  "Healthcare",
-  "Financial Services",
-  "Technology",
-  "Manufacturing",
-  "Energy",
-  "Retail",
-  "Government",
-  "Education",
-  "Telecommunications",
-  "Transportation",
-  "Media & Entertainment",
-  "Real Estate",
-  "Agriculture",
-  "Pharma & Biotech",
-  "Legal Services",
-  "Hospitality",
-  "Nonprofit",
-  "Defense & Aerospace",
-  "Insurance",
-  "Professional Services",
-] as const;
+/** Re-export for callers that imported from this module */
+export { INDUSTRY_OPTIONS };
 
 const ADOPTION_STATES = [
   "Learn About",
@@ -67,6 +54,8 @@ interface TopicRow {
   urgency_score: number;
   adoption_state: string;
   industry_positions: Record<string, IndustryPosition> | null;
+  /** Saved topic-level persona copy; when set, overrides article aggregation in this UI. */
+  persona_by_role?: Record<string, string> | null;
   article_count: number;
   is_published: boolean;
 }
@@ -85,6 +74,45 @@ interface RoleRow {
   name: string;
 }
 
+/** Merge lines from each linked article’s `persona_impacts` (set during RSS → AI processing). */
+function aggregatePersonaFromArticles(
+  articles: ArticleDetail[],
+  roleNames: string[],
+): Record<string, string> {
+  const byRole: Record<string, string> = {};
+  for (const role of roleNames) {
+    const texts: string[] = [];
+    for (const art of articles) {
+      const pi = art.persona_impacts;
+      if (pi && typeof pi === "object" && role in pi) {
+        const s = String((pi as Record<string, string>)[role] ?? "").trim();
+        if (s) texts.push(s);
+      }
+    }
+    byRole[role] = texts.length ? [...new Set(texts)].join(" · ") : "";
+  }
+  return byRole;
+}
+
+/** Prefer saved topic-level persona when present; otherwise show article aggregate. */
+function buildPersonaDraft(
+  topic: TopicRow,
+  articles: ArticleDetail[],
+  roleNames: string[],
+): Record<string, string> {
+  const agg = aggregatePersonaFromArticles(articles, roleNames);
+  const o = topic.persona_by_role;
+  if (o && typeof o === "object" && Object.keys(o).length > 0) {
+    const out: Record<string, string> = {};
+    for (const r of roleNames) {
+      const v = o[r];
+      out[r] = typeof v === "string" && v.trim() ? v : (agg[r] ?? "");
+    }
+    return out;
+  }
+  return agg;
+}
+
 function clonePositions(
   raw: Record<string, IndustryPosition> | null | undefined,
 ): Record<string, IndustryPosition> {
@@ -94,6 +122,68 @@ function clonePositions(
     out[k] = { ...v };
   }
   return out;
+}
+
+function ChevronRight({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      aria-hidden
+    >
+      <path
+        fillRule="evenodd"
+        d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+}
+
+function CollapsibleHelpBlock({
+  id,
+  title,
+  open,
+  onToggle,
+  children,
+}: {
+  id: string;
+  title: ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  const headingId = `${id}-heading`;
+  const panelId = `${id}-panel`;
+  return (
+    <div>
+      <button
+        type="button"
+        id={headingId}
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={onToggle}
+        className="flex w-full items-center gap-2 rounded-lg text-left text-xs font-semibold uppercase tracking-wide text-gray-500 outline-none ring-pulse-teal/40 hover:text-gray-400 focus-visible:ring-2"
+      >
+        <ChevronRight
+          className={`h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200 ease-out ${
+            open ? "rotate-90" : ""
+          }`}
+        />
+        <span>{title}</span>
+      </button>
+      <div
+        id={panelId}
+        role="region"
+        aria-labelledby={headingId}
+        hidden={!open}
+        className={open ? "mt-3" : "hidden"}
+      >
+        {children}
+      </div>
+    </div>
+  );
 }
 
 function defaultIndustryRow(): IndustryPosition {
@@ -142,6 +232,8 @@ const ADOPTION_BORDER: Record<string, string> = {
 };
 
 export default function AnalysisPage() {
+  const [impactRiskHelpOpen, setImpactRiskHelpOpen] = useState(true);
+  const [adoptionHelpOpen, setAdoptionHelpOpen] = useState(true);
   const [mainTab, setMainTab] = useState<"industry" | "persona">("industry");
   const [topics, setTopics] = useState<TopicRow[]>([]);
   const [drafts, setDrafts] = useState<Record<number, Record<string, IndustryPosition>>>({});
@@ -151,31 +243,49 @@ export default function AnalysisPage() {
   const [savingAll, setSavingAll] = useState(false);
   const [suggestingAll, setSuggestingAll] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [rationaleOpen, setRationaleOpen] = useState<{ topicId: number; industry: string } | null>(
+    null,
+  );
 
   const [roles, setRoles] = useState<RoleRow[]>([]);
-  const [personaMatrix, setPersonaMatrix] = useState<Record<number, Record<string, string>>>({});
+  const [personaDrafts, setPersonaDrafts] = useState<Record<number, Record<string, string>>>({});
+  const [personaDirtyIds, setPersonaDirtyIds] = useState<Set<number>>(() => new Set());
   const [personaLoading, setPersonaLoading] = useState(false);
+  const [personaSuggestingAll, setPersonaSuggestingAll] = useState(false);
+  const [personaSavingAll, setPersonaSavingAll] = useState(false);
 
   const loadTopics = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
-    const res = await adminFetch(`${API_BASE}/api/admin/topics?status=selected`);
-    if (!res.ok) {
-      setLoadError("Could not load approved topics.");
+    try {
+      const res = await adminFetch(`${API_BASE}/api/admin/topics?status=selected`);
+      if (!res.ok) {
+        setLoadError("Could not load approved topics.");
+        setTopics([]);
+        setDrafts({});
+        return;
+      }
+      const data: TopicRow[] = await res.json();
+      setTopics(data);
+      const d: Record<number, Record<string, IndustryPosition>> = {};
+      for (const t of data) {
+        d[t.id] = clonePositions(t.industry_positions);
+      }
+      setDrafts(d);
+      setDirtyIds(new Set());
+    } catch (e) {
+      const msg =
+        e instanceof TypeError
+          ? `Cannot reach the API at ${API_BASE}. Start the backend (e.g. docker compose up from the repo root) or set NEXT_PUBLIC_API_URL.`
+          : e instanceof Error
+            ? e.message
+            : "Network error.";
+      setLoadError(msg);
       setTopics([]);
       setDrafts({});
+    } finally {
       setLoading(false);
-      return;
     }
-    const data: TopicRow[] = await res.json();
-    setTopics(data);
-    const d: Record<number, Record<string, IndustryPosition>> = {};
-    for (const t of data) {
-      d[t.id] = clonePositions(t.industry_positions);
-    }
-    setDrafts(d);
-    setDirtyIds(new Set());
-    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -187,33 +297,34 @@ export default function AnalysisPage() {
     let cancelled = false;
     async function loadPersona() {
       setPersonaLoading(true);
-      setPersonaMatrix({});
       try {
         const rr = await adminFetch(`${API_BASE}/api/admin/roles`);
         if (!rr.ok || cancelled) return;
         const roleList: RoleRow[] = await rr.json();
         if (cancelled) return;
         setRoles(roleList);
-        const matrix: Record<number, Record<string, string>> = {};
+        const roleNames = roleList.map((r) => r.name);
+        const drafts: Record<number, Record<string, string>> = {};
         for (const t of topics) {
           const tr = await adminFetch(`${API_BASE}/api/admin/topics/${t.id}`);
           if (!tr.ok) continue;
           const detail: TopicDetail = await tr.json();
-          const byRole: Record<string, string> = {};
-          for (const role of roleList) {
-            const texts: string[] = [];
-            for (const art of detail.articles ?? []) {
-              const pi = art.persona_impacts;
-              if (pi && typeof pi === "object" && role.name in pi) {
-                const s = String((pi as Record<string, string>)[role.name] ?? "").trim();
-                if (s) texts.push(s);
-              }
-            }
-            byRole[role.name] = texts.length ? [...new Set(texts)].join(" · ") : "—";
-          }
-          matrix[t.id] = byRole;
+          drafts[t.id] = buildPersonaDraft(t, detail.articles ?? [], roleNames);
         }
-        if (!cancelled) setPersonaMatrix(matrix);
+        if (!cancelled) {
+          setPersonaDrafts(drafts);
+          setPersonaDirtyIds(new Set());
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setActionError(
+            e instanceof TypeError
+              ? `Cannot reach the API at ${API_BASE}. Is the backend running?`
+              : e instanceof Error
+                ? e.message
+                : "Failed to load persona data.",
+          );
+        }
       } finally {
         if (!cancelled) setPersonaLoading(false);
       }
@@ -352,6 +463,116 @@ export default function AnalysisPage() {
     }
   }, [topics, suggestIndustries]);
 
+  const updatePersonaCell = useCallback((topicId: number, role: string, value: string) => {
+    setPersonaDrafts((prev) => ({
+      ...prev,
+      [topicId]: { ...(prev[topicId] ?? {}), [role]: value },
+    }));
+    setPersonaDirtyIds((prev) => new Set(prev).add(topicId));
+  }, []);
+
+  const suggestPersonaForTopic = useCallback(async (topicId: number) => {
+    const res = await adminFetch(`${API_BASE}/api/admin/topics/${topicId}/suggest-persona-by-role`, {
+      method: "POST",
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const detail = err.detail;
+      const msg =
+        typeof detail === "string"
+          ? detail
+          : Array.isArray(detail)
+            ? detail.map((d: { msg?: string }) => d.msg).filter(Boolean).join(" ")
+            : "AI persona suggestion failed.";
+      throw new Error(msg || "AI persona suggestion failed.");
+    }
+    const data: { persona_by_role?: Record<string, string> } = await res.json();
+    const raw = data.persona_by_role ?? {};
+    setPersonaDrafts((prev) => ({
+      ...prev,
+      [topicId]: { ...(prev[topicId] ?? {}), ...raw },
+    }));
+    setPersonaDirtyIds((prev) => new Set(prev).add(topicId));
+  }, []);
+
+  const runAiSuggestPersonaAll = useCallback(async () => {
+    setActionError(null);
+    setPersonaSuggestingAll(true);
+    try {
+      for (const t of topics) {
+        try {
+          await suggestPersonaForTopic(t.id);
+        } catch (e) {
+          setActionError(e instanceof Error ? e.message : "AI persona suggest failed.");
+          return;
+        }
+      }
+    } finally {
+      setPersonaSuggestingAll(false);
+    }
+  }, [topics, suggestPersonaForTopic]);
+
+  const savePersonaTopic = useCallback(async (topicId: number) => {
+    const row = personaDrafts[topicId];
+    if (!row) return false;
+    const res = await adminFetch(`${API_BASE}/api/admin/topics/${topicId}`, {
+      method: "PUT",
+      body: JSON.stringify({ persona_by_role: row }),
+    });
+    if (!res.ok) return false;
+    const updated: TopicRow = await res.json();
+    setTopics((prev) => prev.map((t) => (t.id === topicId ? { ...t, ...updated } : t)));
+    setPersonaDirtyIds((prev) => {
+      const next = new Set(prev);
+      next.delete(topicId);
+      return next;
+    });
+    return true;
+  }, [personaDrafts]);
+
+  const saveAllPersonaDirty = useCallback(async () => {
+    setActionError(null);
+    setPersonaSavingAll(true);
+    try {
+      for (const id of personaDirtyIds) {
+        const ok = await savePersonaTopic(id);
+        if (!ok) {
+          setActionError(`Save failed for topic ${id}.`);
+          return;
+        }
+      }
+    } finally {
+      setPersonaSavingAll(false);
+    }
+  }, [personaDirtyIds, savePersonaTopic]);
+
+  const clearAllPersonaOverrides = useCallback(async () => {
+    if (
+      !confirm(
+        "Clear saved topic-level persona overrides for all topics on this page? You will see lines aggregated from articles again until you edit or run AI.",
+      )
+    ) {
+      return;
+    }
+    setActionError(null);
+    for (const t of topics) {
+      const res = await adminFetch(`${API_BASE}/api/admin/topics/${t.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ persona_by_role: null }),
+      });
+      if (!res.ok) {
+        setActionError(`Could not clear topic ${t.id}.`);
+        return;
+      }
+    }
+    await loadTopics();
+  }, [topics, loadTopics]);
+
+  const refreshPersonaData = useCallback(async () => {
+    setActionError(null);
+    await loadTopics();
+  }, [loadTopics]);
+
   const nCols = INDUSTRY_OPTIONS.length;
   const gridStyle = useMemo(
     () => ({
@@ -405,6 +626,95 @@ export default function AnalysisPage() {
         </div>
       </div>
 
+      <aside
+        className="mb-6 rounded-xl border border-gray-800 bg-gray-900/40 p-4 text-sm text-gray-300"
+        aria-label="How Impact, Risk, and adoption stage work"
+      >
+        <CollapsibleHelpBlock
+          id="analysis-impact-risk"
+          title="Impact & risk"
+          open={impactRiskHelpOpen}
+          onToggle={() => setImpactRiskHelpOpen((v) => !v)}
+        >
+          <ul className="list-inside list-disc space-y-2 marker:text-gray-600">
+            <li>
+              <span className="font-medium text-gray-200">Impact (1–10)</span> — How strong the business or operational
+              effect is for that industry.{" "}
+              <span className="text-gray-400">10 = urgent, strategic “must act” importance.</span>
+            </li>
+            <li>
+              <span className="font-medium text-gray-200">Risk (1–10)</span> — Exposure from regulation, compliance,
+              cyber, safety, or market disruption for that industry.{" "}
+              <span className="text-gray-400">10 = highest exposure.</span>
+            </li>
+            <li>
+              <span className="font-medium text-gray-200">Where the numbers come from</span> — Nothing in the app adds,
+              averages, or derives Impact or Risk from other cells (no spreadsheet-style formulas). They are{" "}
+              <span className="text-gray-400">
+                typed directly or filled by AI Suggest from the topic and linked articles using the rubric above
+              </span>
+              , each stored as a number from 1–10.
+            </li>
+            <li>
+              <span className="font-medium text-gray-200">Public radar geometry</span> — Stars sit on{" "}
+              <span className="text-gray-400">
+                discrete rings by impact: ≤5 outer, then one ring inward for each band (5–6, 6–7, 7–8, 8–9), and 9+ in
+                the centre zone
+              </span>
+              . Higher impact is closer to the centre. Risk is displayed in the panel but does not move the star.
+            </li>
+          </ul>
+        </CollapsibleHelpBlock>
+
+        <div className="mt-5 border-t border-gray-800 pt-5">
+          <CollapsibleHelpBlock
+            id="analysis-adoption-stage"
+            title="Adoption stage (Learn About, Get Prepared For, …)"
+            open={adoptionHelpOpen}
+            onToggle={() => setAdoptionHelpOpen((v) => !v)}
+          >
+            <p className="text-gray-300">
+              Each topic–industry cell uses <span className="font-medium text-gray-200">one of five fixed stages</span>.
+              That stage is <span className="text-gray-400">not</span> derived from Impact or Risk in code—it is chosen
+              the same way as those scores:{" "}
+              <span className="text-gray-400">
+                <strong className="font-medium text-gray-200">AI Suggest</strong> picks a stage per industry using the
+                definitions below, or you set it with the dropdown
+              </span>
+              . On the public radar, the stage decides <span className="text-gray-400">which of the five spokes</span> the
+              point sits on (how far along the adoption journey that industry is for this topic).
+            </p>
+            <ul className="mt-3 list-inside list-disc space-y-1.5 marker:text-gray-600 text-gray-400">
+              <li>
+                <span className="font-medium text-gray-300">Learn About</span> — Early awareness; little action needed
+                yet.
+              </li>
+              <li>
+                <span className="font-medium text-gray-300">Get Ahead Of</span> — Proactive positioning before the trend
+                hits.
+              </li>
+              <li>
+                <span className="font-medium text-gray-300">Get Prepared For</span> — Immediate planning required.
+              </li>
+              <li>
+                <span className="font-medium text-gray-300">Get Your Hands Around</span> — Active implementation
+                underway.
+              </li>
+              <li>
+                <span className="font-medium text-gray-300">Make the Most Of</span> — Fully embraced; optimise for
+                advantage.
+              </li>
+            </ul>
+          </CollapsibleHelpBlock>
+        </div>
+
+        {mainTab === "persona" ? (
+          <p className="border-t border-gray-800 pt-4 text-xs text-gray-500">
+            Persona tab: lines come from linked articles (ingestion AI) unless you save a topic-level override below.
+          </p>
+        ) : null}
+      </aside>
+
       {actionError && (
         <div
           className="mb-4 rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-sm text-red-300"
@@ -416,8 +726,58 @@ export default function AnalysisPage() {
 
       {loadError && <p className="mb-4 text-sm text-red-400">{loadError}</p>}
 
+      {rationaleOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="rationale-dialog-title"
+          onClick={() => setRationaleOpen(null)}
+        >
+          <div
+            className="max-h-[min(80vh,520px)] w-full max-w-lg overflow-y-auto rounded-xl border border-gray-700 bg-gray-950 p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="rationale-dialog-title" className="text-base font-semibold text-white">
+              {topics.find((t) => t.id === rationaleOpen.topicId)?.name ?? "Topic"} —{" "}
+              {rationaleOpen.industry}
+            </h3>
+            <p className="mt-3 text-sm leading-relaxed text-gray-300">
+              {drafts[rationaleOpen.topicId]?.[rationaleOpen.industry]?.rationale?.trim() ||
+                "No rationale is stored for this cell yet. Run “AI Suggest (all topics)” to generate per-industry explanations, or edit values manually."}
+            </p>
+            <button
+              type="button"
+              className="mt-5 rounded-lg border border-gray-600 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-800"
+              onClick={() => setRationaleOpen(null)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
       {mainTab === "persona" ? (
         <>
+          <div className="mb-4 rounded-xl border border-gray-800 bg-gray-900/30 p-4 text-sm text-gray-400">
+            <p className="font-medium text-gray-200">How this grid is populated</p>
+            <ul className="mt-2 list-inside list-disc space-y-1.5 marker:text-gray-600">
+              <li>
+                <span className="text-gray-300">Default source:</span> Each RSS article runs through the ingestion AI
+                pipeline; the summarize step can fill <code className="text-gray-500">persona_impacts</code> per role on
+                the article. This page <span className="text-gray-300">merges</span> those lines across all articles
+                linked to the topic (duplicates removed, joined with “ · ”).
+              </li>
+              <li>
+                <span className="text-gray-300">Topic override:</span> Use <strong className="font-medium text-gray-200">AI Suggest</strong>{" "}
+                to synthesize one line per role from the topic + articles (Haiku), or type directly.{" "}
+                <strong className="font-medium text-gray-200">Save</strong> stores editorial copy on the topic and{" "}
+                <span className="text-gray-300">replaces the article aggregate</span> for display here until you clear
+                overrides.
+              </li>
+            </ul>
+          </div>
+
           {personaLoading ? (
             <p className="text-sm text-gray-500">Loading persona data…</p>
           ) : topics.length === 0 ? (
@@ -435,7 +795,7 @@ export default function AnalysisPage() {
                     {roles.map((r) => (
                       <th
                         key={r.id}
-                        className="min-w-[160px] px-2 py-2 text-xs font-semibold text-gray-400"
+                        className="min-w-[180px] px-2 py-2 text-xs font-semibold text-gray-400"
                       >
                         {r.name}
                       </th>
@@ -447,27 +807,89 @@ export default function AnalysisPage() {
                     <tr key={topic.id} className="hover:bg-gray-900/50">
                       <td className="sticky left-0 z-10 bg-gray-950 px-3 py-2 align-top">
                         <p className="font-medium text-white">{topic.name}</p>
-                        <span
-                          className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                            DOMAIN_COLORS[topic.domain] ?? "bg-slate-500/20 text-slate-400"
-                          }`}
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <span
+                            className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                              DOMAIN_COLORS[topic.domain] ?? "bg-slate-500/20 text-slate-400"
+                            }`}
+                          >
+                            {topic.domain}
+                          </span>
+                          {topic.persona_by_role && Object.keys(topic.persona_by_role).length > 0 ? (
+                            <span className="rounded bg-teal-950/60 px-2 py-0.5 text-[10px] font-medium text-teal-300">
+                              Topic override
+                            </span>
+                          ) : null}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={personaSuggestingAll}
+                          onClick={() => {
+                            setActionError(null);
+                            void suggestPersonaForTopic(topic.id).catch((e) =>
+                              setActionError(e instanceof Error ? e.message : "AI failed"),
+                            );
+                          }}
+                          className="mt-2 rounded border border-gray-700 px-2 py-1 text-[10px] font-medium text-gray-400 hover:bg-gray-800 hover:text-gray-200 disabled:opacity-50"
                         >
-                          {topic.domain}
-                        </span>
+                          AI (this topic)
+                        </button>
                       </td>
                       {roles.map((r) => (
-                        <td key={r.id} className="px-2 py-2 align-top text-xs leading-snug text-gray-400">
-                          {personaMatrix[topic.id]?.[r.name] ?? "—"}
+                        <td key={r.id} className="px-2 py-2 align-top">
+                          <textarea
+                            value={personaDrafts[topic.id]?.[r.name] ?? ""}
+                            onChange={(e) => updatePersonaCell(topic.id, r.name, e.target.value)}
+                            rows={3}
+                            className="w-full resize-y rounded border border-gray-700 bg-gray-900/90 px-2 py-1.5 text-xs leading-snug text-gray-300 placeholder:text-gray-600"
+                            placeholder="—"
+                          />
                         </td>
                       ))}
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <p className="border-t border-gray-800 px-3 py-2 text-xs text-gray-600">
-                Read-only: persona lines come from AI-generated fields on articles. Edit articles or re-run ingestion
-                to refresh.
-              </p>
+              <div className="flex flex-wrap items-center gap-3 border-t border-gray-800 px-3 py-3 text-xs text-gray-600">
+                <button
+                  type="button"
+                  disabled={personaSuggestingAll || topics.length === 0}
+                  onClick={() => {
+                    setActionError(null);
+                    void runAiSuggestPersonaAll().catch((e) =>
+                      setActionError(e instanceof Error ? e.message : "AI failed"),
+                    );
+                  }}
+                  className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {personaSuggestingAll ? "AI Suggest…" : "AI Suggest (all topics)"}
+                </button>
+                <button
+                  type="button"
+                  disabled={personaSavingAll || personaDirtyIds.size === 0}
+                  onClick={() => void saveAllPersonaDirty()}
+                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {personaSavingAll ? "Saving…" : `Save persona${personaDirtyIds.size ? ` (${personaDirtyIds.size})` : ""}`}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void refreshPersonaData()}
+                  className="rounded-lg border border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-300 hover:bg-gray-800"
+                >
+                  Refresh
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void clearAllPersonaOverrides()}
+                  className="rounded-lg border border-amber-900/60 px-3 py-1.5 text-sm font-medium text-amber-200/90 hover:bg-amber-950/40"
+                >
+                  Clear topic overrides
+                </button>
+                {personaDirtyIds.size > 0 ? (
+                  <span className="text-amber-400/90">{personaDirtyIds.size} topic(s) unsaved</span>
+                ) : null}
+              </div>
             </div>
           )}
         </>
@@ -540,6 +962,28 @@ export default function AnalysisPage() {
                               key={`${topic.id}-${industry}`}
                               className={`relative border-b border-gray-800 p-1.5 ${heat} border-l-2 ${borderAdopt}`}
                             >
+                              <button
+                                type="button"
+                                title="Why these settings — AI or manual rationale"
+                                aria-label="Show rationale for this industry"
+                                className="absolute left-0.5 top-0.5 z-10 rounded p-0.5 text-gray-500 hover:bg-gray-800 hover:text-sky-400"
+                                onClick={() => setRationaleOpen({ topicId: topic.id, industry })}
+                              >
+                                <svg
+                                  className="h-3.5 w-3.5"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                  aria-hidden
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                  />
+                                </svg>
+                              </button>
                               <button
                                 type="button"
                                 title="Remove industry"

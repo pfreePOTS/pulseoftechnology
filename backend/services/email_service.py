@@ -237,6 +237,19 @@ _PROMO_ITEM_BLOCK = """\
 </tr>
 """
 
+
+def _article_why_for_subscriber(article: Article, role_obj: object | None) -> str:
+    """Prefer persona-specific impact when persona_impacts and role name match."""
+    if role_obj is not None:
+        name = getattr(role_obj, "name", None)
+        impacts = article.persona_impacts
+        if name and isinstance(impacts, dict):
+            hit = impacts.get(name)
+            if isinstance(hit, str) and hit.strip():
+                return hit.strip()
+    return (article.why_it_matters or "").strip()
+
+
 _PROMO_SECTION = """\
 <tr>
   <td style="padding:0 32px 8px;">
@@ -281,16 +294,24 @@ def _build_html(
         articles_html = ""
 
         if db is not None:
-            # Fetch all articles for this topic that have summaries
-            candidates: list[Article] = (
+            # Fetch articles with a "what is it" and at least one impact line (legacy or persona)
+            raw_candidates: list[Article] = (
                 db.query(Article)
                 .filter(
                     Article.topic_id == topic.id,
                     Article.what_is_it.isnot(None),
-                    Article.why_it_matters.isnot(None),
                 )
                 .all()
             )
+            candidates = [
+                a
+                for a in raw_candidates
+                if (a.why_it_matters and str(a.why_it_matters).strip())
+                or (
+                    isinstance(a.persona_impacts, dict)
+                    and any(str(v).strip() for v in a.persona_impacts.values())
+                )
+            ]
 
             if role_tags:
                 # Keep only articles whose tags intersect with the role's tags
@@ -322,7 +343,7 @@ def _build_html(
                     title=a.title or "Read article",
                     url=a.url or "#",
                     what_is_it=a.what_is_it or "",
-                    why_it_matters=a.why_it_matters or "",
+                    why_it_matters=_article_why_for_subscriber(a, role_obj),
                 )
                 for a in selected
             )
@@ -532,22 +553,22 @@ def generate_newsletter_preview(
     # Attach the role object directly so _build_html doesn't need a DB lookup
     dummy.role = role  # type: ignore[attr-defined]
 
-    all_approved: list[Topic] = (
+    eligible: list[Topic] = (
         db.query(Topic)
-        .filter(Topic.status == TopicStatus.approved)
+        .filter(Topic.status.in_([TopicStatus.watched, TopicStatus.selected]))
         .order_by(Topic.urgency_score.desc())
         .all()
     )
 
-    topics = assemble_newsletter_topics(dummy, all_approved)[:5]
+    topics = assemble_newsletter_topics(dummy, eligible)[:5]
 
     if not topics:
         no_match = f" matching your domain interests ({', '.join(domains)})" if domains else ""
         return (
             "<!DOCTYPE html><html><body style='background:#f3f4f6;"
             "color:#374151;font-family:Arial,Helvetica,sans-serif;padding:40px;'>"
-            f"<h2 style='color:#111827;'>No approved topics{no_match}.</h2>"
-            "<p>Approve topics in the Curation Dashboard or broaden the domain filter.</p>"
+            f"<h2 style='color:#111827;'>No watched or selected topics{no_match}.</h2>"
+            "<p>Watch topics in the Research step or broaden the domain filter.</p>"
             "</body></html>"
         )
 
@@ -567,16 +588,15 @@ def run_daily_newsletter(db: Session) -> None:
 
     cutoff = datetime.now(UTC) - timedelta(hours=24)
 
-    # Approved topics with at least one recently-ingested article
-    approved_topics: list[Topic] = (
+    eligible_topics: list[Topic] = (
         db.query(Topic)
-        .filter(Topic.status == TopicStatus.approved)
+        .filter(Topic.status.in_([TopicStatus.watched, TopicStatus.selected]))
         .filter(sa_exists().where((Article.topic_id == Topic.id) & (Article.ingested_at >= cutoff)))
         .all()
     )
 
-    if not approved_topics:
-        logger.info("Daily newsletter: no new approved topics in the last 24 hours")
+    if not eligible_topics:
+        logger.info("Daily newsletter: no watched/selected topics with new articles in the last 24 hours")
         return
 
     subscribers: list[Subscriber] = (
@@ -585,13 +605,13 @@ def run_daily_newsletter(db: Session) -> None:
 
     logger.info(
         "Daily newsletter: %d topics, %d subscribers",
-        len(approved_topics),
+        len(eligible_topics),
         len(subscribers),
     )
 
     sent = 0
     for subscriber in subscribers:
-        matched = assemble_newsletter_topics(subscriber, approved_topics)
+        matched = assemble_newsletter_topics(subscriber, eligible_topics)
         if matched:
             promoted = assemble_promoted_content(subscriber, db)
             if send_daily_newsletter(subscriber, matched, db=db, promoted_content=promoted):

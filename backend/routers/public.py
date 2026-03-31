@@ -6,6 +6,7 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..models.role import Role
 from ..models.subscriber import Subscriber
 from ..models.topic import Topic
 from ..rate_limits import limiter
@@ -35,12 +36,20 @@ class TopicPublic(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class RolePublic(BaseModel):
+    id: int
+    name: str
+
+    model_config = {"from_attributes": True}
+
+
 class SubscribeRequest(BaseModel):
     email: str
     first_name: str
     last_name: str
     industry: str | None = None
     domains: list[str] | None = None
+    role_id: int | None = None
 
     @field_validator("email")
     @classmethod
@@ -70,6 +79,12 @@ class SubscribeResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+@router.get("/roles", response_model=list[RolePublic])
+def list_roles_public(db: Session = Depends(get_db)):
+    """List subscriber role options for the public subscribe flow (id and name only)."""
+    return db.query(Role).order_by(Role.name).all()
+
+
 @router.get("/topics/published", response_model=list[TopicPublic])
 def get_published_topics(db: Session = Depends(get_db)):
     """Return topics marked as published (live on the public Radar)."""
@@ -90,6 +105,11 @@ def subscribe(
     db: Session = Depends(get_db),
 ):
     """Register a new subscriber with their domain and industry preferences."""
+    if payload.role_id is not None:
+        role = db.query(Role).filter(Role.id == payload.role_id).first()
+        if role is None:
+            raise HTTPException(status_code=422, detail="Invalid role_id")
+
     existing = db.query(Subscriber).filter(Subscriber.email == payload.email).first()
     if existing:
         if existing.is_active:
@@ -100,6 +120,7 @@ def subscribe(
         existing.last_name = payload.last_name
         existing.industry = payload.industry
         existing.domains = payload.domains
+        existing.role_id = payload.role_id
         db.commit()
         db.refresh(existing)
         background_tasks.add_task(sync_subscriber_to_hubspot, existing)
@@ -113,6 +134,7 @@ def subscribe(
         last_name=payload.last_name,
         industry=payload.industry,
         domains=payload.domains,
+        role_id=payload.role_id,
     )
     db.add(subscriber)
     db.commit()

@@ -8,7 +8,8 @@ from ..database import Base
 
 class TopicStatus(str, enum.Enum):
     pending = "pending"
-    approved = "approved"
+    watched = "watched"
+    selected = "selected"
 
 
 class AdoptionState(str, enum.Enum):
@@ -35,7 +36,7 @@ class Topic(Base):
     )
     # Maps industry name → {urgency_score, adoption_state, rationale} for per-industry radar points
     industry_positions: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
-    # True = visible on the public radar; False = approved but held in sandbox
+    # True = visible on the public radar; False = selected but held in sandbox
     is_published: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False
     )

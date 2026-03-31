@@ -40,8 +40,16 @@ const INDUSTRIES = [
 
 interface IndustryPosition {
   urgency_score: number;
+  impact_score?: number;
+  risk_level?: number;
   adoption_state: string;
   rationale?: string;
+  /** When false, row is omitted from public radar until approved in Impact workbench */
+  impact_approved?: boolean;
+}
+
+function rowImpact(p: IndustryPosition): number {
+  return typeof p.impact_score === "number" ? p.impact_score : p.urgency_score;
 }
 
 interface TopicDetail {
@@ -58,7 +66,7 @@ interface TopicDetail {
 }
 
 type SaveState = "idle" | "saving" | "saved" | "error";
-type ApproveState = "idle" | "approving" | "approved" | "error";
+type WatchState = "idle" | "watching" | "watched" | "error";
 
 // ── Shared input styles (dark admin theme)
 const inputCls =
@@ -91,14 +99,14 @@ export default function TopicEditor({ topic }: { topic: TopicDetail }) {
   const [summaryGenState, setSummaryGenState] = useState<"idle" | "loading" | "error">("idle");
 
   const [saveState, setSaveState] = useState<SaveState>("idle");
-  const [approveState, setApproveState] = useState<ApproveState>(
-    topic.status === "approved" ? "approved" : "idle",
+  const [watchState, setWatchState] = useState<WatchState>(
+    topic.status !== "pending" ? "watched" : "idle",
   );
   const [isPublished, setIsPublished] = useState(topic.is_published);
   const [errorMsg, setErrorMsg] = useState("");
 
-  const isApproved =
-    approveState === "approved" || topic.status === "approved";
+  const isWatched =
+    watchState === "watched" || topic.status !== "pending";
 
   // ── Industry position helpers
   function addIndustryPosition() {
@@ -107,7 +115,10 @@ export default function TopicEditor({ topic }: { topic: TopicDetail }) {
       ...prev,
       [newIndustry]: {
         urgency_score: parseFloat(newUrgency) || 5.0,
+        impact_score: parseFloat(newUrgency) || 5.0,
+        risk_level: 5,
         adoption_state: newAdoptionState,
+        impact_approved: true,
       },
     }));
     setNewIndustry("");
@@ -128,13 +139,21 @@ export default function TopicEditor({ topic }: { topic: TopicDetail }) {
     field: keyof IndustryPosition,
     value: string,
   ) {
-    setIndustryPositions((prev) => ({
-      ...prev,
-      [industry]: {
-        ...prev[industry],
-        [field]: field === "urgency_score" ? parseFloat(value) || 0 : value,
-      },
-    }));
+    setIndustryPositions((prev) => {
+      const cur = prev[industry];
+      if (!cur) return prev;
+      let nextVal: string | number | boolean = value;
+      if (field === "urgency_score" || field === "impact_score" || field === "risk_level") {
+        nextVal = parseFloat(value) || 0;
+      }
+      const next: IndustryPosition = { ...cur, [field]: nextVal } as IndustryPosition;
+      if (field === "urgency_score" || field === "impact_score") {
+        const v = typeof nextVal === "number" ? nextVal : parseFloat(String(nextVal)) || 0;
+        next.urgency_score = v;
+        next.impact_score = v;
+      }
+      return { ...prev, [industry]: next };
+    });
   }
 
   // ── Build payload (shared between Save and Approve)
@@ -176,16 +195,33 @@ export default function TopicEditor({ topic }: { topic: TopicDetail }) {
       const data = await res.json();
       const suggestions: Record<
         string,
-        { score: number; adoption_state: string; rationale: string }
+        {
+          score?: number;
+          impact_score?: number;
+          risk_level?: number;
+          adoption_state: string;
+          rationale: string;
+        }
       > = data.industry_suggestions ?? {};
 
       // Build pending suggestions (includes rationale) for curator review before applying
       const merged: Record<string, IndustryPosition> = { ...industryPositions };
-      for (const [industry, { score, adoption_state, rationale }] of Object.entries(suggestions)) {
+      for (const [industry, row] of Object.entries(suggestions)) {
+        const impact =
+          typeof row.impact_score === "number"
+            ? row.impact_score
+            : typeof row.score === "number"
+              ? row.score
+              : 5;
+        const risk = typeof row.risk_level === "number" ? row.risk_level : 5;
         merged[industry] = {
-          urgency_score: Math.round(score * 10) / 10,
-          adoption_state: adoption_state ?? industryPositions[industry]?.adoption_state ?? "Get Prepared For",
-          rationale,
+          urgency_score: Math.round(impact * 10) / 10,
+          impact_score: Math.round(impact * 10) / 10,
+          risk_level: Math.round(risk * 10) / 10,
+          adoption_state:
+            row.adoption_state ?? industryPositions[industry]?.adoption_state ?? "Get Prepared For",
+          rationale: row.rationale,
+          impact_approved: false,
         };
       }
       setPendingSuggestions(merged);
@@ -213,8 +249,8 @@ export default function TopicEditor({ topic }: { topic: TopicDetail }) {
     }
   }
 
-  async function handleApprove() {
-    setApproveState("approving");
+  async function handleWatch() {
+    setWatchState("watching");
     setErrorMsg("");
     try {
       await adminFetch(`${API_BASE}/api/admin/topics/${topic.id}`, {
@@ -222,15 +258,15 @@ export default function TopicEditor({ topic }: { topic: TopicDetail }) {
         body: JSON.stringify(buildPayload()),
       });
       const res = await adminFetch(
-        `${API_BASE}/api/admin/topics/${topic.id}/approve`,
+        `${API_BASE}/api/admin/topics/${topic.id}/watch`,
         { method: "POST" },
       );
       if (!res.ok) throw new Error(await res.text());
-      setApproveState("approved");
-      setTimeout(() => router.push("/admin"), 1500);
+      setWatchState("watched");
+      setTimeout(() => router.push("/admin?step=research"), 1500);
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : "Approval failed");
-      setApproveState("error");
+      setErrorMsg(err instanceof Error ? err.message : "Watch failed");
+      setWatchState("error");
     }
   }
 
@@ -271,9 +307,9 @@ export default function TopicEditor({ topic }: { topic: TopicDetail }) {
             <span className="rounded-full bg-slate-700 px-2 py-0.5 text-xs text-slate-300">
               {topic.domain}
             </span>
-            {isApproved && (
+            {isWatched && (
               <span className="rounded-full bg-green-500/20 px-2 py-0.5 text-xs font-medium text-green-400 ring-1 ring-green-500/30">
-                Approved
+                {topic.status === "selected" ? "Selected" : "Watched"}
               </span>
             )}
             {isPublished && (
@@ -377,7 +413,8 @@ export default function TopicEditor({ topic }: { topic: TopicDetail }) {
                   Industry Positions
                 </h3>
                 <p className="text-xs text-gray-500">
-                  Per-industry overrides — set both urgency and adoption state to control radar placement
+                  Per-industry impact and risk (radar distance and pull toward centre), adoption stage, and radar
+                  visibility
                 </p>
               </div>
               <button
@@ -430,31 +467,66 @@ export default function TopicEditor({ topic }: { topic: TopicDetail }) {
                   ([industry, pos]) => (
                     <div key={industry}>
                       <div className="flex flex-col gap-1.5 px-3 py-2">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="w-36 shrink-0 text-xs font-medium text-gray-300">
                             {industry}
                           </span>
+                          <label className="ml-auto flex items-center gap-1.5 text-[10px] text-gray-500">
+                            <input
+                              type="checkbox"
+                              checked={pos.impact_approved !== false}
+                              disabled={!!pendingSuggestions}
+                              onChange={(e) =>
+                                setIndustryPositions((prev) => ({
+                                  ...prev,
+                                  [industry]: {
+                                    ...prev[industry]!,
+                                    impact_approved: e.target.checked,
+                                  },
+                                }))
+                              }
+                              className="rounded border-gray-600 bg-gray-800"
+                            />
+                            On radar
+                          </label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="w-14 shrink-0 text-[10px] uppercase text-gray-600">Impact</span>
                           <input
                             type="range"
                             min="1"
                             max="10"
                             step="0.1"
-                            value={pos.urgency_score}
+                            value={rowImpact(pos)}
                             disabled={!!pendingSuggestions}
                             onChange={(e) =>
-                              updateIndustryPosition(
-                                industry,
-                                "urgency_score",
-                                e.target.value,
-                              )
+                              updateIndustryPosition(industry, "urgency_score", e.target.value)
                             }
                             className="flex-1 accent-indigo-500 disabled:opacity-50"
                           />
                           <span className="w-8 shrink-0 text-right text-xs font-semibold tabular-nums text-indigo-300">
-                            {pos.urgency_score.toFixed(1)}
+                            {rowImpact(pos).toFixed(1)}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 pl-[152px]">
+                        <div className="flex items-center gap-2">
+                          <span className="w-14 shrink-0 text-[10px] uppercase text-gray-600">Risk</span>
+                          <input
+                            type="range"
+                            min="1"
+                            max="10"
+                            step="0.1"
+                            value={typeof pos.risk_level === "number" ? pos.risk_level : 5}
+                            disabled={!!pendingSuggestions}
+                            onChange={(e) =>
+                              updateIndustryPosition(industry, "risk_level", e.target.value)
+                            }
+                            className="flex-1 accent-amber-500 disabled:opacity-50"
+                          />
+                          <span className="w-8 shrink-0 text-right text-xs font-semibold tabular-nums text-amber-300">
+                            {(typeof pos.risk_level === "number" ? pos.risk_level : 5).toFixed(1)}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 pl-[72px]">
                           <select
                             value={pos.adoption_state}
                             disabled={!!pendingSuggestions}
@@ -563,16 +635,16 @@ export default function TopicEditor({ topic }: { topic: TopicDetail }) {
             {saveState === "saved" && (
               <span className="text-sm text-green-400">Saved</span>
             )}
-            {!isApproved && (
+            {!isWatched && (
               <button
-                onClick={handleApprove}
-                disabled={approveState === "approving"}
+                onClick={handleWatch}
+                disabled={watchState === "watching"}
                 className="rounded-lg bg-pulse-red px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
               >
-                {approveState === "approving" ? "Approving…" : "Approve Topic"}
+                {watchState === "watching" ? "Watching…" : "Start Watching"}
               </button>
             )}
-            {isApproved && (
+            {isWatched && (
               <button
                 onClick={handleTogglePublish}
                 className={`ml-auto flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
@@ -587,9 +659,9 @@ export default function TopicEditor({ topic }: { topic: TopicDetail }) {
             )}
           </div>
 
-          {approveState === "approved" && (
+          {watchState === "watched" && (
             <p className="rounded-lg bg-green-500/10 px-3 py-2 text-sm text-green-400">
-              Topic approved. Redirecting to dashboard…
+              Topic is now being watched. Redirecting to workbench…
             </p>
           )}
         </section>

@@ -83,8 +83,8 @@ def _article_count_in_window(topic_id: int, start: datetime, end: datetime, db: 
 
 def run_signal_scorer(db: Session) -> int:
     """
-    Score velocity/acceleration for every approved topic and create
-    SignalRecommendation records when thresholds are breached.
+    Score velocity/acceleration for every topic (pending, watched, selected)
+    and create SignalRecommendation records when thresholds are breached.
 
     Velocity is measured via Pinecone semantic query when configured,
     otherwise falls back to SQL article counts.
@@ -97,12 +97,10 @@ def run_signal_scorer(db: Session) -> int:
     week_start = now - timedelta(days=7)
     prev_start = now - timedelta(days=14)
 
-    approved_topics: list[Topic] = (
-        db.query(Topic).filter(Topic.status == TopicStatus.approved).all()
-    )
+    all_topics: list[Topic] = db.query(Topic).all()
 
     created = 0
-    for topic in approved_topics:
+    for topic in all_topics:
         velocity = _article_count_in_window(topic.id, week_start, now, db)
         prev_count = _article_count_in_window(topic.id, prev_start, week_start, db)
 

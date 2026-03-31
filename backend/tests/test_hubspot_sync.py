@@ -19,6 +19,7 @@ def _sub(**kw) -> SimpleNamespace:
         industry="Technology",
         domains=["AI", "Security"],
         is_active=True,
+        role=None,
     )
     return SimpleNamespace(**{**defaults, **kw})
 
@@ -62,6 +63,14 @@ class TestBuildProperties:
     def test_pulse_subscribed_reflects_is_active(self):
         assert hubspot_sync._build_properties(_sub(is_active=True))["pulse_subscribed"] == "true"
         assert hubspot_sync._build_properties(_sub(is_active=False))["pulse_subscribed"] == "false"
+
+    def test_pulse_role_from_subscriber_role(self):
+        role = SimpleNamespace(name="CTO")
+        props = hubspot_sync._build_properties(_sub(role=role))
+        assert props["pulse_role"] == "CTO"
+
+    def test_pulse_role_empty_without_role(self):
+        assert hubspot_sync._build_properties(_sub())["pulse_role"] == ""
 
     def test_no_industry_gives_empty_string(self):
         sub = _sub(industry=None)

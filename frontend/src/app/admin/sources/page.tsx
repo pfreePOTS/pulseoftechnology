@@ -74,8 +74,7 @@ export default function SourcesPage() {
   }
 
   return (
-    <div className="px-4 py-10 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-5xl">
         <div className="mb-8 flex items-end justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-white">
@@ -232,7 +231,6 @@ export default function SourcesPage() {
           {sources.length} source{sources.length !== 1 ? "s" : ""} total ·{" "}
           {sources.filter((s) => s.is_active).length} active
         </p>
-      </div>
     </div>
   );
 }

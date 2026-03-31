@@ -121,10 +121,11 @@ export default async function Home() {
             How to Read the Radar
           </h2>
           <p className="mb-6 text-sm text-gray-600">
-            Each star represents a technology signal. Its position on a spoke
-            indicates the recommended adoption posture; distance from centre
-            reflects urgency (higher urgency = further out). Star colour shows
-            the domain.
+            Each star represents a technology signal for an industry. Its position on a spoke
+            indicates the recommended adoption posture. Distance from the centre combines{" "}
+            <strong className="font-medium text-gray-800">impact</strong> (stronger signals sit further out) and{" "}
+            <strong className="font-medium text-gray-800">risk</strong> (regulatory, compliance, and exposure pull
+            inward toward the core). Star colour shows the industry.
           </p>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             {ADOPTION_STATES.map(({ label, desc }, i) => (

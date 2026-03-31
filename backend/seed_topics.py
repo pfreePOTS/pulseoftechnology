@@ -558,7 +558,7 @@ def seed() -> None:
                     domain=entry["domain"],
                     urgency_score=entry["urgency_score"],
                     summary=entry["summary"],
-                    status=TopicStatus.approved,
+                    status=TopicStatus.selected,
                     adoption_state=entry["adoption_state"],
                     industry_positions=entry["industry_positions"],
                     is_published=True,

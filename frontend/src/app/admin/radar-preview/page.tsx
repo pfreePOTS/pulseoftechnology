@@ -11,7 +11,7 @@ export default function RadarPreviewPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    adminFetch(`${API_BASE}/api/admin/topics?status=approved`)
+    adminFetch(`${API_BASE}/api/admin/topics?status=selected`)
       .then((r) => (r.ok ? r.json() : []))
       .then((data) => {
         setTopics(data);
@@ -21,12 +21,12 @@ export default function RadarPreviewPage() {
 
   return (
     <div className="flex min-h-full flex-col">
-      <div className="px-6 pt-8 pb-4">
+      <div className="pb-4">
         <h1 className="text-2xl font-bold tracking-tight text-white">
           Radar Preview
         </h1>
         <p className="mt-1 text-sm text-gray-400">
-          Live preview of approved topics on the public radar — filters and
+          Live preview of selected topics on the public radar — filters and
           label toggle work identically to the public page.
           {loading && (
             <span className="ml-2 text-xs text-gray-600">Loading…</span>

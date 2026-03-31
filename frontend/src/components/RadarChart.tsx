@@ -5,9 +5,16 @@ import { useState } from "react";
 // ── Public types ───────────────────────────────────────────────────────────────
 
 export interface IndustryPosition {
-  urgency_score: number;
+  /** @deprecated use impact_score — kept for older records */
+  urgency_score?: number;
+  /** 1–10 magnitude of impact for this industry (drives distance from centre) */
+  impact_score?: number;
+  /** 1–10 regulatory / threat / compliance exposure — higher pulls the star toward the centre */
+  risk_level?: number;
   adoption_state: string;
   rationale?: string;
+  /** When false, this industry row is hidden on the public radar until approved in Impact workbench */
+  impact_approved?: boolean;
 }
 
 export interface RadarTopic {
@@ -131,6 +138,28 @@ function adoptionStateToAxisIndex(state: string): number {
   return ADOPTION_STATE_INDEX[state] ?? 0;
 }
 
+/** Impact drives base radius; higher risk pulls inward (core concern). */
+function industryEffectiveRadius(
+  pos: IndustryPosition,
+  topicFallbackUrgency: number,
+): number {
+  const impact =
+    typeof pos.impact_score === "number"
+      ? pos.impact_score
+      : typeof pos.urgency_score === "number"
+        ? pos.urgency_score
+        : topicFallbackUrgency;
+  const risk =
+    typeof pos.risk_level === "number" ? pos.risk_level : 5;
+  const clampedImpact = Math.min(10, Math.max(1, impact));
+  const clampedRisk = Math.min(10, Math.max(1, risk));
+  const base = (clampedImpact / 10) * MAX_R;
+  // Higher risk → closer to centre (multiply radius down); neutral risk=5 → ~0.8x..1x band
+  const riskFactor = (clampedRisk - 1) / 9;
+  const inward = 1 - 0.5 * riskFactor;
+  return Math.max(MIN_URGENCY_R, base * inward);
+}
+
 function axisAngleDeg(idx: number): number {
   return (270 + idx * 72) % 360;
 }
@@ -160,14 +189,32 @@ function buildPlotPoints(topics: RadarTopic[]): PlotPoint[] {
   for (const topic of topics) {
     const positions = topic.industry_positions;
     if (positions && Object.keys(positions).length > 0) {
-      for (const [industry, pos] of Object.entries(positions)) {
+      const visible = Object.entries(positions).filter(([, pos]) => pos.impact_approved !== false);
+      if (visible.length === 0) {
+        points.push({
+          key: String(topic.id),
+          topic,
+          industry: null,
+          color: DOMAIN_COLORS[topic.domain] ?? DEFAULT_COLOR,
+          urgency: topic.urgency_score,
+          adoptionState: topic.adoption_state,
+        });
+        continue;
+      }
+      for (const [industry, pos] of visible) {
+        const impact =
+          typeof pos.impact_score === "number"
+            ? pos.impact_score
+            : typeof pos.urgency_score === "number"
+              ? pos.urgency_score
+              : topic.urgency_score;
         points.push({
           key: `${topic.id}-${industry}`,
           topic,
           industry,
           color: INDUSTRY_COLORS[industry] ?? DEFAULT_COLOR,
-          urgency: pos.urgency_score,
-          adoptionState: pos.adoption_state,
+          urgency: impact,
+          adoptionState: pos.adoption_state ?? topic.adoption_state,
           rationale: pos.rationale,
         });
       }
@@ -203,7 +250,12 @@ function computePositions(topics: RadarTopic[]): PlotPointXY[] {
     group.forEach((pt, i) => {
       const offset =
         group.length === 1 ? 0 : -spread / 2 + (spread / (group.length - 1)) * i;
-      const r = Math.max(MIN_URGENCY_R, (pt.urgency / 10) * MAX_R);
+      let r: number;
+      if (pt.industry && pt.topic.industry_positions?.[pt.industry]) {
+        r = industryEffectiveRadius(pt.topic.industry_positions[pt.industry], pt.topic.urgency_score);
+      } else {
+        r = Math.max(MIN_URGENCY_R, (pt.urgency / 10) * MAX_R);
+      }
       const [x, y] = polarToXY(baseAngle + offset, r);
       result.push({ ...pt, x, y });
     });
@@ -421,6 +473,18 @@ export default function RadarChart({
 }
 
 function RadarTooltipPanel({ point: pt }: { point: PlotPointXY }) {
+  const ind =
+    pt.industry && pt.topic.industry_positions
+      ? pt.topic.industry_positions[pt.industry]
+      : undefined;
+  const impactShown =
+    ind && typeof ind.impact_score === "number"
+      ? ind.impact_score
+      : typeof ind?.urgency_score === "number"
+        ? ind.urgency_score
+        : pt.urgency;
+  const riskShown = ind && typeof ind.risk_level === "number" ? ind.risk_level : null;
+
   return (
     <div className="font-sans text-gray-900">
       <h3 className="text-lg font-bold leading-snug text-[#111827]">{pt.topic.name}</h3>
@@ -429,7 +493,13 @@ function RadarTooltipPanel({ point: pt }: { point: PlotPointXY }) {
         {pt.industry ? ` · ${pt.industry}` : ""}
       </p>
       <p className="mt-3 text-sm text-gray-700">
-        <span className="font-medium">Urgency</span> {pt.urgency.toFixed(1)} / 10
+        <span className="font-medium">Impact</span> {impactShown.toFixed(1)} / 10
+        {riskShown !== null ? (
+          <>
+            <span className="mx-2 text-gray-300">·</span>
+            <span className="font-medium">Risk</span> {riskShown.toFixed(1)} / 10
+          </>
+        ) : null}
         <span className="mx-2 text-gray-300">·</span>
         <span className="font-medium">{pt.adoptionState}</span>
       </p>

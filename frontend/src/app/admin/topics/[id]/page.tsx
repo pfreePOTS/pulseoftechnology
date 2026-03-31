@@ -12,6 +12,9 @@ interface Article {
   url: string;
   content: string | null;
   status: string;
+  what_is_it: string | null;
+  why_it_matters: string | null;
+  tags: string[] | null;
 }
 
 interface TopicDetail {
@@ -23,6 +26,7 @@ interface TopicDetail {
   adoption_state: string;
   industry_positions: Record<string, { urgency_score: number; adoption_state: string }> | null;
   status: string;
+  is_published: boolean;
   articles: Article[];
 }
 
@@ -42,7 +46,7 @@ export default function TopicDetailPage() {
 
   if (topic === "loading") {
     return (
-      <div className="flex min-h-[300px] items-center justify-center px-4 py-10">
+      <div className="flex min-h-[300px] items-center justify-center">
         <p className="text-sm text-gray-500">Loading…</p>
       </div>
     );
@@ -50,17 +54,15 @@ export default function TopicDetailPage() {
 
   if (topic === null) {
     return (
-      <div className="flex min-h-[300px] items-center justify-center px-4 py-10">
+      <div className="flex min-h-[300px] items-center justify-center">
         <p className="text-sm text-red-400">Topic not found.</p>
       </div>
     );
   }
 
   return (
-    <div className="px-4 py-10 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-5xl">
-        <TopicEditor topic={topic} />
-      </div>
+    <div className="mx-auto max-w-5xl">
+      <TopicEditor topic={topic} />
     </div>
   );
 }

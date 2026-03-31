@@ -35,6 +35,7 @@ class Article(Base):
     )
     what_is_it: Mapped[str | None] = mapped_column(Text, nullable=True)
     why_it_matters: Mapped[str | None] = mapped_column(Text, nullable=True)
+    persona_impacts: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 
     source: Mapped["Source"] = relationship("Source", back_populates="articles")

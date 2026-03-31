@@ -8,15 +8,14 @@ import { useEffect, useState } from "react";
 import { API_BASE } from "@/lib/api";
 
 const NAV = [
-  { label: "Curate Topics", href: "/admin" },
+  { label: "Marketer's Workbench", href: "/admin" },
+  { label: "Newsletter preview", href: "/admin/newsletter" },
+  { label: "Radar preview", href: "/admin/radar-preview" },
   { label: "Manage Sources", href: "/admin/sources" },
   { label: "Subscribers", href: "/admin/subscribers" },
   { label: "Role Profiles", href: "/admin/roles" },
   { label: "Content Library", href: "/admin/library" },
-  { label: "Signal Intelligence", href: "/admin/signals" },
   { label: "System Jobs", href: "/admin/jobs" },
-  { label: "Radar Preview", href: "/admin/radar-preview" },
-  { label: "Newsletter Preview", href: "/admin/newsletter" },
 ] as const;
 
 type NavItem = (typeof NAV)[number];
@@ -25,7 +24,7 @@ const NAV_ORDER_KEY = "pulseone-admin-nav-order";
 
 function normalizeOrder(savedHrefs: string[] | undefined, defaults: readonly NavItem[]): NavItem[] {
   if (!savedHrefs?.length) return [...defaults];
-  const byHref = new Map(defaults.map((n) => [n.href, n]));
+  const byHref = new Map<string, NavItem>(defaults.map((n) => [n.href, n]));
   const ordered: NavItem[] = [];
   for (const href of savedHrefs) {
     const item = byHref.get(href);
@@ -228,8 +227,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       </aside>
 
-      {/* ── Main content ── */}
-      <main className="flex-1 overflow-y-auto">{children}</main>
+      {/* ── Main: consistent inset from sidebar (extra pl so content clears the rail) ── */}
+      <main className="min-h-0 flex-1 overflow-y-auto">
+        <div className="w-full py-10 pl-8 pr-6 sm:pl-10 sm:pr-8 lg:pl-12 lg:pr-10">
+          {children}
+        </div>
+      </main>
     </div>
   );
 }

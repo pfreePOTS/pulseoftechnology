@@ -16,7 +16,6 @@ let toastSeq = 0;
 
 export default function JobsPage() {
   const [ingestState, setIngestState] = useState<JobState>("idle");
-  const [newsletterState, setNewsletterState] = useState<JobState>("idle");
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   function addToast(type: "success" | "error", message: string) {
@@ -57,19 +56,10 @@ export default function JobsPage() {
       setState: setIngestState,
       icon: "⬇",
     },
-    {
-      title: "Send Daily Newsletter Now",
-      description:
-        "Immediately dispatches the newsletter to all active subscribers based on currently approved topics and their industry preferences.",
-      endpoint: "/api/admin/jobs/newsletter",
-      state: newsletterState,
-      setState: setNewsletterState,
-      icon: "✉",
-    },
   ];
 
   return (
-    <div className="px-4 py-10 sm:px-6 lg:px-8">
+    <>
       <div className="mx-auto max-w-3xl">
         <header className="mb-8">
           <h1 className="text-3xl font-bold tracking-tight text-white">
@@ -80,6 +70,10 @@ export default function JobsPage() {
           </p>
         </header>
 
+        <p className="mb-6 text-sm text-gray-500">
+          Use this when you want to send the digest outside the schedule. Newsletter modeling lives under Workbench →
+          Newsletter preview or the Newsletter preview sidebar link.
+        </p>
         <div className="grid gap-5 sm:grid-cols-2">
           {JOBS.map(({ title, description, endpoint, state, setState, icon }) => (
             <div
@@ -130,7 +124,7 @@ export default function JobsPage() {
       </div>
 
       {/* Toast notifications */}
-      <div className="fixed bottom-6 right-6 flex flex-col gap-2 z-50">
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2">
         {toasts.map((toast) => (
           <div
             key={toast.id}
@@ -144,6 +138,6 @@ export default function JobsPage() {
           </div>
         ))}
       </div>
-    </div>
+    </>
   );
 }

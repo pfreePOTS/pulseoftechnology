@@ -6,6 +6,7 @@ Performs a one-way push of subscriber data to HubSpot contacts.
 Custom HubSpot properties required (create these in HubSpot Settings → Properties):
   - pulse_domains   (string)  — comma-separated domain interests, e.g. "AI,Security"
   - pulse_subscribed (string/checkbox) — "true" / "false"
+  - pulse_role (string) — subscriber persona label, e.g. "CTO"
 
 Standard HubSpot properties used (exist by default):
   - email, firstname, lastname, industry
@@ -20,8 +21,10 @@ from hubspot.crm.contacts import (
     SimplePublicObjectInputForCreate,
 )
 from hubspot.crm.contacts.exceptions import ApiException
+from sqlalchemy.orm import joinedload
 
 from ..config import settings
+from ..database import SessionLocal
 from ..models.subscriber import Subscriber
 
 logger = logging.getLogger(__name__)
@@ -46,6 +49,10 @@ def _get_hs_client() -> hubspot.Client:
 
 
 def _build_properties(subscriber: Subscriber) -> dict[str, str]:
+    role_name = ""
+    role_obj = getattr(subscriber, "role", None)
+    if role_obj is not None:
+        role_name = role_obj.name or ""
     return {
         "email": subscriber.email,
         "firstname": subscriber.first_name,
@@ -54,6 +61,7 @@ def _build_properties(subscriber: Subscriber) -> dict[str, str]:
         # Custom PulseOne properties
         "pulse_domains": ",".join(subscriber.domains or []),
         "pulse_subscribed": "true" if subscriber.is_active else "false",
+        "pulse_role": role_name,
     }
 
 
@@ -76,8 +84,29 @@ def sync_subscriber_to_hubspot(subscriber: Subscriber) -> bool:
         logger.debug("HubSpot sync skipped — HUBSPOT_API_KEY not configured")
         return False
 
+    sub: Subscriber | None = None
+    try:
+        db = SessionLocal()
+        try:
+            sub = (
+                db.query(Subscriber)
+                .options(joinedload(Subscriber.role))
+                .filter(Subscriber.id == subscriber.id)
+                .first()
+            )
+        finally:
+            db.close()
+    except Exception:
+        logger.debug(
+            "HubSpot: could not reload subscriber id=%s from DB — using in-memory object",
+            getattr(subscriber, "id", "?"),
+            exc_info=False,
+        )
+
+    effective = sub if sub is not None else subscriber
+
     client = _get_hs_client()
-    properties = _build_properties(subscriber)
+    properties = _build_properties(effective)
 
     # Search for an existing contact by email
     try:

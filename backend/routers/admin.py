@@ -14,7 +14,7 @@ from fastapi import (
 )
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, joinedload
 
 from ..config import settings as app_settings
@@ -37,6 +37,7 @@ from ..models.topic import AdoptionState, Topic, TopicStatus
 from ..rate_limits import limiter
 from ..services.ai_service import suggest_industry_positions
 from ..services.email_service import generate_newsletter_preview, run_daily_newsletter
+from ..services.hubspot_sync import sync_subscriber_to_hubspot
 from ..services.ingestion import run_all_sources
 
 _bearer_optional = HTTPBearer(auto_error=False)
@@ -116,6 +117,7 @@ class ArticleOut(BaseModel):
     status: str
     what_is_it: str | None = None
     why_it_matters: str | None = None
+    persona_impacts: dict[str, str] | None = None
     tags: list[str] | None = None
 
     model_config = {"from_attributes": True}
@@ -140,6 +142,20 @@ class TopicDetail(TopicOut):
     articles: list[ArticleOut]
 
 
+class TopicPositioningInsight(BaseModel):
+    topic_id: int
+    name: str
+    domain: str
+    urgency_score: float
+    article_count: int
+    articles_last_7d: int = Field(description="Articles ingested in the last 7 days")
+    articles_prior_7d: int = Field(description="Articles ingested in the 7 days before that")
+    trend: str = Field(description="up | down | flat")
+    label: str
+    note: str
+    ai_enriched: bool
+
+
 class TopicUpdate(BaseModel):
     summary: str | None = None
     urgency_score: float | None = None
@@ -157,6 +173,17 @@ def list_topics(
     if topic_status is not None:
         q = q.filter(Topic.status == topic_status)
     return q.order_by(Topic.urgency_score.desc()).all()
+
+
+@router.get("/topics/positioning-insights", response_model=list[TopicPositioningInsight])
+def topic_positioning_insights(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """Article velocity (7d vs prior 7d) plus optional Haiku synthesis for the Positioning workbench."""
+    from ..services.trend_service import build_positioning_insights
+
+    return build_positioning_insights(db, status=TopicStatus.selected)
 
 
 @router.get("/topics/{topic_id}", response_model=TopicDetail)
@@ -202,7 +229,7 @@ def suggest_positions(
     db: Session = Depends(get_db),
     _: None = Depends(require_admin),
 ):
-    """Ask Claude to suggest urgency scores and rationales for 6 target industries."""
+    """Ask Claude to suggest per-industry impact, risk, adoption state, and rationales."""
     try:
         result = suggest_industry_positions(topic_id, db)
     except ValueError as exc:
@@ -210,22 +237,59 @@ def suggest_positions(
     return result
 
 
-@router.post("/topics/{topic_id}/approve", response_model=TopicOut)
-def approve_topic(
+@router.post("/topics/{topic_id}/watch", response_model=TopicOut)
+def watch_topic(
     topic_id: int,
     db: Session = Depends(get_db),
     _: None = Depends(require_admin),
 ):
+    """Promote a pending topic to 'watched' (tracking for research)."""
     topic = db.query(Topic).filter(Topic.id == topic_id).first()
     if topic is None:
         raise HTTPException(status_code=404, detail="Topic not found")
-    if topic.status == TopicStatus.approved:
-        raise HTTPException(status_code=409, detail="Topic is already approved")
+    if topic.status != TopicStatus.pending:
+        raise HTTPException(status_code=409, detail="Only pending topics can be watched")
+    topic.status = TopicStatus.watched
+    db.commit()
+    db.refresh(topic)
+    return topic
 
-    topic.status = TopicStatus.approved
+
+@router.post("/topics/{topic_id}/select", response_model=TopicOut)
+def select_topic(
+    topic_id: int,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """Select a watched topic for the radar pipeline."""
+    topic = db.query(Topic).filter(Topic.id == topic_id).first()
+    if topic is None:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    if topic.status not in (TopicStatus.watched, TopicStatus.selected):
+        raise HTTPException(status_code=409, detail="Only watched topics can be selected")
+    topic.status = TopicStatus.selected
     db.query(Article).filter(Article.topic_id == topic_id).update(
         {"status": "published"}, synchronize_session=False
     )
+    db.commit()
+    db.refresh(topic)
+    return topic
+
+
+@router.post("/topics/{topic_id}/deselect", response_model=TopicOut)
+def deselect_topic(
+    topic_id: int,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """Move a selected topic back to watched."""
+    topic = db.query(Topic).filter(Topic.id == topic_id).first()
+    if topic is None:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    if topic.status != TopicStatus.selected:
+        raise HTTPException(status_code=409, detail="Only selected topics can be deselected")
+    topic.status = TopicStatus.watched
+    topic.is_published = False
     db.commit()
     db.refresh(topic)
     return topic
@@ -240,8 +304,8 @@ def publish_topic(
     topic = db.query(Topic).filter(Topic.id == topic_id).first()
     if topic is None:
         raise HTTPException(status_code=404, detail="Topic not found")
-    if topic.status != TopicStatus.approved:
-        raise HTTPException(status_code=400, detail="Topic must be approved before publishing")
+    if topic.status != TopicStatus.selected:
+        raise HTTPException(status_code=400, detail="Topic must be selected before publishing")
     topic.is_published = True
     db.commit()
     db.refresh(topic)
@@ -276,11 +340,11 @@ def generate_topic_summary_endpoint(
 ):
     from ..services.ai_service import generate_topic_summary  # avoid circular at module level
 
-    topic = db.query(Topic).filter(Topic.id == topic_id).first()
+    topic = db.query(Topic).options(joinedload(Topic.articles)).filter(Topic.id == topic_id).first()
     if topic is None:
         raise HTTPException(status_code=404, detail="Topic not found")
 
-    articles = topic.articles  # relationship already loaded
+    articles = topic.articles
     generate_topic_summary(topic, list(articles))
     db.commit()
     db.refresh(topic)
@@ -547,6 +611,32 @@ def list_subscribers(
     _: None = Depends(require_admin),
 ):
     return db.query(Subscriber).order_by(Subscriber.created_at.desc()).all()
+
+
+class SubscriberRoleUpdate(BaseModel):
+    role_id: int | None = None
+
+
+@router.put("/subscribers/{subscriber_id}/role", response_model=SubscriberOut)
+def update_subscriber_role(
+    subscriber_id: int,
+    payload: SubscriberRoleUpdate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    subscriber = db.query(Subscriber).filter(Subscriber.id == subscriber_id).first()
+    if subscriber is None:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+    if payload.role_id is not None:
+        role = db.query(Role).filter(Role.id == payload.role_id).first()
+        if role is None:
+            raise HTTPException(status_code=404, detail="Role not found")
+    subscriber.role_id = payload.role_id
+    db.commit()
+    db.refresh(subscriber)
+    background_tasks.add_task(sync_subscriber_to_hubspot, subscriber)
+    return subscriber
 
 
 # ---------------------------------------------------------------------------

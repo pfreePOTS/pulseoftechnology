@@ -158,7 +158,7 @@ export default function RolesPage() {
   }
 
   return (
-    <div className="px-6 pt-8 pb-12 max-w-3xl">
+    <div className="mx-auto max-w-3xl">
       <h1 className="text-2xl font-bold tracking-tight text-white">Role Profiles</h1>
       <p className="mt-1 mb-8 text-sm text-gray-400">
         Define C-level personas (CEO, CTO, CFO…) with content tags. Subscribers assigned a role

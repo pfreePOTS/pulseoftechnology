@@ -1,8 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { adminFetch, API_BASE } from "@/lib/api";
+
+type WorkbenchStepQuery =
+  | "signals"
+  | "research"
+  | "impact"
+  | "selection"
+  | "positioning"
+  | "promotion"
+  | "preview_publish";
 
 type ContentType = "article" | "video" | "landing_page";
 
@@ -37,11 +48,46 @@ const EMPTY_FORM = {
   tagsRaw: "",
 };
 
-export default function ContentLibraryPage() {
+const STEP_LABEL: Partial<Record<WorkbenchStepQuery, string>> = {
+  signals: "Signals",
+  research: "Research",
+  impact: "Impact",
+  selection: "Selection",
+  positioning: "Positioning",
+  promotion: "Promotion",
+  preview_publish: "Preview & Publish",
+};
+
+const WORKBENCH_STEP_IDS: readonly WorkbenchStepQuery[] = [
+  "signals",
+  "research",
+  "impact",
+  "selection",
+  "positioning",
+  "promotion",
+  "preview_publish",
+];
+
+function isWorkbenchStep(q: string | null): q is WorkbenchStepQuery {
+  return q !== null && (WORKBENCH_STEP_IDS as readonly string[]).includes(q);
+}
+
+function workbenchReturnHref(step: WorkbenchStepQuery | null): string {
+  const s = step && STEP_LABEL[step] ? step : "promotion";
+  return `/admin?step=${s}`;
+}
+
+function LibraryPageContent() {
+  const searchParams = useSearchParams();
+  const fromWorkbench = searchParams.get("from") === "workbench";
+  const rawStep = searchParams.get("step");
+  const stepParam = isWorkbenchStep(rawStep) ? rawStep : null;
+  const stepLabel =
+    stepParam && STEP_LABEL[stepParam] ? STEP_LABEL[stepParam] : "Promotion";
+
   const [items, setItems] = useState<ContentItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ContentItem | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -54,7 +100,9 @@ export default function ContentLibraryPage() {
     setLoading(false);
   }
 
-  useEffect(() => { fetchItems(); }, []);
+  useEffect(() => {
+    fetchItems();
+  }, []);
 
   function openAdd() {
     setEditingItem(null);
@@ -128,18 +176,43 @@ export default function ContentLibraryPage() {
     await fetchItems();
   }
 
+  const backHref = workbenchReturnHref(stepParam);
+
   return (
-    <div className="px-6 pt-8 pb-12">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="mx-auto max-w-5xl">
+      {fromWorkbench && (
+        <nav className="mb-4 text-xs text-gray-500" aria-label="Breadcrumb">
+          <Link href="/admin" className="text-indigo-400/90 hover:text-indigo-300">
+            Marketer&apos;s Workbench
+          </Link>
+          <span className="mx-2 text-gray-600">/</span>
+          <Link href={backHref} className="text-indigo-400/90 hover:text-indigo-300">
+            {stepLabel}
+          </Link>
+          <span className="mx-2 text-gray-600">/</span>
+          <span className="text-gray-300">Content Library</span>
+        </nav>
+      )}
+
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
+          {fromWorkbench && (
+            <Link
+              href={backHref}
+              className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-indigo-400 hover:text-indigo-300"
+            >
+              <span aria-hidden>←</span> Back to {stepLabel}
+            </Link>
+          )}
           <h1 className="text-2xl font-bold tracking-tight text-white">Content Library</h1>
           <p className="mt-1 text-sm text-gray-400">
             First-party assets promoted in subscriber newsletters based on role tags.
           </p>
         </div>
         <button
+          type="button"
           onClick={openAdd}
-          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
+          className="shrink-0 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
         >
           + Add Content
         </button>
@@ -152,21 +225,31 @@ export default function ContentLibraryPage() {
           <p className="text-sm text-gray-500">No content yet. Add your first asset above.</p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-gray-800">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-xl border border-gray-800">
+          <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-gray-800 bg-gray-900">
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Title</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Type</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Tags</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Status</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Actions</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Title
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Type
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Tags
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Status
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800 bg-gray-950">
               {items.map((item) => (
                 <tr key={item.id} className={item.is_active ? "" : "opacity-50"}>
-                  <td className="px-4 py-3">
+                  <td className="max-w-xs px-4 py-3">
                     <a
                       href={item.url}
                       target="_blank"
@@ -179,7 +262,7 @@ export default function ContentLibraryPage() {
                       <p className="mt-0.5 line-clamp-1 text-xs text-gray-500">{item.summary}</p>
                     )}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="whitespace-nowrap px-4 py-3">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${TYPE_COLORS[item.type]}`}>
                       {TYPE_LABELS[item.type]}
                     </span>
@@ -197,8 +280,9 @@ export default function ContentLibraryPage() {
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="whitespace-nowrap px-4 py-3">
                     <button
+                      type="button"
                       onClick={() => handleToggleActive(item)}
                       className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
                         item.is_active
@@ -209,14 +293,16 @@ export default function ContentLibraryPage() {
                       {item.is_active ? "Active" : "Inactive"}
                     </button>
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="whitespace-nowrap px-4 py-3 text-right">
                     <button
+                      type="button"
                       onClick={() => openEdit(item)}
                       className="mr-3 text-xs text-gray-400 hover:text-white"
                     >
                       Edit
                     </button>
                     <button
+                      type="button"
                       onClick={() => handleDelete(item)}
                       className="text-xs text-red-500 hover:text-red-400"
                     >
@@ -230,7 +316,6 @@ export default function ContentLibraryPage() {
         </div>
       )}
 
-      {/* ── Add / Edit Modal ── */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="w-full max-w-lg rounded-xl border border-gray-700 bg-gray-900 p-6 shadow-2xl">
@@ -318,5 +403,19 @@ export default function ContentLibraryPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function LibraryFallback() {
+  return (
+    <div className="mx-auto max-w-5xl py-16 text-center text-sm text-gray-500">Loading…</div>
+  );
+}
+
+export default function ContentLibraryPage() {
+  return (
+    <Suspense fallback={<LibraryFallback />}>
+      <LibraryPageContent />
+    </Suspense>
   );
 }

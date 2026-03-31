@@ -1,16 +1,17 @@
-"use client";
+import Link from "next/link";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-
-export default function SignalsPageRedirect() {
-  const router = useRouter();
-  useEffect(() => {
-    router.replace("/admin?step=signals");
-  }, [router]);
+export default function SignalsMergedPage() {
   return (
-    <div className="flex min-h-[200px] items-center justify-center">
-      <p className="text-sm text-gray-500">Redirecting to workbench…</p>
+    <div className="flex min-h-[200px] flex-col items-center justify-center gap-4 p-6">
+      <p className="text-center text-gray-300">
+        Signals have been merged into Trend Discovery.
+      </p>
+      <Link
+        href="/admin"
+        className="text-blue-400 underline hover:text-blue-300"
+      >
+        Go to admin
+      </Link>
     </div>
   );
 }

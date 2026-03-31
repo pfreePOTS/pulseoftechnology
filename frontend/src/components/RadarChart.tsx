@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+
+import { scrollToSubscribe } from "@/lib/subscribeNavigation";
 
 // ── Public types ───────────────────────────────────────────────────────────────
 
@@ -263,6 +265,12 @@ function computePositions(topics: RadarTopic[]): PlotPointXY[] {
   return result;
 }
 
+function topTopicsByUrgency(topics: RadarTopic[], n: number): RadarTopic[] {
+  return [...topics]
+    .sort((a, b) => b.urgency_score - a.urgency_score)
+    .slice(0, n);
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function RadarChart({
@@ -272,9 +280,22 @@ export default function RadarChart({
   topics: RadarTopic[];
   showLabels?: boolean;
 }) {
-  const [tooltip, setTooltip] = useState<PlotPointXY | null>(null);
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  const [lockedKey, setLockedKey] = useState<string | null>(null);
   const positions = computePositions(topics);
+
+  /** Hover previews another star while locked; otherwise show locked selection. */
+  const displayKey = hoveredKey ?? lockedKey;
+  const activePoint = useMemo(
+    () => (displayKey ? positions.find((p) => p.key === displayKey) ?? null : null),
+    [positions, displayKey],
+  );
+
+  const topThree = useMemo(() => topTopicsByUrgency(topics, 3), [topics]);
+
+  function handleStarPointerDown(ptKey: string) {
+    setLockedKey((prev) => (prev === ptKey ? null : ptKey));
+  }
 
   return (
     <div
@@ -313,6 +334,7 @@ export default function RadarChart({
           </filter>
         </defs>
 
+        <g pointerEvents="none">
         {/* ── Radar background ── */}
         <circle cx={CX} cy={CY} r={MAX_R + RADAR_PAD} fill="url(#radarBg)" />
         <circle cx={CX} cy={CY} r={MAX_R + RADAR_PAD} fill="none" stroke="#0d9488" strokeWidth={1.5 * SCALE} strokeOpacity="0.4" />
@@ -360,27 +382,29 @@ export default function RadarChart({
         {positions.map((pt) => {
           const hx = svgCoord(pt.x);
           const hy = svgCoord(pt.y);
-          const isHover = hoveredKey === pt.key;
+          const isHighlighted =
+            hoveredKey === pt.key ||
+            (lockedKey === pt.key && hoveredKey === null);
           const hoverTf =
-            isHover
+            isHighlighted
               ? `translate(${hx},${hy}) scale(${STAR_HOVER_SCALE}) translate(${-hx},${-hy})`
               : undefined;
           return (
             <g key={pt.key} pointerEvents="none">
               <g transform={hoverTf}>
-                <g filter={isHover ? "url(#starGlowHover)" : "url(#starGlow)"}>
+                <g filter={isHighlighted ? "url(#starGlowHover)" : "url(#starGlow)"}>
                   <circle
                     cx={hx}
                     cy={hy}
                     r={STAR_HALO_R}
                     fill={pt.color}
-                    opacity={isHover ? 0.22 : 0.1}
+                    opacity={isHighlighted ? 0.22 : 0.1}
                   />
                   <path
                     d={starPath(hx, hy, STAR_OUTER_R, STAR_INNER_R)}
                     fill={pt.color}
                     stroke="white"
-                    strokeWidth={isHover ? STAR_STROKE_HOVER_W : STAR_STROKE_W}
+                    strokeWidth={isHighlighted ? STAR_STROKE_HOVER_W : STAR_STROKE_W}
                     strokeLinejoin="round"
                   />
                 </g>
@@ -393,7 +417,7 @@ export default function RadarChart({
                   fill={pt.color}
                   fontWeight="600"
                   fontFamily="Inter,system-ui,sans-serif"
-                  style={{ pointerEvents: "none", opacity: isHover ? 1 : 0.92 }}
+                  style={{ pointerEvents: "none", opacity: isHighlighted ? 1 : 0.92 }}
                 >
                   {pt.topic.name.length > 20
                     ? pt.topic.name.slice(0, 19) + "…"
@@ -403,6 +427,25 @@ export default function RadarChart({
             </g>
           );
         })}
+
+        {/* ── Empty state ── */}
+        {topics.length === 0 && (
+          <text x={CX} y={CY} textAnchor="middle" dominantBaseline="middle"
+            fill="#0d9488" fontSize={14 * SCALE} opacity="0.6" fontFamily="Inter,system-ui,sans-serif">
+            No published topics yet
+          </text>
+        )}
+        </g>
+
+        {/* Tap/click outside stars clears lock (above background, below hit targets) */}
+        <rect
+          width={SIZE}
+          height={SIZE}
+          fill="transparent"
+          pointerEvents="all"
+          style={{ cursor: "default" }}
+          onPointerDown={() => setLockedKey(null)}
+        />
 
         {/* Hit targets drawn last so filtered glow layers cannot sit above them (fixes cursor vs hover offset) */}
         {positions.map((pt) => {
@@ -417,26 +460,16 @@ export default function RadarChart({
               fill="transparent"
               stroke="none"
               pointerEvents="all"
-              className="cursor-pointer"
-              onMouseEnter={() => {
-                setTooltip(pt);
-                setHoveredKey(pt.key);
-              }}
-              onMouseLeave={() => {
-                setTooltip(null);
-                setHoveredKey(null);
+              className="cursor-pointer touch-manipulation"
+              onMouseEnter={() => setHoveredKey(pt.key)}
+              onMouseLeave={() => setHoveredKey(null)}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                handleStarPointerDown(pt.key);
               }}
             />
           );
         })}
-
-        {/* ── Empty state ── */}
-        {topics.length === 0 && (
-          <text x={CX} y={CY} textAnchor="middle" dominantBaseline="middle"
-            fill="#0d9488" fontSize={14 * SCALE} opacity="0.6" fontFamily="Inter,system-ui,sans-serif">
-            No published topics yet
-          </text>
-        )}
       </svg>
       </div>
 
@@ -451,23 +484,78 @@ export default function RadarChart({
         <div
           className={[
             "rounded-2xl border-2 bg-white px-6 py-5 shadow-lg transition-shadow",
-            tooltip ? "border-[#425B76] shadow-[#425B76]/10" : "border-gray-200",
+            activePoint ? "border-[#425B76] shadow-[#425B76]/10" : "border-gray-200",
           ].join(" ")}
         >
-          {tooltip ? (
-            <RadarTooltipPanel point={tooltip} />
+          {activePoint ? (
+            <RadarTooltipPanel point={activePoint} />
           ) : (
-            <div className="text-center lg:text-left">
-              <p className="text-base font-semibold text-[#425B76]">Topic details</p>
-              <p className="mt-3 text-sm leading-relaxed text-gray-500">
-                {topics.length > 0
-                  ? "Hover a star on the radar to read the full briefing, rationale, and urgency for that signal."
-                  : "Published topics will appear as stars on the radar."}
-              </p>
-            </div>
+            <RadarDefaultPanel
+              topics={topics}
+              topThree={topThree}
+            />
           )}
         </div>
       </aside>
+    </div>
+  );
+}
+
+function RadarDefaultPanel({
+  topics,
+  topThree,
+}: {
+  topics: RadarTopic[];
+  topThree: RadarTopic[];
+}) {
+  return (
+    <div className="text-center font-sans lg:text-left">
+      <p className="text-base font-semibold text-[#425B76]">PulseOne Technology Radar</p>
+      <p className="mt-3 text-sm leading-relaxed text-gray-600">
+        The PulseOne Technology Radar tracks the signals that matter most to your business.
+      </p>
+      {topics.length > 0 ? (
+        <>
+          <div className="mt-5 border-t border-gray-200 pt-5">
+            <p className="text-xs font-bold uppercase tracking-wide text-gray-400">
+              Top 3 highest impact
+            </p>
+            <ul className="mt-3 space-y-3 text-left">
+              {topThree.map((t) => (
+                <li
+                  key={t.id}
+                  className="flex flex-wrap items-center gap-2 gap-y-1 text-sm"
+                >
+                  <span
+                    className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-white"
+                    style={{
+                      backgroundColor:
+                        DOMAIN_COLORS[t.domain] ?? DEFAULT_COLOR,
+                    }}
+                  >
+                    {t.domain}
+                  </span>
+                  <span className="font-medium text-gray-900">{t.name}</span>
+                  <span className="ml-auto rounded-md bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-800">
+                    {t.urgency_score.toFixed(1)} urgency
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <button
+            type="button"
+            onClick={() => scrollToSubscribe()}
+            className="mt-6 w-full rounded-lg border-2 border-[#425B76] bg-white px-4 py-2.5 text-sm font-semibold text-[#425B76] transition-colors hover:bg-[#425B76]/5"
+          >
+            Subscribe for personalized briefings
+          </button>
+        </>
+      ) : (
+        <p className="mt-4 text-sm text-gray-500">
+          Published topics will appear as stars on the radar.
+        </p>
+      )}
     </div>
   );
 }
@@ -514,6 +602,13 @@ function RadarTooltipPanel({ point: pt }: { point: PlotPointXY }) {
           <p className="mt-2 text-sm leading-relaxed text-gray-600">{pt.topic.summary}</p>
         </div>
       ) : null}
+      <button
+        type="button"
+        onClick={() => scrollToSubscribe(pt.topic.domain)}
+        className="mt-5 w-full rounded-lg border border-[#425B76]/30 bg-[#425B76]/5 px-3 py-2.5 text-left text-sm font-semibold text-[#425B76] transition-colors hover:bg-[#425B76]/10"
+      >
+        Get briefings on {pt.topic.name} →
+      </button>
     </div>
   );
 }

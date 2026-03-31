@@ -55,8 +55,8 @@ export default function RadarSection({ topics }: { topics: RadarTopic[] }) {
               C-Level Technology Intelligence Radar
             </h1>
             <p className="mt-1 text-sm text-gray-600">
-              AI-curated signals scored by urgency · Hover a star to inspect ·
-              Updated daily
+              AI-curated signals scored by urgency · Click or tap a star to lock
+              details (tap again to clear) · Updated daily
             </p>
           </div>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { adminFetch, API_BASE } from "@/lib/api";
@@ -21,6 +21,22 @@ export interface TopicRow {
   signal_rationale: string | null;
   signal_suggested_state: string | null;
   signal_id: number | null;
+}
+
+interface TopicDetailArticle {
+  id: number;
+  title: string;
+  url: string;
+  published_at: string | null;
+  source_name: string | null;
+}
+
+interface TopicDetailResponse {
+  id: number;
+  name: string;
+  domain: string;
+  summary: string | null;
+  articles: TopicDetailArticle[];
 }
 
 type TabId = "pending" | "approved";
@@ -94,6 +110,67 @@ function fmtOneDecimal(n: number | null): string {
   return n.toFixed(1);
 }
 
+function articleSourceLabel(a: TopicDetailArticle): string {
+  if (a.source_name?.trim()) return a.source_name;
+  try {
+    return new URL(a.url).hostname.replace(/^www\./, "");
+  } catch {
+    return "—";
+  }
+}
+
+function fmtPublished(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function VelocityMini({
+  velocity,
+  acceleration,
+}: {
+  velocity: number | null;
+  acceleration: number | null;
+}) {
+  const v = typeof velocity === "number" && !Number.isNaN(velocity) ? velocity : 0;
+  const a = typeof acceleration === "number" && !Number.isNaN(acceleration) ? acceleration : 0;
+  const vh = Math.min(100, Math.max(8, (v / 12) * 100));
+  const ah = Math.min(100, Math.max(8, (a / 4) * 100));
+  return (
+    <div className="flex gap-3 rounded-lg border border-gray-800 bg-gray-900/50 p-3">
+      <div className="flex flex-1 flex-col gap-1">
+        <span className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Velocity (7d)</span>
+        <div className="flex h-14 items-end rounded-md bg-gray-800/80 px-2 pt-2">
+          <div
+            className="w-full min-h-[6px] rounded-sm bg-indigo-500/90 transition-[height]"
+            style={{ height: `${vh}%` }}
+            title={`${v.toFixed(1)} articles`}
+          />
+        </div>
+        <span className="text-center text-xs tabular-nums text-indigo-300">{fmtOneDecimal(velocity)}</span>
+      </div>
+      <div className="flex flex-1 flex-col gap-1">
+        <span className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Acceleration</span>
+        <div className="flex h-14 items-end rounded-md bg-gray-800/80 px-2 pt-2">
+          <div
+            className="w-full min-h-[6px] rounded-sm bg-amber-500/90 transition-[height]"
+            style={{ height: `${ah}%` }}
+            title={`${a.toFixed(2)}× vs prior week`}
+          />
+        </div>
+        <span className="text-center text-xs tabular-nums text-amber-300">
+          {acceleration === null || Number.isNaN(acceleration) ? "—" : `${acceleration.toFixed(1)}×`}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function TrendDiscoveryInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -121,6 +198,13 @@ function TrendDiscoveryInner() {
   const [merging, setMerging] = useState(false);
   const [analyzingId, setAnalyzingId] = useState<number | null>(null);
   const [bulkAnalyzing, setBulkAnalyzing] = useState(false);
+  const [selectedTopicId, setSelectedTopicId] = useState<number | null>(null);
+  const [topicDetail, setTopicDetail] = useState<TopicDetailResponse | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [drawerEntered, setDrawerEntered] = useState(false);
+  const selectedTopicIdRef = useRef<number | null>(null);
+  selectedTopicIdRef.current = selectedTopicId;
 
   const statusParam = tab === "pending" ? "pending" : "selected";
 
@@ -151,7 +235,63 @@ function TrendDiscoveryInner() {
   useEffect(() => {
     setSelectedIds(new Set());
     setMergeOpen(false);
+    setSelectedTopicId(null);
+    setTopicDetail(null);
   }, [tab]);
+
+  useEffect(() => {
+    if (selectedTopicId === null) {
+      setTopicDetail(null);
+      setDetailError(null);
+      return;
+    }
+    let cancelled = false;
+    setDetailLoading(true);
+    setDetailError(null);
+    void (async () => {
+      try {
+        const res = await adminFetch(`${API_BASE}/api/admin/topics/${selectedTopicId}`);
+        if (cancelled) return;
+        if (!res.ok) {
+          setDetailError("Could not load topic detail.");
+          setTopicDetail(null);
+          return;
+        }
+        const data = (await res.json()) as TopicDetailResponse;
+        if (!cancelled) setTopicDetail(data);
+      } catch {
+        if (!cancelled) {
+          setDetailError("Could not load topic detail.");
+          setTopicDetail(null);
+        }
+      } finally {
+        if (!cancelled) setDetailLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTopicId]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setSelectedTopicId(null);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    if (selectedTopicId === null) {
+      setDrawerEntered(false);
+      return;
+    }
+    setDrawerEntered(false);
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setDrawerEntered(true));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [selectedTopicId]);
 
   const checkedTopics = useMemo(() => {
     return topics.filter((t) => selectedIds.has(t.id));
@@ -185,6 +325,7 @@ function TrendDiscoveryInner() {
         setError(await res.text().catch(() => res.statusText));
         return;
       }
+      setSelectedTopicId((cur) => (cur === id ? null : cur));
       await loadTopics();
       setSelectedIds((prev) => {
         const next = new Set(prev);
@@ -211,6 +352,12 @@ function TrendDiscoveryInner() {
         return;
       }
       await loadTopics();
+      if (selectedTopicIdRef.current === id) {
+        const detailRes = await adminFetch(`${API_BASE}/api/admin/topics/${id}`);
+        if (detailRes.ok) {
+          setTopicDetail((await detailRes.json()) as TopicDetailResponse);
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "AI analysis failed");
     } finally {
@@ -274,6 +421,20 @@ function TrendDiscoveryInner() {
 
   const allPendingSelected =
     tab === "pending" && topics.length > 0 && topics.every((t) => selectedIds.has(t.id));
+
+  const selectedRow = useMemo(
+    () => (selectedTopicId === null ? undefined : topics.find((t) => t.id === selectedTopicId)),
+    [topics, selectedTopicId],
+  );
+
+  const sortedDrawerArticles = useMemo(() => {
+    const list = topicDetail?.articles ?? [];
+    return [...list].sort((a, b) => {
+      const ta = a.published_at ? new Date(a.published_at).getTime() : 0;
+      const tb = b.published_at ? new Date(b.published_at).getTime() : 0;
+      return tb - ta;
+    });
+  }, [topicDetail?.articles]);
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -382,8 +543,23 @@ function TrendDiscoveryInner() {
               </thead>
               <tbody className="divide-y divide-gray-800 bg-gray-950">
                 {topics.map((row) => (
-                  <tr key={row.id} className="hover:bg-gray-900/40">
-                    <td className="px-3 py-3 align-top">
+                  <tr
+                    key={row.id}
+                    tabIndex={0}
+                    onClick={() => setSelectedTopicId(row.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setSelectedTopicId(row.id);
+                      }
+                    }}
+                    className={`cursor-pointer border-l-2 transition-colors hover:bg-gray-900/40 ${
+                      selectedTopicId === row.id
+                        ? "border-indigo-500 bg-indigo-500/5"
+                        : "border-transparent"
+                    }`}
+                  >
+                    <td className="px-3 py-3 align-top" onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
                         className="rounded border-gray-600 bg-gray-900 text-indigo-500 focus:ring-indigo-500/40"
@@ -397,7 +573,7 @@ function TrendDiscoveryInner() {
                     <td className="max-w-xs px-3 py-3 align-top">
                       <p className="font-semibold text-white">{row.name}</p>
                       {row.signal_rationale?.trim() ? (
-                        <p className="mt-1 text-xs italic text-gray-400">{row.signal_rationale}</p>
+                        <p className="mt-1 line-clamp-2 text-xs italic text-gray-400">{row.signal_rationale}</p>
                       ) : null}
                     </td>
                     <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
@@ -418,7 +594,7 @@ function TrendDiscoveryInner() {
                         <span className="text-gray-600">—</span>
                       )}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-3 align-top text-right">
+                    <td className="whitespace-nowrap px-3 py-3 align-top text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         <button
                           type="button"
@@ -485,7 +661,20 @@ function TrendDiscoveryInner() {
             </thead>
             <tbody className="divide-y divide-gray-800 bg-gray-950">
               {topics.map((row) => (
-                <tr key={row.id} className="hover:bg-gray-900/40">
+                <tr
+                  key={row.id}
+                  tabIndex={0}
+                  onClick={() => setSelectedTopicId(row.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setSelectedTopicId(row.id);
+                    }
+                  }}
+                  className={`cursor-pointer border-l-2 transition-colors hover:bg-gray-900/40 ${
+                    selectedTopicId === row.id ? "border-indigo-500 bg-indigo-500/5" : "border-transparent"
+                  }`}
+                >
                   <td className="px-3 py-3 align-top">
                     <DomainPill domain={row.domain} />
                   </td>
@@ -508,7 +697,7 @@ function TrendDiscoveryInner() {
                       </span>
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-3 align-top text-right">
+                  <td className="whitespace-nowrap px-3 py-3 align-top text-right" onClick={(e) => e.stopPropagation()}>
                     <Link
                       href={`/admin/topics/${row.id}`}
                       className="inline-flex items-center gap-1 text-xs font-medium text-indigo-400 hover:text-indigo-300"
@@ -521,6 +710,122 @@ function TrendDiscoveryInner() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {selectedTopicId !== null && (
+        <div className="fixed inset-0 z-[45] flex justify-end" role="presentation">
+          <button
+            type="button"
+            className="h-full min-h-0 flex-1 cursor-default bg-black/50"
+            aria-label="Close detail panel"
+            onClick={() => setSelectedTopicId(null)}
+          />
+          <aside
+            className={`flex h-full w-full max-w-full shrink-0 flex-col border-l border-gray-800 bg-gray-950 shadow-2xl transition-transform duration-300 ease-out sm:w-[400px] sm:max-w-[400px] ${
+              drawerEntered ? "translate-x-0" : "translate-x-full"
+            }`}
+            aria-labelledby="drawer-topic-title"
+          >
+            <div className="flex items-start justify-between gap-2 border-b border-gray-800 px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <h2 id="drawer-topic-title" className="text-lg font-semibold leading-tight text-white">
+                  {selectedRow?.name ?? topicDetail?.name ?? "Topic"}
+                </h2>
+                {(selectedRow ?? topicDetail) && (
+                  <div className="mt-2">
+                    <DomainPill domain={(selectedRow ?? topicDetail)!.domain} />
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedTopicId(null)}
+                className="shrink-0 rounded-lg border border-gray-700 px-2.5 py-1 text-xs font-medium text-gray-300 hover:bg-gray-800"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+              {detailLoading && <p className="text-sm text-gray-500">Loading details…</p>}
+              {detailError && !detailLoading && (
+                <p className="text-sm text-red-400" role="alert">
+                  {detailError}
+                </p>
+              )}
+
+              {selectedRow && (
+                <>
+                  <VelocityMini
+                    velocity={selectedRow.velocity_score}
+                    acceleration={selectedRow.acceleration_score}
+                  />
+                  <div className="mt-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Signal rationale</h3>
+                    <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-gray-300">
+                      {selectedRow.signal_rationale?.trim() ||
+                        "No AI rationale yet. Use “AI analyze” in the table to generate one."}
+                    </p>
+                  </div>
+                  {selectedRow.signal_suggested_state?.trim() ? (
+                    <p className="mt-3 text-xs text-gray-500">
+                      Suggested state:{" "}
+                      <span className="text-gray-300">{selectedRow.signal_suggested_state}</span>
+                    </p>
+                  ) : null}
+                </>
+              )}
+
+              <h3 className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Supporting articles
+              </h3>
+              {!detailLoading && !detailError && sortedDrawerArticles.length === 0 ? (
+                <p className="text-sm text-gray-500">No articles linked to this topic.</p>
+              ) : (
+                <ul className="space-y-3">
+                  {sortedDrawerArticles.map((a) => (
+                    <li
+                      key={a.id}
+                      className="rounded-lg border border-gray-800 bg-gray-900/50 px-3 py-2 text-sm"
+                    >
+                      <a
+                        href={a.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-indigo-400 hover:text-indigo-300 hover:underline"
+                      >
+                        {a.title}
+                      </a>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {articleSourceLabel(a)} · {fmtPublished(a.published_at)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {selectedRow?.status === "pending" && (
+              <div className="border-t border-gray-800 px-4 py-3">
+                <button
+                  type="button"
+                  disabled={approvingId === selectedTopicId}
+                  onClick={() => selectedTopicId !== null && void approveTopic(selectedTopicId)}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {approvingId === selectedTopicId ? (
+                    <>
+                      <Spinner className="h-4 w-4" />
+                      Approving…
+                    </>
+                  ) : (
+                    "Approve"
+                  )}
+                </button>
+              </div>
+            )}
+          </aside>
         </div>
       )}
 

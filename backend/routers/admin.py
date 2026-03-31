@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 import jwt
 from fastapi import (
@@ -14,7 +15,7 @@ from fastapi import (
 )
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.orm import Session, joinedload
 
 from ..config import settings as app_settings
@@ -174,8 +175,30 @@ class ArticleOut(BaseModel):
     why_it_matters: str | None = None
     persona_impacts: dict[str, str] | None = None
     tags: list[str] | None = None
+    published_at: datetime | None = None
+    source_name: str | None = None
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="before")
+    @classmethod
+    def article_from_orm(cls, data: Any) -> Any:
+        if isinstance(data, Article):
+            src = getattr(data, "source", None)
+            return {
+                "id": data.id,
+                "title": data.title,
+                "url": data.url,
+                "content": data.content,
+                "status": data.status.value if hasattr(data.status, "value") else str(data.status),
+                "what_is_it": data.what_is_it,
+                "why_it_matters": data.why_it_matters,
+                "persona_impacts": data.persona_impacts,
+                "tags": data.tags,
+                "published_at": data.published_at,
+                "source_name": src.name if src is not None else None,
+            }
+        return data
 
 
 class TopicOut(BaseModel):
@@ -304,7 +327,12 @@ def get_topic(
     db: Session = Depends(get_db),
     _: None = Depends(require_admin),
 ):
-    topic = db.query(Topic).options(joinedload(Topic.articles)).filter(Topic.id == topic_id).first()
+    topic = (
+        db.query(Topic)
+        .options(joinedload(Topic.articles).joinedload(Article.source))
+        .filter(Topic.id == topic_id)
+        .first()
+    )
     if topic is None:
         raise HTTPException(status_code=404, detail="Topic not found")
     return topic

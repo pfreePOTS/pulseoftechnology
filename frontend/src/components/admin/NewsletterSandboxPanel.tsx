@@ -32,6 +32,8 @@ type Props = {
   embedded?: boolean;
 };
 
+const PREVIEW_MIN_HEIGHT = 600;
+
 export default function NewsletterSandboxPanel({ embedded = false }: Props) {
   const [html, setHtml] = useState<string>("");
   const [state, setState] = useState<LoadState>("idle");
@@ -82,9 +84,15 @@ export default function NewsletterSandboxPanel({ embedded = false }: Props) {
   );
 
   useEffect(() => {
-    loadRoles();
-    loadPreview(industry, selectedDomains, selectedRoleId);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    void loadRoles();
+  }, []);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      void loadPreview(industry, selectedDomains, selectedRoleId);
+    }, 300);
+    return () => window.clearTimeout(id);
+  }, [industry, selectedDomains, selectedRoleId, loadPreview]);
 
   const selectedRole = roles.find((r) => r.id === selectedRoleId);
   const rolePart = selectedRole ? selectedRole.name : "No Role";
@@ -113,118 +121,112 @@ export default function NewsletterSandboxPanel({ embedded = false }: Props) {
         </div>
       )}
 
-      {embedded && (
-        <p className="mb-4 text-sm text-gray-400">
-          Preview as: <span className="font-medium text-indigo-400">{simDesc}</span>
-          {lastRefreshed && (
-            <span className="ml-2 text-xs text-gray-600">
-              · {lastRefreshed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-            </span>
-          )}
-        </p>
-      )}
+      <div className="flex flex-col gap-4">
+        <div className="rounded-xl border border-gray-800 bg-gray-900/80 p-4">
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
+            <div className="min-w-[200px] flex-1">
+              <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-gray-500">
+                Role
+              </h2>
+              <select
+                value={selectedRoleId}
+                onChange={(e) =>
+                  setSelectedRoleId(e.target.value === "" ? "" : Number(e.target.value))
+                }
+                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">No Role (generic impact)</option>
+                {roles.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                    {r.tags && r.tags.length > 0 ? ` · ${r.tags.join(", ")}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-      <div className="flex gap-6">
-        <aside className="w-56 shrink-0 space-y-6">
-          <div className="rounded-xl border border-gray-800 bg-gray-900 p-4">
-            <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-500">
-              Role Persona
-            </h2>
-            <select
-              value={selectedRoleId}
-              onChange={(e) =>
-                setSelectedRoleId(e.target.value === "" ? "" : Number(e.target.value))
-              }
-              className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="">No Role (generic impact)</option>
-              {roles.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                  {r.tags && r.tags.length > 0 ? ` · ${r.tags.join(", ")}` : ""}
-                </option>
-              ))}
-            </select>
-            {selectedRole && selectedRole.tags && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {selectedRole.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-xs text-indigo-300"
+            <div className="min-w-[200px] flex-1">
+              <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-gray-500">
+                Industry
+              </h2>
+              <select
+                value={industry}
+                onChange={(e) => setIndustry(e.target.value)}
+                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {INDUSTRIES.map((ind) => (
+                  <option key={ind} value={ind}>
+                    {ind}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="min-w-[min(100%,280px)] flex-[2]">
+              <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-gray-500">
+                Domains
+              </h2>
+              <div className="flex flex-wrap gap-x-4 gap-y-2">
+                {DOMAINS.map((domain) => (
+                  <label
+                    key={domain}
+                    className="inline-flex cursor-pointer items-center gap-2"
                   >
-                    {tag}
-                  </span>
+                    <input
+                      type="checkbox"
+                      checked={selectedDomains.includes(domain)}
+                      onChange={() => toggleDomain(domain)}
+                      className="h-3.5 w-3.5 rounded border-gray-600 bg-gray-800 accent-indigo-500"
+                    />
+                    <span className="text-xs text-gray-300">{domain}</span>
+                  </label>
                 ))}
               </div>
-            )}
-          </div>
+            </div>
 
-          <div className="rounded-xl border border-gray-800 bg-gray-900 p-4">
-            <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-500">
-              Industry
-            </h2>
-            <div className="space-y-1">
-              {INDUSTRIES.map((ind) => (
-                <button
-                  key={ind}
-                  type="button"
-                  onClick={() => setIndustry(ind)}
-                  className={`w-full rounded-lg px-3 py-1.5 text-left text-xs font-medium transition-colors ${
-                    industry === ind
-                      ? "bg-indigo-600/25 text-indigo-300 ring-1 ring-indigo-500/40"
-                      : "text-gray-400 hover:bg-gray-800 hover:text-white"
-                  }`}
+            <div className="flex min-w-[160px] max-w-md flex-col justify-end text-xs text-gray-500">
+              <span className="text-gray-400">(auto-refreshes)</span>
+              {embedded && (
+                <span
+                  className="mt-1 line-clamp-2 text-[11px] leading-snug text-indigo-400/90"
+                  title={simDesc}
                 >
-                  {ind}
-                </button>
-              ))}
+                  {simDesc}
+                </span>
+              )}
+              {state === "loading" && (
+                <span className="mt-1 text-indigo-400">Updating preview…</span>
+              )}
+              {lastRefreshed && state !== "loading" && (
+                <span className="mt-1 text-gray-600">
+                  {lastRefreshed.toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+              )}
             </div>
           </div>
+        </div>
 
-          <div className="rounded-xl border border-gray-800 bg-gray-900 p-4">
-            <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-500">
-              Domain Interests
-            </h2>
-            <p className="mb-2 text-xs text-gray-600">None selected = all domains</p>
-            <div className="space-y-2">
-              {DOMAINS.map((domain) => (
-                <label key={domain} className="flex cursor-pointer items-center gap-2.5">
-                  <input
-                    type="checkbox"
-                    checked={selectedDomains.includes(domain)}
-                    onChange={() => toggleDomain(domain)}
-                    className="h-3.5 w-3.5 rounded border-gray-600 bg-gray-800 accent-indigo-500"
-                  />
-                  <span className="text-xs text-gray-300">{domain}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => loadPreview(industry, selectedDomains, selectedRoleId)}
-            disabled={state === "loading"}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 disabled:opacity-50"
-          >
-            {state === "loading" && (
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-            )}
-            {state === "loading" ? "Running…" : "Refresh preview"}
-          </button>
-        </aside>
-
-        <div className="flex min-h-[480px] flex-1 flex-col">
+        <div
+          className="flex w-full flex-col"
+          style={{ minHeight: PREVIEW_MIN_HEIGHT }}
+        >
           {state === "error" ? (
             <div className="flex flex-1 items-center justify-center rounded-xl border border-red-900 bg-gray-900 p-10 text-center">
               <div>
-                <p className="text-base font-medium text-red-400">Failed to load preview</p>
+                <p className="text-base font-medium text-red-400">
+                  Failed to load preview
+                </p>
                 <p className="mt-1 text-sm text-gray-500">
                   Check that the backend is running and you are logged in.
                 </p>
                 <button
                   type="button"
-                  onClick={() => loadPreview(industry, selectedDomains, selectedRoleId)}
+                  onClick={() =>
+                    void loadPreview(industry, selectedDomains, selectedRoleId)
+                  }
                   className="mt-4 rounded-lg bg-gray-800 px-4 py-2 text-sm text-white hover:bg-gray-700"
                 >
                   Try again
@@ -234,20 +236,20 @@ export default function NewsletterSandboxPanel({ embedded = false }: Props) {
           ) : state === "loading" && !html ? (
             <div
               className="flex flex-1 items-center justify-center rounded-xl border border-gray-800 bg-gray-900"
-              style={{ minHeight: "480px" }}
+              style={{ minHeight: PREVIEW_MIN_HEIGHT }}
             >
               <p className="text-sm text-gray-500">Running simulation…</p>
             </div>
           ) : (
             <div
               className="overflow-hidden rounded-xl border border-gray-800 shadow-xl"
-              style={{ minHeight: "480px" }}
+              style={{ minHeight: PREVIEW_MIN_HEIGHT }}
             >
               <iframe
                 srcDoc={html}
                 title="Newsletter Simulation Preview"
                 className="h-full w-full"
-                style={{ minHeight: "480px", border: "none" }}
+                style={{ minHeight: PREVIEW_MIN_HEIGHT, border: "none" }}
                 sandbox="allow-same-origin"
               />
             </div>

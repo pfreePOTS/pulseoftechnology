@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from "react";
 
+import {
+  consumeSubscribeDomainPrefill,
+  SUBSCRIBE_PREFILL_EVENT,
+} from "@/lib/subscribeNavigation";
 import { useIsClient } from "@/lib/useIsClient";
 
 const INDUSTRIES = [
@@ -106,9 +110,33 @@ export default function SubscribeWizard({ apiBase }: Props) {
       .catch(() => setRolesError("Roles could not be loaded. Refresh and try again."));
   }, [apiBase, isClient]);
 
+  useEffect(() => {
+    if (!isClient) return;
+    const prefill = consumeSubscribeDomainPrefill();
+    if (!prefill) return;
+    const valid = DOMAIN_OPTIONS.some((o) => o.value === prefill);
+    if (!valid) return;
+    setForm((prev) => ({ ...prev, domains: [prefill] }));
+  }, [isClient]);
+
+  useEffect(() => {
+    if (!isClient) return;
+    function onPrefill(e: Event) {
+      const d = (e as CustomEvent<{ domain?: string }>).detail?.domain;
+      if (!d || !DOMAIN_OPTIONS.some((o) => o.value === d)) return;
+      setForm((prev) => ({ ...prev, domains: [d] }));
+    }
+    window.addEventListener(SUBSCRIBE_PREFILL_EVENT, onPrefill);
+    return () => window.removeEventListener(SUBSCRIBE_PREFILL_EVENT, onPrefill);
+  }, [isClient]);
+
   function set<K extends keyof FormData>(key: K, value: FormData[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
     setErrors((prev) => ({ ...prev, [key]: undefined }));
+  }
+
+  function setAllDomains() {
+    setForm((prev) => ({ ...prev, domains: [] }));
   }
 
   function toggleDomain(d: string) {
@@ -209,6 +237,8 @@ export default function SubscribeWizard({ apiBase }: Props) {
       </div>
     );
   }
+
+  const allDomainsMode = form.domains.length === 0;
 
   const inputCls =
     "w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
@@ -326,24 +356,62 @@ export default function SubscribeWizard({ apiBase }: Props) {
           {step === 4 && (
             <div>
               <p className="mb-3 text-xs text-gray-400">
-                Select the domains you care about most (choose any number):
+                Choose the full briefing across all domains, or pick specific topics below:
               </p>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <button
+                  type="button"
+                  aria-pressed={allDomainsMode}
+                  onClick={() => {
+                    if (!allDomainsMode) setAllDomains();
+                  }}
+                  className={`col-span-2 flex items-start gap-3 rounded-lg border-2 px-3 py-3 text-left text-xs transition-all sm:col-span-3 ${
+                    allDomainsMode
+                      ? "border-indigo-500 bg-indigo-950/40 ring-1 ring-indigo-500/30"
+                      : "border-gray-600 bg-gray-800/50 hover:border-gray-500"
+                  }`}
+                >
+                  <span
+                    className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${
+                      allDomainsMode
+                        ? "border-indigo-400 bg-indigo-600/30 text-indigo-300"
+                        : "border-gray-600 bg-gray-800 text-transparent"
+                    }`}
+                    aria-hidden
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </span>
+                  <span className="min-w-0">
+                    <span className={`block font-semibold ${allDomainsMode ? "text-indigo-100" : "text-gray-400"}`}>
+                      All Domains — get the full briefing
+                    </span>
+                    <span className="mt-0.5 block text-[11px] leading-snug text-gray-500">
+                      {allDomainsMode
+                        ? "You'll receive coverage across every topic we track."
+                        : "Switch back to include all topics in your Pulse."}
+                    </span>
+                  </span>
+                </button>
                 {DOMAIN_OPTIONS.map(({ value, label, color }) => {
                   const active = form.domains.includes(value);
+                  const dimmed = allDomainsMode;
                   return (
                     <button
                       key={value}
                       type="button"
                       onClick={() => toggleDomain(value)}
                       className={`flex flex-col items-start rounded-lg border px-3 py-2.5 text-left text-xs transition-all ${
-                        active
-                          ? "border-indigo-500 bg-indigo-600/20"
-                          : "border-gray-700 bg-gray-800 hover:border-gray-600"
+                        dimmed
+                          ? "cursor-pointer border-gray-700/80 bg-gray-800/40 opacity-45 hover:border-gray-600 hover:opacity-70"
+                          : active
+                            ? "border-indigo-500 bg-indigo-600/20 opacity-100"
+                            : "border-gray-700 bg-gray-800 opacity-100 hover:border-gray-600"
                       }`}
                     >
                       <span className="mb-1 h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
-                      <span className={`font-semibold ${active ? "text-white" : "text-gray-300"}`}>
+                      <span className={`font-semibold ${!dimmed && active ? "text-white" : "text-gray-300"}`}>
                         {value}
                       </span>
                       <span className="text-gray-500">{label}</span>

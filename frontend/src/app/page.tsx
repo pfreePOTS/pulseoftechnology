@@ -204,7 +204,10 @@ export default async function Home() {
       )}
 
       {/* ── Subscribe Section ───────────────────────────────────────────────── */}
-      <section className="bg-white px-6 py-14">
+      <section
+        id="subscribe"
+        className="scroll-mt-4 bg-white px-6 py-14"
+      >
         <div className="mx-auto max-w-2xl">
           <h2
             className="mb-2 text-center text-2xl font-bold"

@@ -21,8 +21,9 @@ class Settings(BaseSettings):
     pinecone_api_key: str = ""
     pinecone_environment: str = ""  # e.g. "us-east-1-aws"
     pinecone_index_name: str = "pulseone-articles"
-    # Admin
+    # Admin — use ADMIN_PASSWORD_HASH (bcrypt) in production; else ADMIN_PASSWORD (plain) for dev only
     admin_password: str = "pulseadmin"
+    admin_password_hash: str = ""
 
     model_config = {"env_file": ".env"}
 

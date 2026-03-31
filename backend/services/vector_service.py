@@ -83,7 +83,8 @@ def _placeholder_embed(text: str) -> list[float]:
     counts: dict[int, float] = {}
     for i in range(len(text) - 3):
         shingle = text[i : i + 4]
-        bucket = struct.unpack("<I", hashlib.md5(shingle.encode()).digest()[:4])[0] % EMBEDDING_DIM
+        # SHA-256 (not MD5) for bucketing — avoids security-scanner noise; not a crypto boundary
+        bucket = struct.unpack("<I", hashlib.sha256(shingle.encode()).digest()[:4])[0] % EMBEDDING_DIM
         counts[bucket] = counts.get(bucket, 0.0) + 1.0
 
     vec = [counts.get(i, 0.0) for i in range(EMBEDDING_DIM)]

@@ -1,13 +1,14 @@
 import logging
 import re
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models.subscriber import Subscriber
 from ..models.topic import Topic
+from ..rate_limits import limiter
 from ..services.hubspot_sync import sync_subscriber_to_hubspot
 
 logger = logging.getLogger(__name__)
@@ -81,7 +82,9 @@ def get_published_topics(db: Session = Depends(get_db)):
 
 
 @router.post("/subscribe", response_model=SubscribeResponse, status_code=201)
+@limiter.limit("30/minute")
 def subscribe(
+    request: Request,
     payload: SubscribeRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),

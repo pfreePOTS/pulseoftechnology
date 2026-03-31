@@ -26,6 +26,7 @@ correct service networking, and reproducible builds across all machines.
 ### 1. Prerequisites
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) or Docker Engine + Compose plugin
+- **Docker Buildx** — required for `docker compose build` without the classic-builder warning; see [`requirements-docker.txt`](requirements-docker.txt) for install commands
 - No Python or Node.js installation required on your host
 
 ### 2. Environment setup
@@ -182,6 +183,7 @@ pulseoftechnology/
 | `SENDGRID_API_KEY`     | —                  | Email delivery (optional for dev)        |
 | `HUBSPOT_API_KEY`      | —                  | CRM sync (optional)                      |
 | `NEXT_PUBLIC_API_URL`  | `http://localhost:8100` | Browser-facing API URL (Compose `frontend` service) |
+| `SERVER_API_URL`       | `http://backend:8000` (Compose default) | Server-side RSC fetches — must reach the API from inside the `frontend` container |
 | `PINECONE_*`           | —                  | Optional vector DB for signals (`config.py` names) |
 
 **Dependency lockfiles:** Python packages are installed from `backend/requirements.txt` in `backend/Dockerfile`; Node packages from `frontend/package.json` / `package-lock.json` in `frontend/Dockerfile` (`npm ci`). After changing dependencies, run `docker compose up --build` (or `--build` the affected service).
@@ -195,3 +197,14 @@ Background jobs (RSS ingestion, signal scorer, newsletter) run **inside the Fast
 ### Admin authentication
 
 Successful login returns a **short-lived JWT** and sets an **httpOnly cookie** for the browser admin UI. API clients and scripts can use `Authorization: Bearer <access_token>` from the login JSON response. The raw admin password is never used as a long-lived credential.
+
+### Security hardening (audit-aligned)
+
+| Area | Implementation |
+|------|----------------|
+| **Admin password** | Optional **`ADMIN_PASSWORD_HASH`** (bcrypt) in production; otherwise **`ADMIN_PASSWORD`** verified with **timing-safe** comparison. |
+| **Client storage** | No admin tokens in `localStorage`; session uses **httpOnly** cookie + **`verify_admin_password`** on login. |
+| **LLM / RSS** | Untrusted article text is wrapped in **XML CDATA** (`<article>`, `<context>`) and system prompts instruct the model to **ignore instructions** inside those blocks. |
+| **Rate limits** | **SlowAPI**: `POST /api/admin/login` **10/minute**, `POST /api/subscribe` **30/minute** per client IP (tune in `routers/`). |
+| **Vector bucketing** | Placeholder embeddings use **SHA-256** for shingle buckets (not MD5). |
+| **Enterprise SSO** | Microsoft Entra ID / similar is not wired in this repo; add an OAuth2/OIDC layer in front of admin when required. |

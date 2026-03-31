@@ -31,6 +31,27 @@ function UrgencyBadge({ score }: { score: number }) {
   );
 }
 
+function IconPencil({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.862 4.487Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
+      />
+    </svg>
+  );
+}
+
+function IconInspectPromote({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} aria-hidden>
+      <circle cx="10.5" cy="10.5" r="7.5" />
+      <path strokeLinecap="round" d="M16.5 16.5 21 21" />
+    </svg>
+  );
+}
+
 function DomainBadge({ domain }: { domain: string }) {
   const palette: Record<string, string> = {
     AI: "bg-violet-500/20 text-violet-400 ring-violet-500/30",
@@ -227,13 +248,23 @@ export default function AdminTopicsPage() {
                     <td className="px-4 py-3 text-right">
                       <Link
                         href={`/admin/topics/${topic.id}`}
-                        className={`rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors ${
+                        title={activeTab === "approved" ? "Edit" : "Inspect & Promote"}
+                        aria-label={
+                          activeTab === "approved"
+                            ? `Edit topic: ${topic.name}`
+                            : `Inspect and promote topic: ${topic.name}`
+                        }
+                        className={`inline-flex items-center justify-center rounded-md p-2 text-white transition-colors ${
                           activeTab === "approved"
                             ? "bg-gray-600 hover:bg-gray-500"
                             : "bg-indigo-600 hover:bg-indigo-500"
                         }`}
                       >
-                        {activeTab === "approved" ? "Edit" : "Inspect & Promote"}
+                        {activeTab === "approved" ? (
+                          <IconPencil className="h-5 w-5" />
+                        ) : (
+                          <IconInspectPromote className="h-5 w-5" />
+                        )}
                       </Link>
                     </td>
                   </tr>

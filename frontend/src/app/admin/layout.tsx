@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import type { DragEvent } from "react";
 import { useEffect, useState } from "react";
 
 import { API_BASE } from "@/lib/api";
@@ -16,7 +17,64 @@ const NAV = [
   { label: "System Jobs", href: "/admin/jobs" },
   { label: "Radar Preview", href: "/admin/radar-preview" },
   { label: "Newsletter Preview", href: "/admin/newsletter" },
-];
+] as const;
+
+type NavItem = (typeof NAV)[number];
+
+const NAV_ORDER_KEY = "pulseone-admin-nav-order";
+
+function normalizeOrder(savedHrefs: string[] | undefined, defaults: readonly NavItem[]): NavItem[] {
+  if (!savedHrefs?.length) return [...defaults];
+  const byHref = new Map(defaults.map((n) => [n.href, n]));
+  const ordered: NavItem[] = [];
+  for (const href of savedHrefs) {
+    const item = byHref.get(href);
+    if (item) ordered.push(item);
+  }
+  for (const item of defaults) {
+    if (!ordered.some((o) => o.href === item.href)) ordered.push(item);
+  }
+  return ordered;
+}
+
+function arrayMove<T>(arr: T[], from: number, to: number): T[] {
+  if (from === to || from < 0 || to < 0 || from >= arr.length || to >= arr.length) return arr;
+  const next = [...arr];
+  const [removed] = next.splice(from, 1);
+  next.splice(to, 0, removed);
+  return next;
+}
+
+function DragHandle({
+  onDragStart,
+  onDragEnd,
+}: {
+  onDragStart: (e: DragEvent) => void;
+  onDragEnd: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      draggable
+      className="cursor-grab shrink-0 touch-none rounded p-1 text-gray-500 hover:bg-gray-800 hover:text-gray-300 active:cursor-grabbing"
+      aria-label="Drag to reorder"
+      title="Drag to reorder"
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+    >
+      <span className="inline-block" aria-hidden>
+        <svg width="14" height="18" viewBox="0 0 14 18" fill="currentColor" className="opacity-80">
+          <circle cx="4" cy="3" r="1.6" />
+          <circle cx="10" cy="3" r="1.6" />
+          <circle cx="4" cy="9" r="1.6" />
+          <circle cx="10" cy="9" r="1.6" />
+          <circle cx="4" cy="15" r="1.6" />
+          <circle cx="10" cy="15" r="1.6" />
+        </svg>
+      </span>
+    </button>
+  );
+}
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -24,6 +82,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const isLoginPage = pathname === "/admin/login";
   /** null = not checked yet (protected routes only) */
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
+  const [navItems, setNavItems] = useState<NavItem[]>(() => [...NAV]);
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(NAV_ORDER_KEY);
+      if (raw) setNavItems(normalizeOrder(JSON.parse(raw) as string[], NAV));
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
     if (isLoginPage) return;
@@ -77,25 +147,71 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <span className="text-sm font-bold tracking-wide">PulseOne</span>
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 space-y-1 px-3 py-4">
-          {NAV.map(({ label, href }) => {
+        {/* Nav — order persisted in localStorage */}
+        <nav className="flex-1 space-y-1 px-2 py-4" aria-label="Admin navigation">
+          {navItems.map(({ label, href }, index) => {
             const isActive =
               href === "/admin"
                 ? pathname === "/admin"
                 : pathname.startsWith(href);
             return (
-              <Link
+              <div
                 key={href}
-                href={href}
-                className={`block rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-gray-800 text-white"
-                    : "text-gray-400 hover:bg-gray-800/60 hover:text-white"
-                }`}
+                data-nav-row
+                className={`flex items-stretch gap-0.5 rounded-lg pl-0.5 transition-opacity ${
+                  draggingIndex === index ? "opacity-50" : ""
+                } ${dragOverIndex === index && draggingIndex !== index ? "ring-1 ring-indigo-500/40 bg-gray-800/30" : ""}`}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  if (draggingIndex !== null && draggingIndex !== index) {
+                    setDragOverIndex(index);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const raw =
+                    e.dataTransfer.getData("application/x-nav-index") ||
+                    e.dataTransfer.getData("text/plain");
+                  const from = raw === "" ? Number.NaN : Number(raw);
+                  if (Number.isNaN(from)) return;
+                  setNavItems((prev) => {
+                    const next = arrayMove(prev, from, index);
+                    try {
+                      localStorage.setItem(NAV_ORDER_KEY, JSON.stringify(next.map((n) => n.href)));
+                    } catch {
+                      /* ignore */
+                    }
+                    return next;
+                  });
+                  setDraggingIndex(null);
+                  setDragOverIndex(null);
+                }}
               >
-                {label}
-              </Link>
+                <DragHandle
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData("application/x-nav-index", String(index));
+                    e.dataTransfer.setData("text/plain", String(index));
+                    e.dataTransfer.effectAllowed = "move";
+                    setDraggingIndex(index);
+                  }}
+                  onDragEnd={() => {
+                    setDraggingIndex(null);
+                    setDragOverIndex(null);
+                  }}
+                />
+                <Link
+                  href={href}
+                  draggable={false}
+                  className={`flex min-w-0 flex-1 items-center rounded-lg px-2 py-2 text-sm font-medium transition-colors ${
+                    isActive
+                      ? "bg-gray-800 text-white"
+                      : "text-gray-400 hover:bg-gray-800/60 hover:text-white"
+                  }`}
+                >
+                  {label}
+                </Link>
+              </div>
             );
           })}
         </nav>

@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { useIsClient } from "@/lib/useIsClient";
+
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const INDUSTRIES = [
@@ -79,6 +81,7 @@ function StepIndicator({ current, total }: { current: Step; total: number }) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function SubscribeWizard({ apiBase }: Props) {
+  const isClient = useIsClient();
   const [step, setStep] = useState<Step>(1);
   const [form, setForm] = useState<FormData>({
     email: "",
@@ -194,6 +197,14 @@ export default function SubscribeWizard({ apiBase }: Props) {
         Get a weekly C-level briefing tailored to your industry.
       </p>
 
+      {!isClient ? (
+        <div
+          className="min-h-[280px] rounded-lg bg-gray-800/40 animate-pulse"
+          aria-busy
+          aria-label="Loading form"
+        />
+      ) : (
+        <>
       <StepIndicator current={step} total={3} />
 
       {/* ── Step 1: Contact info ── */}
@@ -342,6 +353,8 @@ export default function SubscribeWizard({ apiBase }: Props) {
           </button>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 }

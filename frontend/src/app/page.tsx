@@ -1,11 +1,17 @@
 import RadarSection from "@/components/RadarSection";
 import SubscribeWizard from "@/components/SubscribeWizard";
 import { type RadarTopic, INDUSTRY_COLORS } from "@/components/RadarChart";
-import { API_BASE } from "@/lib/api";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+/** Server-side only: URL the Next.js server uses to call the API (browser still uses NEXT_PUBLIC_API_URL). In Docker, must be http://backend:8000 — localhost would point at this container, not the API. */
+const SSR_API_BASE =
+  process.env.SERVER_API_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  "http://127.0.0.1:8000";
 
 async function getPublishedTopics(): Promise<RadarTopic[]> {
   try {
-    const res = await fetch(`${API_BASE}/api/topics/published`, {
+    const res = await fetch(`${SSR_API_BASE}/api/topics/published`, {
       cache: "no-store",
     });
     if (!res.ok) return [];
@@ -82,7 +88,7 @@ export default async function Home() {
       {/* ── Light Gray Legend Bar ───────────────────────────────────────────── */}
       <div
         style={{ backgroundColor: "#E5E5E5" }}
-        className="border-y border-gray-300 px-6 py-4 shrink-0"
+        className="border-y border-gray-300 px-6 py-3 shrink-0"
       >
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2">
           <span

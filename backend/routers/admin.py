@@ -25,6 +25,7 @@ from ..dependencies import (
     decode_admin_token,
     get_token_from_request,
     require_admin,
+    verify_admin_password,
 )
 from ..models.article import Article
 from ..models.content import ContentItem
@@ -33,6 +34,7 @@ from ..models.signal import SignalRecommendation
 from ..models.source import Source, SourceType
 from ..models.subscriber import Subscriber
 from ..models.topic import AdoptionState, Topic, TopicStatus
+from ..rate_limits import limiter
 from ..services.ai_service import suggest_industry_positions
 from ..services.email_service import generate_newsletter_preview, run_daily_newsletter
 from ..services.ingestion import run_all_sources
@@ -52,9 +54,10 @@ class LoginRequest(BaseModel):
 
 
 @router.post("/login")
-def login(payload: LoginRequest) -> JSONResponse:
+@limiter.limit("10/minute")
+def login(request: Request, payload: LoginRequest) -> JSONResponse:
     """Issue a JWT and set an httpOnly cookie for browser clients."""
-    if payload.password != app_settings.admin_password:
+    if not verify_admin_password(payload.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid password",

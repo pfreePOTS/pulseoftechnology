@@ -21,11 +21,32 @@ export interface RadarTopic {
 }
 
 // ── Chart geometry ─────────────────────────────────────────────────────────────
-const SIZE = 680;
-const CX = SIZE / 2;  // 340
-const CY = SIZE / 2;  // 340
-const MAX_R = 175;
-const LABEL_R = MAX_R + 56;
+/** 1.5 = 50% larger than original 680px canvas / 175px radius design */
+const SCALE = 1.5;
+const SIZE = 680 * SCALE;
+const CX = SIZE / 2;
+const CY = SIZE / 2;
+const MAX_R = 175 * SCALE;
+const LABEL_R = MAX_R + 56 * SCALE;
+const RADAR_PAD = 8 * SCALE;
+const MIN_URGENCY_R = 30 * SCALE;
+const STAR_OUTER_R = 14 * SCALE;
+const STAR_INNER_R = 6 * SCALE;
+const STAR_HALO_R = 24 * SCALE;
+/** Invisible target so hover is easy to trigger (SVG star path is small). */
+const STAR_HIT_R = STAR_HALO_R * 2.35;
+const STAR_HOVER_SCALE = 1.14;
+const STAR_STROKE_W = 1.25 * SCALE;
+const STAR_STROKE_HOVER_W = STAR_STROKE_W * 1.35;
+const PILL_H = 22 * SCALE;
+const PILL_RX = 11 * SCALE;
+const PILL_FONT = 10.5 * SCALE;
+const PILL_PAD_X = 24 * SCALE;
+const AXIS_SPREAD_DEG = 30 * SCALE;
+const AXIS_SPREAD_STEP = 6 * SCALE;
+
+/** Fraction of viewBox height from top to the 12 o'clock pill top — aligns the side panel with “Learn About”. */
+const RADAR_TOP_PILL_OFFSET_RATIO = (CY - LABEL_R - PILL_H / 2) / SIZE;
 
 // Five adoption-state axes, clockwise from 12 o'clock (270°)
 const ADOPTION_AXES = [
@@ -86,9 +107,16 @@ function degToRad(deg: number) {
   return (deg * Math.PI) / 180;
 }
 
+/** Deterministic rounding for SVG attrs — avoids SSR/client float + number/string hydration mismatches. */
+function svgCoord(n: number): number {
+  return Number(n.toFixed(3));
+}
+
 function polarToXY(angleDeg: number, r: number): [number, number] {
   const rad = degToRad(angleDeg);
-  return [CX + r * Math.cos(rad), CY + r * Math.sin(rad)];
+  const x = CX + r * Math.cos(rad);
+  const y = CY + r * Math.sin(rad);
+  return [svgCoord(x), svgCoord(y)];
 }
 
 const ADOPTION_STATE_INDEX: Record<string, number> = {
@@ -107,7 +135,7 @@ function axisAngleDeg(idx: number): number {
   return (270 + idx * 72) % 360;
 }
 
-function starPath(cx: number, cy: number, outerR = 8, innerR = 3.4): string {
+function starPath(cx: number, cy: number, outerR = STAR_OUTER_R, innerR = STAR_INNER_R): string {
   const pts: string[] = [];
   for (let i = 0; i < 10; i++) {
     const angle = degToRad(i * 36 - 90);
@@ -171,11 +199,11 @@ function computePositions(topics: RadarTopic[]): PlotPointXY[] {
   for (const [axisStr, group] of Object.entries(groups)) {
     const axisIdx = Number(axisStr);
     const baseAngle = axisAngleDeg(axisIdx);
-    const spread = Math.min(30, group.length * 6);
+    const spread = Math.min(AXIS_SPREAD_DEG, group.length * AXIS_SPREAD_STEP);
     group.forEach((pt, i) => {
       const offset =
         group.length === 1 ? 0 : -spread / 2 + (spread / (group.length - 1)) * i;
-      const r = Math.max(18, (pt.urgency / 10) * MAX_R);
+      const r = Math.max(MIN_URGENCY_R, (pt.urgency / 10) * MAX_R);
       const [x, y] = polarToXY(baseAngle + offset, r);
       result.push({ ...pt, x, y });
     });
@@ -193,10 +221,19 @@ export default function RadarChart({
   showLabels?: boolean;
 }) {
   const [tooltip, setTooltip] = useState<PlotPointXY | null>(null);
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const positions = computePositions(topics);
 
   return (
-    <div className="relative w-full max-w-[620px] mx-auto select-none">
+    <div
+      className="flex w-full max-w-7xl flex-col items-stretch justify-start gap-5 lg:flex-row lg:items-start lg:gap-6 mx-auto select-none"
+      style={
+        {
+          ["--radar-top-pill-offset" as string]: String(RADAR_TOP_PILL_OFFSET_RATIO),
+        } as React.CSSProperties
+      }
+    >
+      <div className="mx-auto w-full max-w-[930px] shrink-0 lg:mx-0">
       <svg
         viewBox={`0 0 ${SIZE} ${SIZE}`}
         className="w-full h-auto"
@@ -208,11 +245,15 @@ export default function RadarChart({
             <stop offset="60%" stopColor="#ccfbf1" />
             <stop offset="100%" stopColor="#0d9488" stopOpacity="0.55" />
           </radialGradient>
-          <filter id="ttShadow" x="-25%" y="-25%" width="150%" height="150%">
-            <feDropShadow dx="0" dy="3" stdDeviation="5" floodColor="#425B76" floodOpacity="0.18" />
-          </filter>
           <filter id="starGlow" x="-80%" y="-80%" width="260%" height="260%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="blur" />
+            <feGaussianBlur in="SourceGraphic" stdDeviation={3.5 * SCALE} result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <filter id="starGlowHover" x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation={5.25 * SCALE} result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
               <feMergeNode in="SourceGraphic" />
@@ -221,15 +262,15 @@ export default function RadarChart({
         </defs>
 
         {/* ── Radar background ── */}
-        <circle cx={CX} cy={CY} r={MAX_R + 8} fill="url(#radarBg)" />
-        <circle cx={CX} cy={CY} r={MAX_R + 8} fill="none" stroke="#0d9488" strokeWidth="1.5" strokeOpacity="0.4" />
+        <circle cx={CX} cy={CY} r={MAX_R + RADAR_PAD} fill="url(#radarBg)" />
+        <circle cx={CX} cy={CY} r={MAX_R + RADAR_PAD} fill="none" stroke="#0d9488" strokeWidth={1.5 * SCALE} strokeOpacity="0.4" />
 
         {/* ── Urgency rings ── */}
         {[2, 4, 6, 8, 10].map((u) => (
           <circle
             key={u}
             cx={CX} cy={CY} r={(u / 10) * MAX_R}
-            fill="none" stroke="#0d9488" strokeWidth="0.75"
+            fill="none" stroke="#0d9488" strokeWidth={0.75 * SCALE}
             strokeOpacity={u === 10 ? 0.5 : 0.25}
             strokeDasharray={u < 10 ? "4 3" : undefined}
           />
@@ -240,16 +281,18 @@ export default function RadarChart({
           const angle = axisAngleDeg(i);
           const [sx, sy] = polarToXY(angle, MAX_R);
           const [lx, ly] = polarToXY(angle, LABEL_R);
-          const pillW = approxW(label, 10.5) + 24;
-          const pillH = 22;
+          const pillW = svgCoord(approxW(label, PILL_FONT) + PILL_PAD_X);
+          const pillH = PILL_H;
+          const pillLeft = svgCoord(lx - pillW / 2);
+          const pillTop = svgCoord(ly - pillH / 2);
           return (
             <g key={label}>
-              <line x1={CX} y1={CY} x2={sx} y2={sy} stroke="#0d9488" strokeWidth="1" strokeOpacity="0.35" />
-              <rect x={lx - pillW / 2} y={ly - pillH / 2} width={pillW} height={pillH} rx="11" fill="#425B76" />
+              <line x1={CX} y1={CY} x2={sx} y2={sy} stroke="#0d9488" strokeWidth={1 * SCALE} strokeOpacity="0.35" />
+              <rect x={pillLeft} y={pillTop} width={pillW} height={pillH} rx={PILL_RX} fill="#425B76" />
               <text
-                x={lx} y={ly + 1}
+                x={lx} y={svgCoord(ly + 1 * SCALE)}
                 textAnchor="middle" dominantBaseline="middle"
-                fill="white" fontSize="10.5" fontWeight="600"
+                fill="white" fontSize={PILL_FONT} fontWeight="600"
                 fontFamily="Inter,system-ui,sans-serif" letterSpacing="0.01em"
               >
                 {label}
@@ -259,98 +302,148 @@ export default function RadarChart({
         })}
 
         {/* ── Centre pip ── */}
-        <circle cx={CX} cy={CY} r={4} fill="#425B76" opacity="0.45" />
+        <circle cx={CX} cy={CY} r={4 * SCALE} fill="#425B76" opacity="0.45" />
 
-        {/* ── Stars (per-industry or domain fallback) ── */}
-        {positions.map((pt) => (
-          <g key={pt.key} filter="url(#starGlow)">
-            <circle cx={pt.x} cy={pt.y} r={14} fill={pt.color} opacity="0.1" />
-            <path
-              d={starPath(pt.x, pt.y, 8, 3.4)}
-              fill={pt.color}
-              stroke="white"
-              strokeWidth="1.25"
-              strokeLinejoin="round"
-              className="cursor-pointer"
-              onMouseEnter={() => setTooltip(pt)}
-              onMouseLeave={() => setTooltip(null)}
-            />
-            {showLabels && (
-              <text
-                x={pt.x + 12}
-                y={pt.y + 4}
-                fontSize="9.5"
-                fill={pt.color}
-                fontWeight="600"
-                fontFamily="Inter,system-ui,sans-serif"
-                style={{ pointerEvents: "none" }}
-              >
-                {pt.topic.name.length > 20
-                  ? pt.topic.name.slice(0, 19) + "…"
-                  : pt.topic.name}
-              </text>
-            )}
-          </g>
-        ))}
-
-        {/* ── Tooltip (foreignObject for multi-line rationale) ── */}
-        {tooltip && (() => {
-          const pt = tooltip;
-          const BOX_W = 250;
-          const BOX_H = pt.rationale ? 130 : 88;
-          const PAD = 14;
-          let bx = pt.x + PAD;
-          let by = pt.y - BOX_H - PAD;
-          if (bx + BOX_W > SIZE - 6) bx = pt.x - BOX_W - PAD;
-          if (by < 6) by = pt.y + PAD;
-          if (by + BOX_H > SIZE - 6) by = SIZE - BOX_H - 6;
-
+        {/* ── Stars (per-industry or domain fallback) — visuals first; see hit-target pass below ── */}
+        {positions.map((pt) => {
+          const hx = svgCoord(pt.x);
+          const hy = svgCoord(pt.y);
+          const isHover = hoveredKey === pt.key;
+          const hoverTf =
+            isHover
+              ? `translate(${hx},${hy}) scale(${STAR_HOVER_SCALE}) translate(${-hx},${-hy})`
+              : undefined;
           return (
-            <g pointerEvents="none">
-              <rect
-                x={bx} y={by} width={BOX_W} height={BOX_H} rx="8"
-                fill="white" stroke="#425B76" strokeWidth="1.5"
-                filter="url(#ttShadow)"
-              />
-              <foreignObject x={bx} y={by} width={BOX_W} height={BOX_H}>
-                <div
-                  // @ts-expect-error xmlns needed for SVG foreignObject
-                  xmlns="http://www.w3.org/1999/xhtml"
-                  style={{
-                    padding: "12px 14px",
-                    fontFamily: "Inter, system-ui, sans-serif",
-                    boxSizing: "border-box",
-                    width: `${BOX_W}px`,
-                  }}
+            <g key={pt.key} pointerEvents="none">
+              <g transform={hoverTf}>
+                <g filter={isHover ? "url(#starGlowHover)" : "url(#starGlow)"}>
+                  <circle
+                    cx={hx}
+                    cy={hy}
+                    r={STAR_HALO_R}
+                    fill={pt.color}
+                    opacity={isHover ? 0.22 : 0.1}
+                  />
+                  <path
+                    d={starPath(hx, hy, STAR_OUTER_R, STAR_INNER_R)}
+                    fill={pt.color}
+                    stroke="white"
+                    strokeWidth={isHover ? STAR_STROKE_HOVER_W : STAR_STROKE_W}
+                    strokeLinejoin="round"
+                  />
+                </g>
+              </g>
+              {showLabels && (
+                <text
+                  x={svgCoord(pt.x + 12 * SCALE)}
+                  y={svgCoord(pt.y + 4 * SCALE)}
+                  fontSize={9.5 * SCALE}
+                  fill={pt.color}
+                  fontWeight="600"
+                  fontFamily="Inter,system-ui,sans-serif"
+                  style={{ pointerEvents: "none", opacity: isHover ? 1 : 0.92 }}
                 >
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#111827", marginBottom: 4, lineHeight: 1.3 }}>
-                    {pt.topic.name}
-                  </div>
-                  <div style={{ fontSize: 10.5, fontWeight: 600, color: pt.color, marginBottom: 3 }}>
-                    {pt.topic.domain}{pt.industry ? ` · ${pt.industry}` : ""}
-                  </div>
-                  <div style={{ fontSize: 10.5, color: "#374151", marginBottom: pt.rationale ? 6 : 0 }}>
-                    Urgency {pt.urgency.toFixed(1)} / 10 &nbsp;·&nbsp; {pt.adoptionState}
-                  </div>
-                  {pt.rationale && (
-                    <div style={{ fontSize: 10, color: "#6B7280", lineHeight: 1.5, borderTop: "1px solid #e5e7eb", paddingTop: 6 }}>
-                      {pt.rationale}
-                    </div>
-                  )}
-                </div>
-              </foreignObject>
+                  {pt.topic.name.length > 20
+                    ? pt.topic.name.slice(0, 19) + "…"
+                    : pt.topic.name}
+                </text>
+              )}
             </g>
           );
-        })()}
+        })}
+
+        {/* Hit targets drawn last so filtered glow layers cannot sit above them (fixes cursor vs hover offset) */}
+        {positions.map((pt) => {
+          const hx = svgCoord(pt.x);
+          const hy = svgCoord(pt.y);
+          return (
+            <circle
+              key={`hit-${pt.key}`}
+              cx={hx}
+              cy={hy}
+              r={STAR_HIT_R}
+              fill="transparent"
+              stroke="none"
+              pointerEvents="all"
+              className="cursor-pointer"
+              onMouseEnter={() => {
+                setTooltip(pt);
+                setHoveredKey(pt.key);
+              }}
+              onMouseLeave={() => {
+                setTooltip(null);
+                setHoveredKey(null);
+              }}
+            />
+          );
+        })}
 
         {/* ── Empty state ── */}
         {topics.length === 0 && (
           <text x={CX} y={CY} textAnchor="middle" dominantBaseline="middle"
-            fill="#0d9488" fontSize="14" opacity="0.6" fontFamily="Inter,system-ui,sans-serif">
+            fill="#0d9488" fontSize={14 * SCALE} opacity="0.6" fontFamily="Inter,system-ui,sans-serif">
             No published topics yet
           </text>
         )}
       </svg>
+      </div>
+
+      {/* ── Detail panel: lg top padding matches SVG “Learn About” pill (not the raw SVG box top) ── */}
+      <aside
+        className={
+          "w-full min-w-0 flex-1 lg:max-w-md max-lg:pt-0 " +
+          "lg:pt-[calc(var(--radar-top-pill-offset)*min(930px,calc(100vw-3rem)))]"
+        }
+        aria-live="polite"
+      >
+        <div
+          className={[
+            "rounded-2xl border-2 bg-white px-6 py-5 shadow-lg transition-shadow",
+            tooltip ? "border-[#425B76] shadow-[#425B76]/10" : "border-gray-200",
+          ].join(" ")}
+        >
+          {tooltip ? (
+            <RadarTooltipPanel point={tooltip} />
+          ) : (
+            <div className="text-center lg:text-left">
+              <p className="text-base font-semibold text-[#425B76]">Topic details</p>
+              <p className="mt-3 text-sm leading-relaxed text-gray-500">
+                {topics.length > 0
+                  ? "Hover a star on the radar to read the full briefing, rationale, and urgency for that signal."
+                  : "Published topics will appear as stars on the radar."}
+              </p>
+            </div>
+          )}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function RadarTooltipPanel({ point: pt }: { point: PlotPointXY }) {
+  return (
+    <div className="font-sans text-gray-900">
+      <h3 className="text-lg font-bold leading-snug text-[#111827]">{pt.topic.name}</h3>
+      <p className="mt-2 text-base font-semibold" style={{ color: pt.color }}>
+        {pt.topic.domain}
+        {pt.industry ? ` · ${pt.industry}` : ""}
+      </p>
+      <p className="mt-3 text-sm text-gray-700">
+        <span className="font-medium">Urgency</span> {pt.urgency.toFixed(1)} / 10
+        <span className="mx-2 text-gray-300">·</span>
+        <span className="font-medium">{pt.adoptionState}</span>
+      </p>
+      {pt.rationale ? (
+        <div className="mt-4 border-t border-gray-200 pt-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Rationale</p>
+          <p className="mt-2 text-sm leading-relaxed text-gray-600">{pt.rationale}</p>
+        </div>
+      ) : pt.topic.summary ? (
+        <div className="mt-4 border-t border-gray-200 pt-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Summary</p>
+          <p className="mt-2 text-sm leading-relaxed text-gray-600">{pt.topic.summary}</p>
+        </div>
+      ) : null}
     </div>
   );
 }

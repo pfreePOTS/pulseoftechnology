@@ -1,0 +1,30 @@
+# Host Docker tooling (not Python packages — do not pip install this file)
+#
+# Required to build images with Docker Compose without the classic-builder warning:
+#   "Docker Compose requires buildx plugin to be installed"
+#
+# Install Docker Buildx (pick one):
+#
+# If `apt install docker-buildx-plugin` says "Unable to locate package", the Docker
+# APT repo is not configured. Either:
+#
+# A) Add Docker’s official repository, then install (Ubuntu/Debian):
+#      https://docs.docker.com/engine/install/ubuntu/
+#    After that:
+#      sudo apt-get update && sudo apt-get install -y docker-buildx-plugin
+#
+# B) User-local CLI plugin — works without apt/sudo (linux-amd64; change arch if needed):
+#   mkdir -p ~/.docker/cli-plugins
+#   curl -fsSL "https://github.com/docker/buildx/releases/download/v0.21.1/buildx-v0.21.1.linux-amd64" \
+#     -o ~/.docker/cli-plugins/docker-buildx && chmod +x ~/.docker/cli-plugins/docker-buildx
+#   docker buildx version
+#
+# If that prints a version, Buildx is installed — you do not need the apt package.
+# `apt-get update` on default Ubuntu mirrors alone never adds docker-buildx-plugin;
+# that package only exists after you complete Docker’s repo setup (link A), not as
+# an extra step on stock Noble/Debian sources.
+#
+# More options:
+#   https://docs.docker.com/build/install-buildx/
+#
+# Docker Desktop for Mac/Windows usually includes Buildx already.

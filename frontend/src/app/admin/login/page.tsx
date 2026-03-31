@@ -67,6 +67,15 @@ export default function AdminLoginPage() {
             {loading ? "Signing in…" : "Sign In"}
           </button>
         </form>
+
+        {process.env.NODE_ENV === "development" && (
+          <p className="mt-6 rounded-lg border border-dashed border-gray-700 bg-gray-900/50 px-3 py-2 text-center text-xs text-gray-500">
+            Dev only: default password is{" "}
+            <code className="text-gray-400">pulseadmin</code> unless{" "}
+            <code className="text-gray-400">ADMIN_PASSWORD</code> is set in{" "}
+            <code className="text-gray-400">.env</code>.
+          </p>
+        )}
       </div>
     </div>
   );

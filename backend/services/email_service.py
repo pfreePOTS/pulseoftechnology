@@ -295,15 +295,20 @@ def _build_html(
             if role_tags:
                 # Keep only articles whose tags intersect with the role's tags
                 matched = [a for a in candidates if {t.lower() for t in (a.tags or [])} & role_tags]
-                # If no matches, skip this topic entirely for this role
+                # If no matches, fallback to the most recent articles instead of skipping
                 if not matched:
-                    continue
-                # Sort by published_at descending, take top 3
-                matched.sort(
-                    key=lambda a: a.published_at or datetime.min.replace(tzinfo=UTC),
-                    reverse=True,
-                )
-                selected = matched[:3]
+                    candidates.sort(
+                        key=lambda a: a.published_at or datetime.min.replace(tzinfo=UTC),
+                        reverse=True,
+                    )
+                    selected = candidates[:3]
+                else:
+                    # Sort by published_at descending, take top 3
+                    matched.sort(
+                        key=lambda a: a.published_at or datetime.min.replace(tzinfo=UTC),
+                        reverse=True,
+                    )
+                    selected = matched[:3]
             else:
                 # No role filter — show top 3 by published_at
                 candidates.sort(

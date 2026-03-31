@@ -64,7 +64,7 @@ Refactor the admin UI and backend endpoints to explicitly match this 4-step flow
 
 1. Remove the standalone `/admin/signals` link from the sidebar, as that data is now merged into Step 2.
 
-## Eng Review Findings (from GStack autoplan)
+## Design & Eng Review Findings (from GStack autoplan & design-review)
 
 These findings must be addressed during implementation:
 
@@ -76,9 +76,17 @@ These findings must be addressed during implementation:
 
 4. **Null-safe velocity display.** If the signal scorer has not run, `velocity_score` and `acceleration_score` will be `null`. The frontend must render a dash or "Pending" instead of `0` or a blank cell.
 
-5. **Industry Analysis grid layout.** A standard HTML table with 6+ industry columns will be cramped. Use a CSS Grid with sticky headers, or a card-per-topic layout with inline dropdowns for adoption state.
+5. **Industry Analysis grid layout.** Do not use nested accordions. Rebuild this as a dense, spreadsheet-like data grid (CSS Grid). Rows are Topics, Columns are Industries. Admins should be able to quickly tab through and type numbers (1-10) for Impact/Risk. Persona impacts must be separated from this view into their own distinct sub-tab or modal.
 
 6. **Signal rationale truncation.** AI-generated rationale text can be long. Truncate to 2 lines with a "Read more" expander or collapsible sub-row beneath the main topic row.
+
+7. **Collection View Layout.** The raw research view MUST be a dense, high-throughput data table (like TweetDeck or a Bloomberg terminal). Do not reuse the heavy rounded cards from the Signals tab.
+
+8. **Trend Discovery Split-Pane.** Do not use the current "accordion within accordion" design. Build Trend Discovery as a master-detail split view: left pane is a sortable list of Topics with inline sparklines for velocity; clicking a topic opens a right-side drawer showing the AI rationale and supporting articles.
+
+9. **Publishing View Separation.** In `WorkbenchPreviewPublishTab`, redesign the layout so the top half is "Publish to Radar" and the bottom half is "Newsletter Preview". Move the Role/Industry/Domain filters in `NewsletterSandboxPanel` from the left rail to a top horizontal control bar so the preview iframe can take full width. Make the preview auto-refresh on filter change.
+
+10. **Public Radar Interactions.** In `RadarChart.tsx`, add `onClick` state to the stars (hover is insufficient for mobile). Clicking a star should lock the side panel open. Add default summary content to the side panel for when no star is selected. Add a "Subscribe to alerts for [Topic]" CTA deep-link in the tooltip. Fix the Subscribe Wizard domains step so "None selected" defaults to "All" visually.
 
 ## Validation
 

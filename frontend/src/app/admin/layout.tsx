@@ -8,8 +8,10 @@ import { useEffect, useState } from "react";
 import { API_BASE } from "@/lib/api";
 
 const NAV = [
-  { label: "Marketer's Workbench", href: "/admin" },
-  { label: "Newsletter preview", href: "/admin/newsletter" },
+  { label: "1. Collection", href: "/admin/research" },
+  { label: "2. Trending", href: "/admin" },
+  { label: "3. Analysis", href: "/admin/analysis" },
+  { label: "4. Publishing", href: "/admin/newsletter" },
   { label: "Radar preview", href: "/admin/radar-preview" },
   { label: "Manage Sources", href: "/admin/sources" },
   { label: "Subscribers", href: "/admin/subscribers" },

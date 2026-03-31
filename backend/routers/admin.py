@@ -105,6 +105,61 @@ def admin_session(
 
 
 # ---------------------------------------------------------------------------
+# Articles (raw firehose)
+# ---------------------------------------------------------------------------
+
+
+class ArticleListItem(BaseModel):
+    id: int
+    source_id: int
+    source_name: str | None = None
+    topic_id: int | None
+    topic_name: str | None = None
+    title: str
+    url: str
+    published_at: datetime | None
+    ingested_at: datetime
+    status: str
+
+    model_config = {"from_attributes": True}
+
+
+@router.get("/articles", response_model=list[ArticleListItem])
+def list_articles(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+    article_status: str | None = Query(default=None, alias="status"),
+    limit: int = Query(default=200, le=1000),
+    offset: int = Query(default=0, ge=0),
+):
+    """Return raw articles ordered by published_at descending. Optional status filter (comma-separated)."""
+    q = db.query(Article).options(
+        joinedload(Article.source), joinedload(Article.topic)
+    )
+    if article_status:
+        statuses = [s.strip() for s in article_status.split(",") if s.strip()]
+        if statuses:
+            q = q.filter(Article.status.in_(statuses))
+    q = q.order_by(Article.published_at.desc().nullslast(), Article.id.desc())
+    rows = q.offset(offset).limit(limit).all()
+    return [
+        ArticleListItem(
+            id=a.id,
+            source_id=a.source_id,
+            source_name=a.source.name if a.source else None,
+            topic_id=a.topic_id,
+            topic_name=a.topic.name if a.topic else None,
+            title=a.title,
+            url=a.url,
+            published_at=a.published_at,
+            ingested_at=a.ingested_at,
+            status=a.status.value if hasattr(a.status, "value") else str(a.status),
+        )
+        for a in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Topics
 # ---------------------------------------------------------------------------
 
@@ -134,6 +189,11 @@ class TopicOut(BaseModel):
     industry_positions: dict | None = None
     article_count: int = 0
     is_published: bool = False
+    velocity_score: float | None = None
+    acceleration_score: float | None = None
+    signal_rationale: str | None = None
+    signal_suggested_state: str | None = None
+    signal_id: int | None = None
 
     model_config = {"from_attributes": True}
 
@@ -169,10 +229,62 @@ def list_topics(
     _: None = Depends(require_admin),
     topic_status: TopicStatus | None = Query(default=None, alias="status"),
 ):
+    from sqlalchemy import func
+    from sqlalchemy.orm import aliased
+
+    from ..services.signal_service import compute_topic_velocity_metrics
+
     q = db.query(Topic)
     if topic_status is not None:
         q = q.filter(Topic.status == topic_status)
-    return q.order_by(Topic.urgency_score.desc()).all()
+    topics = q.order_by(Topic.urgency_score.desc()).all()
+
+    topic_ids = [t.id for t in topics]
+    if not topic_ids:
+        return []
+
+    # Subquery: latest signal per topic (by created_at desc)
+    latest_sq = (
+        db.query(
+            SignalRecommendation.topic_id,
+            func.max(SignalRecommendation.id).label("max_id"),
+        )
+        .filter(SignalRecommendation.topic_id.in_(topic_ids))
+        .group_by(SignalRecommendation.topic_id)
+        .subquery()
+    )
+    SigAlias = aliased(SignalRecommendation)
+    signal_rows = (
+        db.query(SigAlias)
+        .join(latest_sq, SigAlias.id == latest_sq.c.max_id)
+        .all()
+    )
+    sig_map: dict[int, SignalRecommendation] = {s.topic_id: s for s in signal_rows}
+
+    result = []
+    for t in topics:
+        sig = sig_map.get(t.id)
+        vel, accel = compute_topic_velocity_metrics(t.id, db)
+        result.append(
+            TopicOut(
+                id=t.id,
+                name=t.name,
+                domain=t.domain,
+                summary=t.summary,
+                urgency_score=t.urgency_score,
+                status=t.status.value,
+                adoption_state=t.adoption_state.value if hasattr(t.adoption_state, "value") else str(t.adoption_state),
+                industry_positions=t.industry_positions,
+                article_count=t.article_count,
+                is_published=t.is_published,
+                velocity_score=vel,
+                acceleration_score=accel,
+                signal_rationale=sig.rationale if sig and sig.status == "pending" else None,
+                signal_suggested_state=sig.suggested_state if sig and sig.status == "pending" else None,
+                signal_id=sig.id if sig and sig.status == "pending" else None,
+            )
+        )
+    return result
 
 
 @router.get("/topics/positioning-insights", response_model=list[TopicPositioningInsight])
@@ -237,6 +349,37 @@ def suggest_positions(
     return result
 
 
+@router.post("/topics/{topic_id}/trend-analysis")
+def run_topic_trend_analysis(
+    topic_id: int,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """
+    Run the Claude Haiku signal agent for this topic: fills pending SignalRecommendation
+    with AI suggested adoption state + rationale (velocity/acceleration are computed from article counts).
+    """
+    from ..services.signal_service import upsert_pending_trend_signal
+
+    topic = db.query(Topic).filter(Topic.id == topic_id).first()
+    if topic is None:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    if topic.status != TopicStatus.pending:
+        raise HTTPException(status_code=400, detail="Trend analysis is only for pending topics")
+
+    row = upsert_pending_trend_signal(topic_id, db)
+    if row is None:
+        raise HTTPException(status_code=502, detail="AI trend analysis failed")
+    return {
+        "topic_id": topic_id,
+        "signal_id": row.id,
+        "velocity_score": row.velocity_score,
+        "acceleration_score": row.acceleration_score,
+        "suggested_state": row.suggested_state,
+        "rationale": row.rationale,
+    }
+
+
 @router.post("/topics/{topic_id}/watch", response_model=TopicOut)
 def watch_topic(
     topic_id: int,
@@ -290,6 +433,42 @@ def deselect_topic(
         raise HTTPException(status_code=409, detail="Only selected topics can be deselected")
     topic.status = TopicStatus.watched
     topic.is_published = False
+    db.commit()
+    db.refresh(topic)
+    return topic
+
+
+@router.post("/topics/{topic_id}/approve", response_model=TopicOut)
+def approve_topic(
+    topic_id: int,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """Approve a pending/watched topic (→ selected) and accept the latest pending signal if any."""
+    topic = db.query(Topic).filter(Topic.id == topic_id).first()
+    if topic is None:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    if topic.status == TopicStatus.selected:
+        raise HTTPException(status_code=409, detail="Topic is already approved")
+
+    # Accept the latest pending signal for this topic (if any)
+    latest_signal = (
+        db.query(SignalRecommendation)
+        .filter(
+            SignalRecommendation.topic_id == topic_id,
+            SignalRecommendation.status == "pending",
+        )
+        .order_by(SignalRecommendation.created_at.desc())
+        .first()
+    )
+    if latest_signal:
+        topic.adoption_state = latest_signal.suggested_state
+        latest_signal.status = "approved"
+
+    topic.status = TopicStatus.selected
+    db.query(Article).filter(Article.topic_id == topic_id).update(
+        {"status": "published"}, synchronize_session=False
+    )
     db.commit()
     db.refresh(topic)
     return topic
@@ -908,3 +1087,34 @@ def trigger_signals(
 ):
     background_tasks.add_task(_run_signals)
     return {"message": "Signal scoring started in the background."}
+
+
+def _run_trend_analysis_all() -> None:
+    import logging
+
+    from ..services.signal_service import upsert_pending_trend_signal
+
+    log = logging.getLogger(__name__)
+    db = SessionLocal()
+    try:
+        pending = db.query(Topic).filter(Topic.status == TopicStatus.pending).all()
+        ok = 0
+        for t in pending:
+            try:
+                if upsert_pending_trend_signal(t.id, db):
+                    ok += 1
+            except Exception:
+                log.exception("trend-analysis failed for topic %d", t.id)
+        log.info("Bulk trend analysis: %d / %d topics processed", ok, len(pending))
+    finally:
+        db.close()
+
+
+@router.post("/jobs/trend-analysis")
+def trigger_trend_analysis(
+    background_tasks: BackgroundTasks,
+    _: None = Depends(require_admin),
+):
+    """Run the AI signal agent for every pending topic (background)."""
+    background_tasks.add_task(_run_trend_analysis_all)
+    return {"message": "AI trend analysis started for all pending topics."}

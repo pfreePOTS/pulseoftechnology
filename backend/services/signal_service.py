@@ -33,6 +33,88 @@ VELOCITY_THRESHOLD = 3
 ACCELERATION_THRESHOLD = 1.5
 
 
+def compute_topic_velocity_metrics(topic_id: int, db: Session) -> tuple[float, float]:
+    """
+    Live 7-day article velocity (count) and acceleration (ratio vs prior 7 days).
+    Same windows as run_signal_scorer — used for API responses even when no SignalRecommendation exists.
+    """
+    now = datetime.now(UTC)
+    week_start = now - timedelta(days=7)
+    prev_start = now - timedelta(days=14)
+    velocity = float(_article_count_in_window(topic_id, week_start, now, db))
+    prev_count = _article_count_in_window(topic_id, prev_start, week_start, db)
+    acceleration = velocity / max(prev_count, 1)
+    return velocity, acceleration
+
+
+def upsert_pending_trend_signal(topic_id: int, db: Session) -> SignalRecommendation | None:
+    """
+    Run the signal AI agent (evaluate_signal) for this topic and create or update a pending
+    SignalRecommendation with computed velocity/acceleration and AI suggested_state + rationale.
+
+    Unlike run_signal_scorer, this does not require velocity/acceleration thresholds.
+    """
+    from ..services.ai_service import evaluate_signal  # avoid circular import
+
+    topic = db.query(Topic).filter(Topic.id == topic_id).first()
+    if topic is None:
+        return None
+
+    now = datetime.now(UTC)
+    week_start = now - timedelta(days=7)
+    velocity, acceleration = compute_topic_velocity_metrics(topic_id, db)
+
+    recent_articles: list[Article] = (
+        db.query(Article)
+        .filter(
+            Article.topic_id == topic_id,
+            Article.ingested_at >= week_start,
+        )
+        .all()
+    )
+
+    try:
+        result = evaluate_signal(topic, recent_articles)
+    except Exception:
+        logger.exception("evaluate_signal failed for topic %d", topic_id)
+        return None
+
+    suggested = result.get("suggested_state") or (
+        topic.adoption_state.value if hasattr(topic.adoption_state, "value") else str(topic.adoption_state)
+    )
+    rationale = result.get("rationale") or ""
+
+    existing = (
+        db.query(SignalRecommendation)
+        .filter(
+            SignalRecommendation.topic_id == topic_id,
+            SignalRecommendation.status == "pending",
+        )
+        .first()
+    )
+    if existing:
+        existing.suggested_state = suggested
+        existing.rationale = rationale
+        existing.velocity_score = velocity
+        existing.acceleration_score = acceleration
+        db.commit()
+        db.refresh(existing)
+        return existing
+
+    signal = SignalRecommendation(
+        topic_id=topic_id,
+        suggested_state=suggested,
+        rationale=rationale,
+        velocity_score=velocity,
+        acceleration_score=acceleration,
+        status="pending",
+    )
+    db.add(signal)
+    db.commit()
+    db.refresh(signal)
+    return signal
+
+
 def _sql_count(topic_id: int, start: datetime, end: datetime, db: Session) -> int:
     """SQL fallback: count articles assigned to topic_id within the window."""
     return (

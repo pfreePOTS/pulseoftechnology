@@ -3,7 +3,8 @@
 **Author:** Manus AI
 **Date:** April 1, 2026
 **Status:** Design / Proposed
-**Version:** 1.0
+**Version:** 2.0 (KAIROS/autoDream integration)
+**Changelog:** v2.0 adds Section 5A (KAIROS Background Daemon), Section 5B (autoDream Memory Consolidation), updates data flow diagram, updates implementation phases, and adds new references from the Claude Code architecture analysis.
 
 ---
 
@@ -11,13 +12,15 @@
 
 The AI Dungeon Master system relies on multiple specialized AI agents (Storyteller, Narrator, Image, Audio, Combat, Intent, etc.) orchestrated by higher-level agents (Director, Orchestrator). It also relies on multiple QA and validation services (`ResponseValidator`, `AvQaService`, `BlueprintQaService`, `PromptTestingService`). Currently, these QA services act as isolated "sensors" that catch errors in real-time, but the system does not *learn* from these errors. A hallucination caught by `ResponseValidator` today will be caught again tomorrow by the same validator, because nothing feeds back to prevent the hallucination from occurring in the first place.
 
-This document outlines the **Meta-Harness Self-Learning Architecture**, a system-wide feedback loop that gives every AI agent access to "Institutional Memory" — the accumulated knowledge of what has been tried, what worked, what failed, and why. The design is inspired by three key research frameworks:
+This document outlines the **Meta-Harness Self-Learning Architecture**, a system-wide feedback loop that gives every AI agent access to "Institutional Memory" — the accumulated knowledge of what has been tried, what worked, what failed, and why. The design is inspired by four key research frameworks:
 
 1. **Meta-Harness** (Lee et al., 2025) [1]: Demonstrated that giving an optimization agent access to full execution traces (not just scores) enables dramatically better self-improvement. Their ablation study showed scores-only optimization achieved 34.6 median vs. 50.0 median with full traces — a 44% improvement from better observability alone.
 
 2. **Voyager** (Wang et al., 2023) [2]: Introduced the "Skill Library" pattern — an ever-growing collection of learned capabilities indexed by semantic embedding, retrieved by similarity when facing new tasks. Skills are composable and transferable.
 
 3. **Recursive Knowledge Crystallization** (Tanaike, 2026) [3]: Demonstrated that an agent can continuously rewrite its own operational manual (`SKILL.md`) based on failures, and that the saturated manual enables zero-shot transfer to new environments.
+
+4. **Claude Code / KAIROS Architecture** (Anthropic, 2026, leaked) [5]: Revealed that Anthropic's production agent system uses a persistent background daemon (KAIROS) with periodic `<tick>` prompts for proactive observation, and a sub-agent (`autoDream`) that consolidates memory during idle periods — merging observations, removing contradictions, and converting tentative notes into confirmed facts. This independently validates our design and provides concrete implementation patterns.
 
 ### 1.1. Core Design Principles
 
@@ -43,6 +46,8 @@ The following principles were established through conversational vetting and are
 | `ReflectorAgent` | An AI agent that diagnoses failures by analyzing full execution traces and proposes new skills. | New. Currently, diagnosis is manual (developer reads PromptLog in admin UI). |
 | `SkillRetriever` | A module within `ContextAssembler` that queries Pinecone for relevant skills before each agent call. | New. Analogous to how `IntentClassifier` already queries Pinecone for intent matching. |
 | `PatternDetector` | A scheduled background job that scans `PromptLog` for statistical anomalies and clusters of failures. | New. The `EventMonitor` does something similar for gameplay patterns, but not for AI performance patterns. |
+| `KairosDaemon` | A persistent background process that receives periodic `<tick>` prompts and decides whether to act proactively (trigger reflection, run consolidation, surface recommendations) or stay quiet. Inspired by Anthropic's KAIROS [5]. | New. Subsumes the scheduling role of `PatternDetector` and adds proactive observation. |
+| `autoDreamConsolidator` | A sub-process spawned by `KairosDaemon` during idle periods that consolidates memory: merges similar skills, resolves contradictions, archives stale entries, and promotes high-evidence diagnoses. Inspired by Anthropic's `autoDream` [5]. | New. Replaces the manual contradiction resolution and staleness checks described in Section 5. |
 
 ### 2.2. The Three-Tier Memory System
 
@@ -299,6 +304,190 @@ The developer always has the final word. The Admin Dashboard provides:
 
 ---
 
+## 5A. KAIROS Background Daemon
+
+The KAIROS pattern, discovered in Anthropic's leaked Claude Code architecture [5], provides the missing "nervous system" for the self-learning architecture. Rather than relying on purely event-driven triggers (Section 3) and scheduled cron jobs, KAIROS introduces a **persistent, low-overhead background process** that continuously observes the system and decides autonomously when to act.
+
+### 5A.1. Why KAIROS Matters
+
+The original design (v1.0) had two modes of learning: **reactive** (triggered by validation failures, human corrections, and retries) and **scheduled** (the `PatternDetector` running on a cron schedule). This leaves a gap: the system cannot notice slow-developing problems between scheduled runs, and it cannot correlate events across different trigger types in real time.
+
+KAIROS fills this gap by acting as a **continuous observer** that receives periodic `<tick>` prompts and decides whether the current system state warrants action. It is not a replacement for the reactive triggers — those still fire immediately for strong signals. KAIROS is the layer that catches everything else: gradual degradation, cross-agent patterns, opportunities for consolidation, and proactive recommendations.
+
+Anthropic's implementation enforces a **15-second blocking budget** per tick, ensuring the daemon never interferes with the main application's performance [5]. Our implementation should adopt a similar constraint.
+
+### 5A.2. Architecture
+
+The `KairosDaemon` runs as a background job within the existing `APScheduler` infrastructure (see `backend/scheduler.py`). It is registered as an interval job, ticking every **5 minutes** during active gameplay sessions and every **30 minutes** during idle periods.
+
+```typescript
+interface KairosTickContext {
+  // --- System Health Snapshot ---
+  activeSessionCount: number;           // How many game sessions are currently active
+  recentPromptLogSummary: {             // Aggregated stats from the last tick interval
+    totalCalls: number;
+    failureCount: number;
+    retryCount: number;
+    avgLatencyMs: number;
+    agentBreakdown: Record<string, { calls: number; failures: number }>;
+  };
+  
+  // --- Memory Health Snapshot ---
+  activeSkillCount: number;
+  flaggedSkillCount: number;            // Skills in contradiction or review state
+  pendingDiagnosisCount: number;        // Diagnoses not yet promoted to skills
+  recentSkillPerformance: {             // Skills used since last tick
+    skillId: string;
+    timesUsed: number;
+    successRate: number;
+  }[];
+  
+  // --- Pending Work ---
+  unresolvedContradictions: number;
+  staleSkillCount: number;              // Skills unused for 30+ days
+  pendingRecommendations: number;       // Lane 2 recommendations awaiting review
+  
+  // --- Timing ---
+  lastConsolidationRun: Date;           // When autoDream last ran
+  lastPatternDetectionRun: Date;        // When full pattern analysis last ran
+  currentTime: Date;
+  isIdlePeriod: boolean;                // True if no active sessions for 15+ minutes
+}
+```
+
+On each tick, the `KairosDaemon` receives this lightweight context snapshot (not the full PromptLog — that would be too expensive) and makes one of the following decisions:
+
+| Decision | When | Action |
+| :--- | :--- | :--- |
+| **No action** | System is healthy, no anomalies | Log tick, do nothing |
+| **Trigger reflection** | Failure rate spike detected (>2x baseline in the tick interval) | Invoke `ReflectorAgent` on the worst-performing agent's recent failures |
+| **Trigger consolidation** | Idle period detected AND last consolidation was >6 hours ago | Spawn `autoDreamConsolidator` (Section 5B) |
+| **Surface recommendation** | Pattern detected that warrants a Lane 2 recommendation | Create a `SystemRecommendation` record |
+| **Alert developer** | Critical anomaly (e.g., >50% failure rate, all skills degrading) | Log critical alert, optionally send notification |
+
+The decision logic is itself an LLM call, but a **cheap one** — it uses a small, fast model (e.g., `gpt-4.1-nano` or `gemini-2.5-flash`) with a concise system prompt and the `KairosTickContext` as input. The total cost per tick should be under $0.001.
+
+### 5A.3. KAIROS System Prompt
+
+> You are KAIROS, the background health monitor for the AI Dungeon Master system. You receive periodic health snapshots and decide whether action is needed.
+>
+> Your priorities (in order):
+> 1. **Do no harm.** If the system is healthy, say "no_action." Most ticks should result in no action.
+> 2. **Catch degradation early.** If failure rates are rising, trigger reflection before the problem compounds.
+> 3. **Consolidate during downtime.** If the system is idle and memory hasn't been consolidated recently, trigger consolidation.
+> 4. **Surface insights.** If you notice a cross-agent pattern (e.g., multiple agents struggling with the same type of content), create a recommendation.
+>
+> You MUST NOT trigger consolidation during active gameplay sessions.
+> You MUST NOT trigger more than one reflection per tick.
+> You MUST explain your reasoning in one sentence.
+>
+> Respond with exactly one JSON object:
+> ```json
+> { "decision": "no_action" | "trigger_reflection" | "trigger_consolidation" | "surface_recommendation" | "alert_developer", "reason": "...", "target_agent": "..." (if reflection), "recommendation_text": "..." (if recommendation) }
+> ```
+
+### 5A.4. Implementation Pattern (APScheduler Integration)
+
+The `KairosDaemon` follows the exact same pattern as the existing `signal_service.py` in the codebase. The `signal_service` already implements: scheduled analysis of evidence, threshold-based triggering, AI-powered evaluation (`evaluate_trend_pick`), persistence of pending recommendations (`SignalRecommendation`), and cleanup/housekeeping. The `KairosDaemon` is architecturally identical — it just operates on AI performance data instead of article velocity data.
+
+In `scheduler.py`, it would be registered as:
+
+```python
+scheduler.add_job(
+    _kairos_tick_job,
+    trigger="interval",
+    minutes=5,
+    id="kairos_daemon",
+    replace_existing=True,
+)
+```
+
+The tick interval can be made adaptive: 5 minutes during active sessions, 30 minutes during idle periods, by checking `activeSessionCount` at the start of each tick and short-circuiting if appropriate.
+
+---
+
+## 5B. autoDream Memory Consolidation
+
+The `autoDream` pattern, also from the Claude Code architecture [5], addresses the most dangerous long-term failure mode of any self-learning system: **memory rot**. Over time, the skill library will accumulate redundant rules, near-duplicates with slightly different wording, contradictions from different learning episodes, and stale entries that no longer apply. Without periodic consolidation, the system's memory becomes noisy and retrieval quality degrades.
+
+### 5B.1. What autoDream Does
+
+The `autoDreamConsolidator` is a sub-process spawned by `KairosDaemon` exclusively during idle periods (no active game sessions for 15+ minutes). It performs four operations in sequence:
+
+**Operation 1 — Merge Near-Duplicates.** Query Pinecone for all active skills. For each skill, find other active skills with embedding similarity > 0.85. If found, invoke the `ReflectorAgent` with both skills and their evidence to produce a single merged skill that captures the best of both. Archive the originals with `archivedReason: 'merged_by_autodream'` and link them to the new merged skill.
+
+**Operation 2 — Resolve Contradictions.** Find all skills with `status: 'flagged'`. For each flagged pair, invoke the `ReflectorAgent` with both skills, their evidence (linked `PromptLog` entries), and their performance metrics (`successRate`, `confidence`). The `ReflectorAgent` decides: keep one, archive one, or merge them. If it cannot decide with confidence > 0.7, the contradiction remains flagged for human review.
+
+**Operation 3 — Promote Pending Diagnoses.** Scan the `ExperienceDiagnosis` table for clusters of `status: 'pending'` diagnoses with similar `proposedRule` text (embedding similarity > 0.85). If 3+ similar diagnoses exist, auto-promote to a new `AgentSkill`. This is the same logic as Section 3.3 (Path A), but running as a batch process rather than checking after each individual diagnosis.
+
+**Operation 4 — Evict Stale Entries.** Find all active skills where `lastUsedAt` is more than 90 days ago. Auto-archive with `archivedReason: 'staleness_eviction'`. For skills between 30-90 days old, set `status: 'flagged'` with a note for developer review.
+
+### 5B.2. Consolidation Report
+
+After each run, `autoDreamConsolidator` produces a `ConsolidationReport` that is stored in PostgreSQL and surfaced in the Admin Dashboard:
+
+```typescript
+interface ConsolidationReport {
+  id: string;
+  runAt: Date;
+  duration: number;                     // How long the consolidation took (ms)
+  triggeredBy: 'kairos_idle' | 'manual' | 'scheduled';
+  
+  // --- Actions Taken ---
+  mergesPerformed: {
+    originalSkillIds: string[];
+    newSkillId: string;
+    mergeReason: string;
+  }[];
+  contradictionsResolved: {
+    skillIds: string[];
+    resolution: 'kept_one' | 'archived_both' | 'merged' | 'escalated_to_human';
+    reason: string;
+  }[];
+  diagnosesPromoted: {
+    diagnosisIds: string[];
+    newSkillId: string;
+  }[];
+  staleSkillsEvicted: string[];         // Skill IDs archived for staleness
+  
+  // --- Health Metrics ---
+  totalActiveSkillsBefore: number;
+  totalActiveSkillsAfter: number;
+  contradictionsRemainingForHuman: number;
+  
+  // --- Cost ---
+  llmCallsUsed: number;
+  estimatedCost: number;                // USD
+}
+```
+
+### 5B.3. Safety Constraints
+
+The `autoDreamConsolidator` operates under strict safety constraints to prevent runaway memory modification:
+
+**Never runs during active gameplay.** If a game session starts during consolidation, the process pauses immediately and resumes at the next idle window. This is enforced by checking `activeSessionCount` before each operation.
+
+**Maximum operations per run.** Each consolidation run is capped at 10 merges, 5 contradiction resolutions, and 10 promotions. This prevents a single run from making too many changes at once, which would be hard to debug if something goes wrong.
+
+**All changes are logged and reversible.** Every merge, resolution, and eviction is recorded in the `ConsolidationReport`. Archived skills are never deleted — they can be restored via the Admin Dashboard. Merged skills link back to their originals.
+
+**Cost cap.** Each consolidation run has a budget of $0.50 in LLM calls. If the budget is exhausted before all operations complete, the run stops and logs what was completed. The remaining work is picked up on the next run.
+
+**No skill creation from scratch.** The `autoDreamConsolidator` can merge, archive, and promote, but it cannot create entirely new skills that weren't already present as diagnoses. Only the `ReflectorAgent` (triggered by real failures) and the developer can create genuinely new knowledge.
+
+### 5B.4. Relationship to Existing Memory Correction (Section 5)
+
+The `autoDreamConsolidator` subsumes and automates the manual processes described in Section 5 of this document:
+
+| Section 5 Mechanism | autoDream Replacement |
+| :--- | :--- |
+| Confidence Decay (per-use) | **Unchanged.** Confidence decay still happens in real-time on every generation. autoDream does not modify this. |
+| Contradiction Detection (on skill creation) | **Enhanced.** Still happens on creation, but autoDream also performs periodic batch contradiction scans to catch contradictions that emerge over time as skills evolve. |
+| Staleness Eviction (30-day flag, 90-day archive) | **Automated.** Previously described as a "scheduled job" without specifics. Now explicitly handled by autoDream Operation 4. |
+| Human Override (Admin Dashboard) | **Unchanged.** The developer always has final authority. autoDream surfaces its work in the dashboard for review. |
+
+---
+
 ## 6. Two-Lane Implementation Strategy
 
 The Meta-Harness proposer operates in two distinct lanes based on risk level.
@@ -366,9 +555,13 @@ The new architecture does not replace existing QA; it sits on top of all of them
 | `IntentLearningService` | Captures user corrections to intent classification, upserts to Pinecone | Continues to operate independently for intent-specific learning. The `ExperienceLedgerService` can also generate skills that improve intent classification prompts. |
 | `EventMonitor` | Detects gameplay patterns (quest stagnation, combat streaks) via hardcoded thresholds | Its thresholds become candidates for Lane 2 recommendations. The Meta-Harness can observe whether the EventMonitor's interventions actually improve gameplay. |
 
-### 7.2. Data Flow Diagram
+### 7.2. Data Flow Diagram (Updated v2.0)
+
+The data flow now includes two parallel loops: the **reactive loop** (triggered by individual failures) and the **proactive loop** (driven by KAIROS and autoDream).
 
 ```
+=== REACTIVE LOOP (Real-Time) ===
+
 [Player Action]
        |
        v
@@ -384,8 +577,10 @@ The new architecture does not replace existing QA; it sits on top of all of them
        |            |
        +---> [PromptLogService: logs everything including activeSkillIds]
                     |
+                    +---> [Confidence Update: bump or decay active skills]
+                    |
                     v
-              [Learning Trigger?]
+              [Strong Learning Trigger?]
                     |
            yes -----+
                     |
@@ -394,14 +589,44 @@ The new architecture does not replace existing QA; it sits on top of all of them
                     |
                     v
               [ExperienceDiagnosis: stored in PostgreSQL]
-                    |
-                    v
-              [3+ similar diagnoses?] --yes--> [Create AgentSkill in PostgreSQL + Pinecone]
-                    |
-                    no
-                    |
-                    v
-              [Wait for more evidence]
+
+
+=== PROACTIVE LOOP (Background — KAIROS) ===
+
+[Every 5 min]  ---> [KairosDaemon: receives KairosTickContext snapshot]
+                          |
+                          v
+                    [Decision: no_action | trigger_reflection | trigger_consolidation | surface_recommendation | alert]
+                          |
+          +---------------+---------------+-------------------+
+          |               |               |                   |
+          v               v               v                   v
+    [No Action]    [ReflectorAgent]  [autoDream]        [Lane 2 Recommendation]
+                    (on worst agent)      |                   |
+                          |               v                   v
+                          v         [Merge duplicates]  [SystemRecommendation]
+                   [ExperienceDiagnosis]  [Resolve contradictions]  [Admin Dashboard]
+                                    [Promote diagnoses]
+                                    [Evict stale skills]
+                                          |
+                                          v
+                                    [ConsolidationReport]
+                                          |
+                                          v
+                                    [Admin Dashboard]
+
+
+=== SKILL PROMOTION (Both Loops) ===
+
+[ExperienceDiagnosis pool]
+       |
+       v
+[3+ similar diagnoses?] --yes--> [Create AgentSkill in PostgreSQL + Pinecone]
+       |                                    |
+       no                                   v
+       |                          [Contradiction check against existing skills]
+       v                                    |
+[Wait for more evidence]           [Clean? --> Active]  [Conflict? --> Flagged]
 ```
 
 ---
@@ -428,11 +653,11 @@ The existing `PromptOptimizationService` already does some of what the Meta-Harn
 
 ## 9. MVP Scope and Implementation Phases
 
-Following the project's MVP-first philosophy, implementation should be incremental.
+Following the project's MVP-first philosophy, implementation should be incremental. The phases below are updated from v1.0 to include KAIROS and autoDream.
 
 ### Phase 1: Enhanced Logging (Foundation)
 - Add `fullContextTrace`, `activeSkillIds`, `retryCount`, `feedbackSignal`, `feedbackText` to `PromptLog`.
-- Add the `ExperienceDiagnosis` and `AgentSkill` Prisma models.
+- Add the `ExperienceDiagnosis`, `AgentSkill`, and `ConsolidationReport` Prisma models.
 - Create the `agent-skills` Pinecone namespace.
 - Build the `ExperienceLedgerService` with basic CRUD for skills.
 - **Deliverable:** The system captures richer data. Skills can be manually created via API.
@@ -450,18 +675,38 @@ Following the project's MVP-first philosophy, implementation should be increment
 - Build the Admin Dashboard for skill management (browse, edit, create, archive).
 - **Deliverable:** The system self-manages skill health. Developer has full visibility.
 
-### Phase 4: Automated Diagnosis
+### Phase 4: Automated Diagnosis (ReflectorAgent)
 - Build the `ReflectorAgent` (LLM-based diagnosis from traces).
 - Wire up learning triggers from `ResponseValidator`, `AvQaService`, and retry events.
-- Implement contradiction detection.
+- Implement contradiction detection on skill creation.
 - Implement automatic skill promotion (3+ similar diagnoses).
 - **Deliverable:** The system learns from its own failures without human intervention.
 
-### Phase 5: Pattern Detection and Recommendations
-- Build the `PatternDetector` scheduled job.
-- Implement the Lane 2 recommendation system.
-- Generate Cursor-ready prompts for recommended changes.
-- **Deliverable:** The system proactively identifies systemic issues and proposes fixes.
+### Phase 5: KAIROS Background Daemon
+- Build the `KairosDaemon` as an APScheduler interval job (following the `signal_service.py` pattern).
+- Implement the `KairosTickContext` snapshot builder (aggregates from `PromptLog`, `AgentSkill`, `ExperienceDiagnosis` tables).
+- Implement the KAIROS decision LLM call (using `gpt-4.1-nano` or `gemini-2.5-flash` for cost efficiency).
+- Wire KAIROS decisions to existing actions: trigger `ReflectorAgent`, create `SystemRecommendation`, log alerts.
+- Add KAIROS tick history to the Admin Dashboard.
+- **Deliverable:** The system has a persistent background observer that catches gradual degradation and cross-agent patterns.
+
+### Phase 6: autoDream Memory Consolidation
+- Build the `autoDreamConsolidator` sub-process, triggered by KAIROS during idle periods.
+- Implement Operation 1 (merge near-duplicates via Pinecone similarity scan).
+- Implement Operation 2 (resolve flagged contradictions via `ReflectorAgent`).
+- Implement Operation 3 (batch-promote pending diagnoses).
+- Implement Operation 4 (evict stale skills).
+- Implement the `ConsolidationReport` generation and Admin Dashboard view.
+- Implement safety constraints (session-aware pause, operation caps, cost cap).
+- **Deliverable:** The system autonomously maintains memory hygiene during idle periods.
+
+### Phase 7: Lane 2 Recommendations and Full Integration
+- Implement the Lane 2 recommendation system with `SystemRecommendation` records.
+- Generate Cursor-ready prompts for recommended code/config changes.
+- Wire KAIROS `surface_recommendation` decisions to the recommendation pipeline.
+- Build the recommendation review UI in the Admin Dashboard.
+- End-to-end integration testing across all phases.
+- **Deliverable:** The complete self-learning loop is operational: observe → diagnose → learn → inject → evaluate → consolidate → recommend.
 
 ---
 
@@ -481,6 +726,14 @@ This section captures the reasoning behind major design choices, so future sessi
 
 **Why extend PromptOptimizationService instead of building from scratch?** It already has quality spec infrastructure, suggestion workflows, and admin UI integration. Building a parallel system would create confusion about which service to use. Extending preserves existing work and provides a migration path.
 
+**Why add KAIROS instead of just using cron-scheduled pattern detection?** (v2.0) The original design relied on a `PatternDetector` running on a fixed cron schedule (e.g., nightly). This has two problems: (1) slow-developing issues between scheduled runs go unnoticed, and (2) the decision of *what to do* was hardcoded in the job logic rather than being an intelligent decision. KAIROS replaces the fixed schedule with an adaptive tick that uses a cheap LLM call to decide whether action is needed. Most ticks result in "no action" — the system only acts when the evidence warrants it. This is the same pattern Anthropic uses in their production Claude Code agent [5].
+
+**Why run autoDream only during idle periods?** Memory consolidation involves multiple Pinecone queries and LLM calls (for merge decisions and contradiction resolution). Running this during active gameplay would compete for resources and could increase latency for player-facing requests. The idle-period constraint ensures consolidation never degrades the player experience. The 15-minute idle threshold is conservative and can be tuned.
+
+**Why cap autoDream operations per run?** (10 merges, 5 contradiction resolutions, 10 promotions, $0.50 cost cap) Without caps, a single consolidation run could make dozens of changes to the skill library, making it impossible to debug if something goes wrong. The caps ensure each run is small enough to review in the Admin Dashboard. Remaining work is picked up on the next idle window — there's no urgency to consolidate everything at once.
+
+**Why use a cheap model for KAIROS ticks?** The KAIROS tick decision is a simple classification task: given a health snapshot, choose one of five actions. This does not require the reasoning power of GPT-4 or Claude Sonnet. Using `gpt-4.1-nano` or `gemini-2.5-flash` keeps the per-tick cost under $0.001, making it economically feasible to tick every 5 minutes indefinitely.
+
 ---
 
 ## 11. Open Questions for Future Discussion
@@ -495,6 +748,14 @@ This section captures the reasoning behind major design choices, so future sessi
 
 5. **Regression Testing:** When a new skill is created, should the system re-run a set of "golden" test cases to ensure the skill doesn't degrade performance on known-good scenarios? This mirrors the staging/production pattern already designed for intent classification.
 
+6. **KAIROS Tick Frequency Tuning:** The 5-minute active / 30-minute idle tick intervals are initial estimates. Should the system adaptively adjust tick frequency based on observed volatility? (e.g., tick more frequently during the first hour after a deployment, when new issues are most likely).
+
+7. **autoDream Merge Quality:** When autoDream merges two similar skills, the merged skill's `ruleText` is generated by the `ReflectorAgent`. How do we validate that the merge didn't lose important nuance from either original? Should merged skills start at a lower confidence (e.g., 0.5) to force re-validation through use?
+
+8. **Cross-Project Learning:** If the developer runs multiple AI DM campaigns with different settings, should skills learned in one campaign transfer to another? The `domain` field partially addresses this, but campaign-specific vs. universal skill classification may need explicit handling.
+
+9. **KAIROS Observability:** Should KAIROS tick decisions be visible in the Admin Dashboard in real-time (like a heartbeat monitor), or only when it takes action? Real-time visibility adds development cost but provides confidence that the system is alive and watching.
+
 ---
 
 ## References
@@ -506,3 +767,9 @@ This section captures the reasoning behind major design choices, so future sessi
 [3]: Tanaike. (2026). "Recursive Knowledge Crystallization: A Framework for Persistent Autonomous Agent Self-Evolution." https://dev.to/gde/recursive-knowledge-crystallization-a-framework-for-persistent-autonomous-agent-self-evolution-4mk4
 
 [4]: Kang, J., et al. (2025). "Memory OS of AI Agent." Proceedings of EMNLP 2025. https://aclanthology.org/2025.emnlp-main.1318/
+
+[5]: The New Stack. (2026). "Inside Claude Code's leaked source: swarms, daemons, and 44 features Anthropic kept behind flags." https://thenewstack.io/claude-code-source-leak/ — Primary source for KAIROS and autoDream architectural patterns. See also: AI DM project document `docs/core/12-claude-code-architecture-analysis.md` for the full analysis.
+
+[6]: Latent Space. (2026). "[AINews] The Claude Code Source Leak." https://www.latent.space/p/ainews-the-claude-code-source-leak
+
+[7]: GitHub. (2026). "JackChen-me/open-multi-agent." https://github.com/JackChen-me/open-multi-agent — Open-source extraction of Claude Code's multi-agent orchestration layer. Evaluated for future Phase 2+ adoption.

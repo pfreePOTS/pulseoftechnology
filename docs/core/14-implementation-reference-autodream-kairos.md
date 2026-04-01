@@ -3,7 +3,7 @@
 **Author:** Manus AI
 **Date:** April 1, 2026
 **Status:** Technical Reference / Implementation Guide
-**Version:** 1.0
+**Version:** 1.1
 **Parent Document:** `docs/core/11-meta-harness-self-learning.md` (v2.0)
 **Source Material:** OpenClaude repository (`gitlawb/openclaude`), specifically `src/services/autoDream/`, `src/services/extractMemories/`, `src/memdir/`, and `src/coordinator/`
 
@@ -798,7 +798,118 @@ This is documented here for future reference. The `open-multi-agent` library (ex
 
 ---
 
-## 9. Implementation Priority Map
+## 9. Pattern 8: Skill Self-Improvement Hook
+
+### 9.1. What Anthropic Does
+Anthropic runs a lightweight side-channel LLM call after every tool use to detect if the user expressed a preference that should update a skill file.
+
+```typescript
+// From openclaude/src/utils/hooks/skillImprovement.ts
+const config: ApiQueryHookConfig<SkillUpdate[]> = {
+  name: 'skill_improvement_detection',
+  systemPrompt: 'You detect user preferences and process improvements during skill execution. Flag anything the user asks for that should be remembered for next time.',
+  useTools: false,
+  parseResponse(content) {
+    const updatesStr = extractTag(content, 'updates');
+    return updatesStr ? jsonParse(updatesStr) : [];
+  },
+  logResult(result, context) {
+    if (result.type === 'success' && result.result.length > 0) {
+      // Suggestion surfaced to user
+    }
+  },
+  getModel: getSmallFastModel, // Cheap model
+};
+```
+
+### 9.2. AI DM Adaptation
+We adapt this to run after every player turn to detect passive preferences (e.g., "stop describing the smell", "more sarcastic narration").
+
+```typescript
+// backend/src/services/hooks/SkillImprovementHook.ts
+export async function detectSkillImprovement(
+  context: AIContext,
+  playerInput: string,
+  aiResponse: string
+): Promise<void> {
+  const result = await sideQuery({
+    model: 'gpt-4.1-mini',
+    system: 'You detect player preferences and stylistic corrections. If the player corrects the AI DM (e.g., "too much detail", "be more sarcastic"), output a JSON array of skill updates.',
+    messages: [
+      { role: 'user', content: playerInput },
+      { role: 'assistant', content: aiResponse }
+    ]
+  });
+
+  if (result.updates.length > 0) {
+    await experienceLedgerService.proposeSkillUpdate(result.updates);
+  }
+}
+```
+
+## 10. Pattern 9: Side Query Abstraction
+
+### 10.1. What Anthropic Does
+Anthropic uses a `sideQuery` wrapper for LLM calls that should not pollute the main conversation history or use expensive models.
+
+```typescript
+// From openclaude/src/utils/sideQuery.ts
+export type SideQueryOptions = {
+  model: string;
+  system?: string | TextBlockParam[];
+  messages: MessageParam[];
+  thinking?: number | false; // Disable thinking to save cost
+  skipSystemPromptPrefix?: boolean;
+};
+```
+
+### 10.2. AI DM Adaptation
+We use this abstraction for KAIROS ticks, ReflectorAgent diagnoses, and the SkillImprovementHook.
+
+```typescript
+// backend/src/services/ai/sideQuery.ts
+export async function sideQuery(options: SideQueryOptions): Promise<any> {
+  // Ensure we don't log to the main PromptLog
+  const logId = await consolidationLogService.createEntry({
+    source: 'side-query',
+    model: options.model,
+  });
+  
+  // Execute call using standard AI client
+  const result = await aiClient.call(options);
+  
+  await consolidationLogService.updateEntry(logId, result);
+  return result;
+}
+```
+
+## 11. Pattern 10: Tool Orchestration (Read/Write Partitioning)
+
+### 11.1. What Anthropic Does
+Anthropic partitions tool calls into read-only (concurrent) and write (serial) batches.
+
+```typescript
+// From openclaude/src/services/tools/toolOrchestration.ts
+function partitionToolCalls(toolUseMessages: ToolUseBlock[], context: ToolUseContext): Batch[] {
+  // Groups tools where isConcurrencySafe() is true into parallel batches,
+  // and isolates write tools into serial batches.
+}
+```
+
+### 11.2. AI DM Adaptation
+When we scale to multi-agent coordination, we use this to prevent race conditions on game state.
+
+```typescript
+// backend/src/ai/orchestrator/ToolPartitioner.ts
+export interface AgentTool {
+  name: string;
+  isConcurrencySafe: () => boolean; // e.g., get_inventory = true, consume_item = false
+  execute: (input: any) => Promise<any>;
+}
+```
+
+ 
+## 12. Implementation Priority Map
 
 Based on the patterns above, here is the recommended implementation order, mapped to the phases in `11-meta-harness-self-learning.md`:
 
@@ -808,13 +919,14 @@ Based on the patterns above, here is the recommended implementation order, mappe
 | Phase 2: Skill Retrieval | Pattern 5 (memory types, drift caveat) | `memoryTypes.ts`, `memdir.ts` |
 | Phase 3: Feedback Loop | Pattern 5 (feedback type — corrections AND confirmations) | `memoryTypes.ts` |
 | Phase 4: ReflectorAgent | Pattern 3 (four-phase dream prompt structure) | `consolidationPrompt.ts` |
+| Phase 4.5: Passive Detection | Pattern 8 (Skill hook), Pattern 9 (Side Query) | `skillImprovement.ts`, `sideQuery.ts` |
 | Phase 5: KAIROS Daemon | Pattern 1 (gate sequence), Pattern 4 (lock-as-timestamp) | `autoDream.ts`, `consolidationLock.ts` |
 | Phase 6: autoDream | Pattern 2 (forked agent + permissions), Pattern 3 (consolidation prompt), Pattern 4 (lock) | `autoDream.ts`, `extractMemories.ts`, `consolidationLock.ts`, `consolidationPrompt.ts` |
 | Phase 7: Recommendations | Pattern 7 (coordinator synthesis) | `coordinatorMode.ts` |
 
 ---
 
-## 10. Files in the OpenClaude Repository for Reference
+## 13. Files in the OpenClaude Repository for Reference
 
 The following files in the cloned repository (`/home/ubuntu/openclaude-src/`) contain the source code referenced in this document:
 
@@ -829,6 +941,9 @@ The following files in the cloned repository (`/home/ubuntu/openclaude-src/`) co
 | `src/memdir/memdir.ts` | 508 | Memory directory management, KAIROS daily log mode, search past context |
 | `src/memdir/memoryTypes.ts` | 272 | Memory type taxonomy with save/use/structure guidance |
 | `src/coordinator/coordinatorMode.ts` | 370 | Coordinator system prompt, worker orchestration patterns |
+| `src/utils/hooks/skillImprovement.ts` | 138 | Passive detection of user preferences via side-channel LLM call |
+| `src/utils/sideQuery.ts` | 118 | Lightweight wrapper for background LLM calls |
+| `src/services/tools/toolOrchestration.ts` | 158 | Read/write tool partitioning logic |
 
 ---
 

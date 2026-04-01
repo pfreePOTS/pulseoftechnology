@@ -3,8 +3,8 @@
 **Author:** Manus AI
 **Date:** April 1, 2026
 **Status:** Design / Proposed
-**Version:** 2.0 (KAIROS/autoDream integration)
-**Changelog:** v2.0 adds Section 5A (KAIROS Background Daemon), Section 5B (autoDream Memory Consolidation), updates data flow diagram, updates implementation phases, and adds new references from the Claude Code architecture analysis.
+**Version:** 2.1 (Passive Detection Version:** 2.0 (KAIROS/autoDream integration) Side Queries)
+**Changelog:** v2.1 adds Passive Detection (Section 4.2), Side Query Abstraction, Tool Partitioning, and expands implementation phases to 8. v2.0 added Section 5A (KAIROS Background Daemon), Section 5B (autoDream Memory Consolidation), updates data flow diagram, updates implementation phases, and adds new references from the Claude Code architecture analysis.
 
 ---
 
@@ -665,7 +665,30 @@ The data flow now includes two parallel loops: the **reactive loop** (triggered 
 
 ---
 
-## 8. Relationship to PromptOptimizationService
+## 8. Core Abstractions
+
+### 8.1. Side Query Abstraction
+
+The system requires a lightweight abstraction for making background LLM calls that do not pollute the main `PromptLog` or the player's conversation history. 
+
+Inspired by Anthropic's `sideQuery` utility [5], this abstraction is used for:
+- KAIROS tick decisions
+- ReflectorAgent diagnoses
+- Passive skill improvement detection
+- autoDream consolidation decisions
+
+Side queries use a separate logging mechanism (`ConsolidationLog` or a `source: 'side-query'` flag) and default to smaller, faster models (e.g., `gpt-4.1-mini`) to minimize cost and latency.
+
+### 8.2. Tool Orchestration: Read/Write Partitioning
+
+As the AI DM evolves to run multiple agents in parallel (e.g., generating an image, narrating the scene, and selecting background music simultaneously), the system must prevent race conditions on shared game state.
+
+Inspired by Anthropic's `partitionToolCalls` [5], all agent tools must declare an `isConcurrencySafe()` method. 
+- **Read-only tools** (e.g., `get_inventory`, `check_stats`) are concurrency-safe and can be executed by parallel agents simultaneously.
+- **Write tools** (e.g., `update_health`, `consume_item`) are NOT concurrency-safe and must be serialized. The orchestrator queues write operations to ensure game state remains consistent.
+
+ 
+## 9. Relationship to PromptOptimizationService
 
 The existing `PromptOptimizationService` already does some of what the Meta-Harness proposer would do. It analyzes rated responses, learns "quality specs" (preferred tone, key phrases, avoid phrases), and generates improvement suggestions. The decision is to **evolve** this service rather than build a parallel system.
 
@@ -685,7 +708,7 @@ The existing `PromptOptimizationService` already does some of what the Meta-Harn
 
 ---
 
-## 9. MVP Scope and Implementation Phases
+## 10. MVP Scope and Implementation Phases
 
 Following the project's MVP-first philosophy, implementation should be incremental. The phases below are updated from v1.0 to include KAIROS and autoDream.
 
@@ -716,6 +739,12 @@ Following the project's MVP-first philosophy, implementation should be increment
 - Implement automatic skill promotion (3+ similar diagnoses).
 - **Deliverable:** The system learns from its own failures without human intervention.
 
+### Phase 4.5: Passive Detection and Side Queries
+- Build the `SideQuery` abstraction for background LLM calls.
+- Implement the post-generation `SkillImprovementHook` to passively detect user preferences.
+- Wire the hook to the `ExperienceLedgerService` to propose skill updates.
+- **Deliverable:** The system learns from every interaction, not just explicit failures.
+ 
 ### Phase 5: KAIROS Background Daemon
 - Build the `KairosDaemon` as an APScheduler interval job (following the `signal_service.py` pattern).
 - Implement the `KairosTickContext` snapshot builder (aggregates from `PromptLog`, `AgentSkill`, `ExperienceDiagnosis` tables).
@@ -744,7 +773,7 @@ Following the project's MVP-first philosophy, implementation should be increment
 
 ---
 
-## 10. Key Design Decisions and Rationale
+## 11. Key Design Decisions and Rationale
 
 This section captures the reasoning behind major design choices, so future sessions can understand *why* the architecture is shaped this way.
 
@@ -770,7 +799,7 @@ This section captures the reasoning behind major design choices, so future sessi
 
 ---
 
-## 11. Open Questions for Future Discussion
+## 12. Open Questions for Future Discussion
 
 1. **Skill Namespacing:** Should skills be namespaced per campaign/world, or are they always global? A skill learned in a "dark fantasy" campaign might not apply to a "sci-fi" campaign. The `domain` field partially addresses this, but explicit namespacing may be needed.
 

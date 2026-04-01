@@ -2,7 +2,7 @@
   "version": "1.0",
   "repo": "https://github.com/pfreePOTS/ai-dungeon-master",
   "branch": "main",
-  "last_updated": "2026-04-01T20:27:30Z",
+  "last_updated": "2026-04-01T20:28:11Z",
   "documents": [
     {
       "path": "design/11-meta-harness-self-learning.md",
@@ -16,6 +16,15 @@
     {
       "path": "design/12-claude-code-architecture-analysis.md",
       "title": "12 Claude Code Architecture Analysis",
+      "category": "design",
+      "created": "2026-04-01",
+      "updated": "2026-04-01",
+      "version": "1.0",
+      "archived_versions": []
+    },
+    {
+      "path": "design/13-claude-code-repos-and-security.md",
+      "title": "13 Claude Code Repos And Security",
       "category": "design",
       "created": "2026-04-01",
       "updated": "2026-04-01",

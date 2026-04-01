@@ -32,7 +32,7 @@ type Props = {
   embedded?: boolean;
 };
 
-const PREVIEW_MIN_HEIGHT = 600;
+const PREVIEW_MIN_HEIGHT = 1200;
 
 export default function NewsletterSandboxPanel({ embedded = false }: Props) {
   const [html, setHtml] = useState<string>("");

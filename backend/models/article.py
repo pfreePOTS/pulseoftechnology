@@ -38,7 +38,12 @@ class Article(Base):
     persona_impacts: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     # Classified subdomain at ingest time (must align with topic.subdomain when linked)
-    subdomain: Mapped[str] = mapped_column(String(120), default="", server_default="", nullable=False)
+    subdomain: Mapped[str] = mapped_column(
+        String(120), default="", server_default="", nullable=False
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
 
     source: Mapped["Source"] = relationship("Source", back_populates="articles")
     topic: Mapped["Topic | None"] = relationship("Topic", back_populates="articles")

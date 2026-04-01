@@ -30,7 +30,9 @@ class Topic(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     domain: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g., AI, Security, Cloud
     # Theme within domain (from classify + clustering); links articles only when domain+subdomain+name match
-    subdomain: Mapped[str] = mapped_column(String(120), default="", server_default="", nullable=False)
+    subdomain: Mapped[str] = mapped_column(
+        String(120), default="", server_default="", nullable=False
+    )
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     urgency_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     status: Mapped[TopicStatus] = mapped_column(

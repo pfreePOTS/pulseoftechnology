@@ -1,5 +1,6 @@
+import logging
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import jwt
@@ -16,6 +17,7 @@ from fastapi import (
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, model_validator
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from ..config import settings as app_settings
@@ -34,12 +36,24 @@ from ..models.role import Role
 from ..models.signal import SignalRecommendation
 from ..models.source import Source, SourceType
 from ..models.subscriber import Subscriber
+from ..models.survey_response import SurveyResponse
 from ..models.topic import AdoptionState, Topic, TopicStatus
 from ..rate_limits import limiter
-from ..services.ai_service import suggest_industry_positions, suggest_topic_persona_by_role
+from ..services.ai_service import (
+    suggest_industry_positions,
+    suggest_subdomain_for_topic,
+    suggest_topic_persona_by_role,
+)
 from ..services.email_service import generate_newsletter_preview, run_daily_newsletter
 from ..services.hubspot_sync import sync_subscriber_to_hubspot
 from ..services.ingestion import run_all_sources, run_article_processing_pipeline
+from ..services.pipeline_settings import (
+    merge_pipeline_settings,
+    merged_settings_public_dict,
+    upsert_site_config,
+)
+
+logger = logging.getLogger(__name__)
 
 _bearer_optional = HTTPBearer(auto_error=False)
 
@@ -121,8 +135,26 @@ class ArticleListItem(BaseModel):
     published_at: datetime | None
     ingested_at: datetime
     status: str
+    archived_at: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+
+class ArticleStatsOut(BaseModel):
+    active: int
+    archived: int
+
+
+@router.get("/articles/stats", response_model=ArticleStatsOut)
+def article_collection_stats(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    active = db.query(func.count(Article.id)).filter(Article.archived_at.is_(None)).scalar() or 0
+    archived = (
+        db.query(func.count(Article.id)).filter(Article.archived_at.isnot(None)).scalar() or 0
+    )
+    return ArticleStatsOut(active=int(active), archived=int(archived))
 
 
 @router.get("/articles", response_model=list[ArticleListItem])
@@ -130,17 +162,25 @@ def list_articles(
     db: Session = Depends(get_db),
     _: None = Depends(require_admin),
     article_status: str | None = Query(default=None, alias="status"),
+    archive: str = Query(
+        default="active",
+        description="active = non-archived only; archived = archived only; all = both",
+    ),
     limit: int = Query(default=200, le=1000),
     offset: int = Query(default=0, ge=0),
 ):
-    """Return raw articles ordered by published_at descending. Optional status filter (comma-separated)."""
-    q = db.query(Article).options(
-        joinedload(Article.source), joinedload(Article.topic)
-    )
+    """Return articles ordered by published_at descending. Optional status filter (comma-separated)."""
+    q = db.query(Article).options(joinedload(Article.source), joinedload(Article.topic))
     if article_status:
         statuses = [s.strip() for s in article_status.split(",") if s.strip()]
         if statuses:
             q = q.filter(Article.status.in_(statuses))
+    if archive == "active":
+        q = q.filter(Article.archived_at.is_(None))
+    elif archive == "archived":
+        q = q.filter(Article.archived_at.isnot(None))
+    elif archive != "all":
+        raise HTTPException(status_code=400, detail="archive must be active, archived, or all")
     q = q.order_by(Article.published_at.desc().nullslast(), Article.id.desc())
     rows = q.offset(offset).limit(limit).all()
     return [
@@ -155,9 +195,51 @@ def list_articles(
             published_at=a.published_at,
             ingested_at=a.ingested_at,
             status=a.status.value if hasattr(a.status, "value") else str(a.status),
+            archived_at=a.archived_at,
         )
         for a in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# Pipeline / site settings (DB overrides on top of .env)
+# ---------------------------------------------------------------------------
+
+
+class PipelineSettingsUpdate(BaseModel):
+    trend_window_days: int | None = Field(default=None, ge=1, le=120)
+    trend_prior_window_days: int | None = Field(default=None, ge=1, le=120)
+    article_retention_days: int | None = Field(default=None, ge=1, le=3650)
+    article_archive_enabled: bool | None = None
+    newsletter_article_lookback_days: int | None = Field(default=None, ge=1, le=365)
+    newsletter_send_hour_utc: int | None = Field(default=None, ge=0, le=23)
+    newsletter_send_minute_utc: int | None = Field(default=None, ge=0, le=59)
+    newsletter_enabled: bool | None = None
+
+
+@router.get("/settings")
+def get_pipeline_settings(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+) -> dict[str, Any]:
+    merged = merge_pipeline_settings(db)
+    return merged_settings_public_dict(merged)
+
+
+@router.put("/settings")
+def put_pipeline_settings(
+    payload: PipelineSettingsUpdate,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+) -> dict[str, Any]:
+    from ..scheduler import schedule_newsletter_job
+
+    data = payload.model_dump(exclude_unset=True)
+    if data:
+        upsert_site_config(db, data)
+        schedule_newsletter_job()
+    merged = merge_pipeline_settings(db)
+    return merged_settings_public_dict(merged)
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +340,10 @@ def list_topics(
     _: None = Depends(require_admin),
     topic_status: TopicStatus | None = Query(default=None, alias="status"),
     is_published: bool | None = Query(default=None),
+    radar_pipeline: bool = Query(
+        default=False,
+        description="If true, return watched + selected topics (radar pipeline). Ignores single status filter.",
+    ),
 ):
     from sqlalchemy import func
     from sqlalchemy.orm import aliased
@@ -265,7 +351,9 @@ def list_topics(
     from ..services.signal_service import compute_topic_velocity_metrics
 
     q = db.query(Topic)
-    if topic_status is not None:
+    if radar_pipeline:
+        q = q.filter(Topic.status.in_([TopicStatus.watched, TopicStatus.selected]))
+    elif topic_status is not None:
         q = q.filter(Topic.status == topic_status)
     if is_published is not None:
         q = q.filter(Topic.is_published == is_published)
@@ -286,11 +374,7 @@ def list_topics(
         .subquery()
     )
     SigAlias = aliased(SignalRecommendation)
-    signal_rows = (
-        db.query(SigAlias)
-        .join(latest_sq, SigAlias.id == latest_sq.c.max_id)
-        .all()
-    )
+    signal_rows = db.query(SigAlias).join(latest_sq, SigAlias.id == latest_sq.c.max_id).all()
     sig_map: dict[int, SignalRecommendation] = {s.topic_id: s for s in signal_rows}
 
     result = []
@@ -306,7 +390,9 @@ def list_topics(
                 summary=t.summary,
                 urgency_score=t.urgency_score,
                 status=t.status.value,
-                adoption_state=t.adoption_state.value if hasattr(t.adoption_state, "value") else str(t.adoption_state),
+                adoption_state=t.adoption_state.value
+                if hasattr(t.adoption_state, "value")
+                else str(t.adoption_state),
                 industry_positions=t.industry_positions,
                 persona_by_role=t.persona_by_role,
                 article_count=t.article_count,
@@ -407,6 +493,47 @@ def suggest_persona_by_role(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+class BulkSubdomainBody(BaseModel):
+    topic_ids: list[int]
+
+
+@router.post("/topics/{topic_id}/suggest-subdomain")
+def suggest_subdomain(
+    topic_id: int,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """AI label for subdomain theme — groups trends as domain × subdomain × topic name."""
+    try:
+        subdomain = suggest_subdomain_for_topic(topic_id, db)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("suggest_subdomain failed for topic %s", topic_id)
+        raise HTTPException(status_code=502, detail="AI subdomain suggestion failed") from exc
+    return {"id": topic_id, "subdomain": subdomain}
+
+
+@router.post("/topics/bulk-suggest-subdomains")
+def bulk_suggest_subdomains(
+    payload: BulkSubdomainBody,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """Run subdomain labelling for many topics (sequential; max 50 ids per request)."""
+    ids = payload.topic_ids[:50]
+    updated: list[dict[str, int | str]] = []
+    errors: list[dict[str, int | str]] = []
+    for tid in ids:
+        try:
+            sub = suggest_subdomain_for_topic(tid, db)
+            updated.append({"id": tid, "subdomain": sub})
+        except Exception as exc:
+            logger.warning("bulk suggest_subdomain failed for topic %s: %s", tid, exc)
+            errors.append({"id": tid, "detail": str(exc)})
+    return {"updated": updated, "errors": errors}
+
+
 @router.post("/topics/{topic_id}/trend-analysis")
 def run_topic_trend_analysis(
     topic_id: int,
@@ -427,7 +554,9 @@ def run_topic_trend_analysis(
         TopicStatus.watched,
         TopicStatus.selected,
     ):
-        raise HTTPException(status_code=400, detail="Trend analysis is not available for this topic status")
+        raise HTTPException(
+            status_code=400, detail="Trend analysis is not available for this topic status"
+        )
 
     row = upsert_pending_trend_signal(topic_id, db)
     if row is None:
@@ -978,6 +1107,7 @@ class ContentItemOut(BaseModel):
     url: str
     type: str
     summary: str | None = None
+    image_url: str | None = None
     tags: list[str] = []
     is_active: bool
     created_at: datetime
@@ -990,6 +1120,7 @@ class ContentItemCreate(BaseModel):
     url: str
     type: str
     summary: str | None = None
+    image_url: str | None = None
     tags: list[str] = []
 
 
@@ -998,6 +1129,7 @@ class ContentItemUpdate(BaseModel):
     url: str | None = None
     type: str | None = None
     summary: str | None = None
+    image_url: str | None = None
     tags: list[str] | None = None
     is_active: bool | None = None
 
@@ -1023,6 +1155,7 @@ def create_content(
         url=payload.url,
         type=payload.type,
         summary=payload.summary,
+        image_url=payload.image_url,
         tags=payload.tags,
     )
     db.add(item)
@@ -1053,6 +1186,8 @@ def update_content(
         item.type = payload.type
     if payload.summary is not None:
         item.summary = payload.summary
+    if payload.image_url is not None:
+        item.image_url = payload.image_url
     if payload.tags is not None:
         item.tags = payload.tags
     if payload.is_active is not None:
@@ -1097,6 +1232,29 @@ def newsletter_preview(
             role_id=role_id,
         )
     )
+
+
+@router.get("/newsletter/survey-stats")
+def get_survey_stats(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """Counts newsletter feedback responses in the last 7 days."""
+    cutoff = datetime.now(UTC) - timedelta(days=7)
+    rows = (
+        db.query(SurveyResponse.score, func.count())
+        .filter(SurveyResponse.created_at >= cutoff)
+        .group_by(SurveyResponse.score)
+        .all()
+    )
+    total = sum(r[1] for r in rows)
+    breakdown = {r[0]: r[1] for r in rows}
+    return {
+        "total": total,
+        "highly_relevant": breakdown.get(3, 0),
+        "somewhat_relevant": breakdown.get(2, 0),
+        "not_relevant": breakdown.get(1, 0),
+    }
 
 
 # ---------------------------------------------------------------------------

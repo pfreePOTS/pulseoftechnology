@@ -12,7 +12,7 @@ export default function RadarPreviewPage() {
 
   useEffect(() => {
     let cancelled = false;
-    adminFetch(`${API_BASE}/api/admin/topics?status=selected`)
+    adminFetch(`${API_BASE}/api/admin/topics?radar_pipeline=true`)
       .then((r) => (r.ok ? r.json() : Promise.resolve([])))
       .then((data) => {
         if (!cancelled) {
@@ -35,8 +35,8 @@ export default function RadarPreviewPage() {
     <div className="flex min-h-full flex-col -mt-2">
       <div className="pb-2">
         <p className="mb-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-sm text-amber-100/90">
-          Read-only preview using topics in the radar pipeline (approved / selected). The live site only shows topics
-          you publish — use Step 4: Publishing to go live.
+          Read-only preview for topics that are watched or selected (pipeline). Stars use adoption stage and
+          impact/urgency like the public radar. The live site only shows topics you publish — Step 4: Publishing.
         </p>
         <h1 className="text-2xl font-bold tracking-tight text-white">
           Radar Preview
@@ -54,7 +54,7 @@ export default function RadarPreviewPage() {
       <div className="flex-1 overflow-hidden">
         <RadarSection
           topics={topics}
-          emptyMessage="No selected topics in the pipeline yet"
+          emptyMessage="No watched or selected topics yet — approve topics into the pipeline to preview them here."
           layout="compact"
         />
       </div>

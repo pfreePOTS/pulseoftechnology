@@ -3,7 +3,7 @@ import TrackedStoriesSection, {
   type TrackedArticle,
 } from "@/components/TrackedStoriesSection";
 import SubscribeWizard from "@/components/SubscribeWizard";
-import { type RadarTopic, INDUSTRY_COLORS } from "@/components/RadarChart";
+import { type RadarTopic } from "@/components/RadarChart";
 import { API_BASE } from "@/lib/api";
 
 /** Server-side only: URL the Next.js server uses to call the API (browser still uses NEXT_PUBLIC_API_URL). In Docker, must be http://backend:8000 — localhost would point at this container, not the API. */
@@ -36,12 +36,6 @@ async function getTrackedArticles(): Promise<TrackedArticle[]> {
     return [];
   }
 }
-
-// Legend sourced directly from RadarChart's exported INDUSTRY_COLORS
-const INDUSTRY_LEGEND = Object.entries(INDUSTRY_COLORS).map(([name, color]) => ({
-  name,
-  color,
-}));
 
 // Adoption-state descriptions for the instructions section
 const ADOPTION_STATES = [
@@ -129,32 +123,6 @@ export default async function Home() {
       {/* ── Control Bar + Radar (rendered by RadarSection) ─────────────────── */}
       <div id="radar" className="scroll-mt-4">
         <RadarSection topics={topics} />
-      </div>
-
-      {/* ── Light Gray Legend Bar ───────────────────────────────────────────── */}
-      <div
-        style={{ backgroundColor: "#E5E5E5" }}
-        className="border-y border-gray-300 px-6 py-3 shrink-0"
-      >
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-pulse-teal">
-            Domains
-          </span>
-          {INDUSTRY_LEGEND.map(({ name, color }) => (
-            <span key={name} className="flex items-center gap-1.5 text-sm text-gray-700">
-              {/* Mini star icon using clip-path */}
-              <span
-                className="inline-block h-3 w-3 shrink-0"
-                style={{
-                  backgroundColor: color,
-                  clipPath:
-                    "polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)",
-                }}
-              />
-              {name}
-            </span>
-          ))}
-        </div>
       </div>
 
       {/* ── How to Read the Radar ───────────────────────────────────────────── */}

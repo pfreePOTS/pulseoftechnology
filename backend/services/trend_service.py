@@ -1,5 +1,5 @@
 """
-Topic positioning trends: article velocity (7d vs prior 7d) + optional Haiku synthesis.
+Topic positioning trends: article velocity (configurable windows) + optional Haiku synthesis.
 """
 
 import json
@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..models.article import Article
 from ..models.topic import Topic, TopicStatus
+from .pipeline_settings import merge_pipeline_settings
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,7 @@ def _window_counts(
             Article.topic_id.in_(topic_ids),
             Article.ingested_at >= start,
             Article.ingested_at < end,
+            Article.archived_at.is_(None),
         )
         .group_by(Article.topic_id)
         .all()
@@ -90,6 +92,7 @@ def _sample_titles(
             Article.topic_id == topic_id,
             Article.ingested_at >= start,
             Article.ingested_at < end,
+            Article.archived_at.is_(None),
         )
         .order_by(Article.ingested_at.desc())
         .limit(limit)
@@ -97,31 +100,41 @@ def _sample_titles(
     return [r[0] for r in q.all() if r[0]]
 
 
-_TREND_SYSTEM = """\
+def _trend_system_prompt(trend_window_days: int, trend_prior_window_days: int) -> str:
+    return f"""\
 You are a technology intelligence analyst. Each item describes press coverage of one trend topic.
-Compare the last 7 days vs the 7 days before: article volume, and whether titles suggest escalating \
-crisis, steady attention, or fading coverage.
+Compare the last {trend_window_days} days vs the {trend_prior_window_days} days before that:
+article volume, velocity of publication, and whether titles suggest escalating alarm,
+urgency, crisis, optimism, or fading interest. Weight emotional intensity alongside
+raw volume — a small number of alarming articles can outweigh a large number of routine ones.
 
 Respond with valid JSON only — no markdown. Schema:
-{"insights": [
-  {"topic_id": <int>, "overall": "up" | "down" | "flat",
+{{"insights": [
+  {{"topic_id": <int>, "overall": "up" | "down" | "flat",
    "label": "<=8 words, e.g. Rising coverage · sharper tone>",
-   "note": "<=2 short sentences; mention volume and tone if visible>"}
-]}
+   "note": "<=2 short sentences; mention volume and tone if visible>"}}
+]}}
 You must include exactly one object per topic_id from the input — no omissions, no extras."""
+
 
 _INSIGHTS_PARSE_FAIL = "Could not parse AI response; showing volume-based trend only."
 
 
-def _call_ai_insights(payload_topics: list[dict[str, Any]]) -> dict[int, dict[str, str]] | None:
+def _call_ai_insights(
+    payload_topics: list[dict[str, Any]],
+    *,
+    trend_window_days: int,
+    trend_prior_window_days: int,
+) -> dict[int, dict[str, str]] | None:
     if not settings.anthropic_api_key or not payload_topics:
         return None
     user = json.dumps({"topics": payload_topics}, indent=2)
+    system = _trend_system_prompt(trend_window_days, trend_prior_window_days)
     try:
         raw = _get_client().messages.create(
             model=HAIKU_MODEL,
             max_tokens=2048,
-            system=_TREND_SYSTEM,
+            system=system,
             messages=[{"role": "user", "content": user}],
         )
         text = _strip_fences(raw.content[0].text)
@@ -154,9 +167,14 @@ def build_positioning_insights(
     """
     Return one insight dict per topic with velocity windows + merged AI label (when available).
     """
+    merged = merge_pipeline_settings(db)
+    tw = merged.trend_window_days
+    pw = merged.trend_prior_window_days
+
     now = datetime.now(UTC)
-    w7_start = now - timedelta(days=7)
-    w14_start = now - timedelta(days=14)
+    recent_start = now - timedelta(days=tw)
+    prior_end = recent_start
+    prior_start = now - timedelta(days=tw + pw)
 
     topics: list[Topic] = (
         db.query(Topic)
@@ -171,14 +189,17 @@ def build_positioning_insights(
     topic_ids = [t.id for t in topics]
     total_rows = (
         db.query(Article.topic_id, func.count(Article.id))
-        .filter(Article.topic_id.in_(topic_ids))
+        .filter(
+            Article.topic_id.in_(topic_ids),
+            Article.archived_at.is_(None),
+        )
         .group_by(Article.topic_id)
         .all()
     )
     total_by_topic = {int(tid): int(n) for tid, n in total_rows}
 
-    recent_c = _window_counts(db, topic_ids, w7_start, now + timedelta(seconds=1))
-    prior_c = _window_counts(db, topic_ids, w14_start, w7_start)
+    recent_c = _window_counts(db, topic_ids, recent_start, now + timedelta(seconds=1))
+    prior_c = _window_counts(db, topic_ids, prior_start, prior_end)
 
     ai_payload: list[dict[str, Any]] = []
     for t in topics:
@@ -191,16 +212,20 @@ def build_positioning_insights(
                 "name": t.name,
                 "domain": t.domain,
                 "topic_urgency_score": round(t.urgency_score, 2),
-                "articles_ingested_last_7d": rn,
-                "articles_ingested_prior_7d": pn,
+                f"articles_ingested_last_{tw}d": rn,
+                f"articles_ingested_prior_{pw}d": pn,
                 "recent_sample_titles": _sample_titles(
-                    db, rid, w7_start, now + timedelta(seconds=1), 5
+                    db, rid, recent_start, now + timedelta(seconds=1), 5
                 ),
-                "prior_sample_titles": _sample_titles(db, rid, w14_start, w7_start, 5),
+                "prior_sample_titles": _sample_titles(db, rid, prior_start, prior_end, 5),
             }
         )
 
-    ai_by_id = _call_ai_insights(ai_payload)
+    ai_by_id = _call_ai_insights(
+        ai_payload,
+        trend_window_days=tw,
+        trend_prior_window_days=pw,
+    )
 
     results: list[dict[str, Any]] = []
     for t in topics:
@@ -209,7 +234,7 @@ def build_positioning_insights(
         pn = prior_c.get(rid, 0)
         base = _velocity_trend(rn, pn)
         label = "Volume " + ("↑" if base == "up" else "↓" if base == "down" else "→")
-        note = f"Last 7d: {rn} article(s) ingested vs prior 7d: {pn}."
+        note = f"Last {tw}d: {rn} article(s) ingested vs prior {pw}d: {pn}."
         ai_enriched = False
 
         if ai_by_id and rid in ai_by_id:
@@ -230,8 +255,8 @@ def build_positioning_insights(
                 "domain": t.domain,
                 "urgency_score": t.urgency_score,
                 "article_count": total_by_topic.get(rid, 0),
-                "articles_last_7d": rn,
-                "articles_prior_7d": pn,
+                f"articles_last_{tw}d": rn,
+                f"articles_prior_{pw}d": pn,
                 "trend": trend,
                 "label": label,
                 "note": note,

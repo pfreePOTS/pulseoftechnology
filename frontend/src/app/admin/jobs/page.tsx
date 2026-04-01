@@ -51,7 +51,7 @@ export default function JobsPage() {
     {
       title: "Run RSS Ingestion Now",
       description:
-        "Fetches the latest articles from all active RSS sources, then runs AI classification, topic clustering, and vector embedding (same as the hourly schedule).",
+        "Fetches the latest articles from all active RSS sources, then runs AI classification, topic clustering, sub-domain auto-labeling (for themes still blank), and vector embedding (same as the hourly schedule).",
       endpoint: "/api/admin/jobs/ingest",
       state: ingestState,
       setState: setIngestState,
@@ -60,7 +60,7 @@ export default function JobsPage() {
     {
       title: "Process Raw Articles Now",
       description:
-        "Runs only the AI pipeline on articles still marked raw — no RSS fetch. Use if intake brought items in but processing failed or was skipped.",
+        "Runs the AI pipeline on articles still marked raw (no RSS fetch), then fills missing Trend Discovery sub-domains in batches. Use if raw items piled up, or to backfill sub-domains without fetching feeds.",
       endpoint: "/api/admin/jobs/process",
       state: processState,
       setState: setProcessState,
@@ -124,20 +124,25 @@ export default function JobsPage() {
         {/* Scheduler info */}
         <div className="mt-8 rounded-xl border border-gray-800 bg-gray-900 p-5">
           <h2 className="mb-2 text-sm font-semibold uppercase tracking-widest text-gray-400">
-            Scheduled Runs
+            Automatic schedule (no host cron)
           </h2>
+          <p className="mb-3 text-sm text-gray-500">
+            The backend starts <strong className="text-gray-400">APScheduler</strong> when the API boots — you do
+            not need Linux <code className="text-gray-400">crontab</code> or a separate worker for these. They run
+            inside the same process as FastAPI (hourly ingestion is scheduled immediately on startup, then every
+            hour).
+          </p>
           <ul className="space-y-1 text-sm text-gray-500">
-            <li>
-              RSS fetch + AI processing — every hour (automatic, in the API
-              process via APScheduler)
-            </li>
+            <li>RSS fetch + AI processing + sub-domain backfill — hourly</li>
             <li>Signal scoring + topic cleanup — 06:00 UTC daily</li>
             <li>Daily newsletter — 07:00 UTC</li>
           </ul>
           <p className="mt-3 text-xs text-gray-600">
-            There is no separate Celery/Beat worker in Compose; jobs run inside
-            the FastAPI container. Scale-out replicas would duplicate schedules
-            unless jobs are moved to a dedicated worker.
+            <strong className="text-gray-500">Button stuck on &quot;Starting…&quot;?</strong> The POST should return in
+            under a second (work continues in the background). Check admin login, Network tab for failed requests to{" "}
+            <code className="text-gray-500">/api/admin/jobs/</code>, and <code className="text-gray-500">docker compose logs backend</code>.
+            There is no separate Celery worker in Compose; scaling out API replicas would duplicate schedules unless jobs
+            are moved to a dedicated worker.
           </p>
         </div>
       </div>

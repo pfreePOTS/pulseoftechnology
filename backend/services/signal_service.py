@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from ..models.article import Article
 from ..models.signal import SignalRecommendation
 from ..models.topic import Topic, TopicStatus
+from .pipeline_settings import merge_pipeline_settings
 
 logger = logging.getLogger(__name__)
 
@@ -49,14 +50,17 @@ ACCELERATION_THRESHOLD = 1.5
 
 def compute_topic_velocity_metrics(topic_id: int, db: Session) -> tuple[float, float]:
     """
-    Live 7-day article velocity (count) and acceleration (ratio vs prior 7 days).
+    Live article velocity (count in primary window) and acceleration (ratio vs prior window).
     Same windows as run_signal_scorer — used for API responses even when no SignalRecommendation exists.
     """
+    merged = merge_pipeline_settings(db)
+    tw = merged.trend_window_days
+    pw = merged.trend_prior_window_days
     now = datetime.now(UTC)
-    week_start = now - timedelta(days=7)
-    prev_start = now - timedelta(days=14)
-    velocity = float(_article_count_in_window(topic_id, week_start, now, db))
-    prev_count = _article_count_in_window(topic_id, prev_start, week_start, db)
+    recent_start = now - timedelta(days=tw)
+    prior_start = now - timedelta(days=tw + pw)
+    velocity = float(_article_count_in_window(topic_id, recent_start, now, db))
+    prev_count = _article_count_in_window(topic_id, prior_start, recent_start, db)
     acceleration = velocity / max(prev_count, 1)
     return velocity, acceleration
 
@@ -74,21 +78,24 @@ def upsert_pending_trend_signal(topic_id: int, db: Session) -> SignalRecommendat
     if topic is None:
         return None
 
+    merged = merge_pipeline_settings(db)
+    tw = merged.trend_window_days
     now = datetime.now(UTC)
-    week_start = now - timedelta(days=7)
+    recent_start = now - timedelta(days=tw)
     velocity, acceleration = compute_topic_velocity_metrics(topic_id, db)
 
     recent_articles: list[Article] = (
         db.query(Article)
         .filter(
             Article.topic_id == topic_id,
-            Article.ingested_at >= week_start,
+            Article.ingested_at >= recent_start,
+            Article.archived_at.is_(None),
         )
         .all()
     )
 
     try:
-        result = evaluate_trend_pick(topic, recent_articles)
+        result = evaluate_trend_pick(topic, recent_articles, db)
     except Exception:
         logger.exception("evaluate_trend_pick failed for topic %d", topic_id)
         return None
@@ -130,13 +137,14 @@ def upsert_pending_trend_signal(topic_id: int, db: Session) -> SignalRecommendat
 
 
 def _sql_count(topic_id: int, start: datetime, end: datetime, db: Session) -> int:
-    """SQL fallback: count articles assigned to topic_id within the window."""
+    """SQL fallback: count non-archived articles assigned to topic_id within the window."""
     return (
         db.query(func.count(Article.id))
         .filter(
             Article.topic_id == topic_id,
             Article.ingested_at >= start,
             Article.ingested_at < end,
+            Article.archived_at.is_(None),
         )
         .scalar()
         or 0
@@ -161,17 +169,22 @@ def _article_count_in_window(topic_id: int, start: datetime, end: datetime, db: 
             since_ts=since_ts,
         )
         if matches:  # empty list means Pinecone not configured, not "zero articles"
-            # Filter to the exact window [start, end)
-            end_ts = int(end.timestamp())
-            count = sum(1 for m in matches if since_ts <= m.get("published_at", 0) < end_ts)
-            logger.debug(
-                "Pinecone velocity for topic %d [%s→%s]: %d",
-                topic_id,
-                start.date(),
-                end.date(),
-                count,
-            )
-            return count
+            article_ids = [m.get("article_id") for m in matches if m.get("article_id")]
+            if article_ids:
+                return (
+                    db.query(func.count(Article.id))
+                    .filter(
+                        Article.id.in_(article_ids),
+                        Article.topic_id == topic_id,
+                        Article.archived_at.is_(None),
+                        Article.ingested_at >= start,
+                        Article.ingested_at < end,
+                    )
+                    .scalar()
+                    or 0
+                )
+            # Legacy vectors without article_id in metadata — fall back to SQL counts
+            return _sql_count(topic_id, start, end, db)
 
     # SQL fallback
     return _sql_count(topic_id, start, end, db)
@@ -189,16 +202,19 @@ def run_signal_scorer(db: Session) -> int:
     """
     from ..services.ai_service import evaluate_trend_pick  # avoid circular at import time
 
+    merged = merge_pipeline_settings(db)
+    tw = merged.trend_window_days
+    pw = merged.trend_prior_window_days
     now = datetime.now(UTC)
-    week_start = now - timedelta(days=7)
-    prev_start = now - timedelta(days=14)
+    recent_start = now - timedelta(days=tw)
+    prior_start = now - timedelta(days=tw + pw)
 
     all_topics: list[Topic] = db.query(Topic).all()
 
     created = 0
     for topic in all_topics:
-        velocity = _article_count_in_window(topic.id, week_start, now, db)
-        prev_count = _article_count_in_window(topic.id, prev_start, week_start, db)
+        velocity = _article_count_in_window(topic.id, recent_start, now, db)
+        prev_count = _article_count_in_window(topic.id, prior_start, recent_start, db)
 
         if velocity < VELOCITY_THRESHOLD:
             continue
@@ -225,7 +241,8 @@ def run_signal_scorer(db: Session) -> int:
             db.query(Article)
             .filter(
                 Article.topic_id == topic.id,
-                Article.ingested_at >= week_start,
+                Article.ingested_at >= recent_start,
+                Article.archived_at.is_(None),
             )
             .all()
         )
@@ -238,7 +255,7 @@ def run_signal_scorer(db: Session) -> int:
         )
 
         try:
-            result = evaluate_trend_pick(topic, recent_articles)
+            result = evaluate_trend_pick(topic, recent_articles, db)
         except Exception:
             logger.exception("Error evaluating trend pick for topic %d", topic.id)
             continue

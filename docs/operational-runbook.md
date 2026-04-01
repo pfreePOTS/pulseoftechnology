@@ -42,7 +42,7 @@ The database tables need to be created before you can insert any data.
 
 ## 4. Seed the RSS Sources
 
-The system needs raw data to process. A seed script is included to populate the database with 10 curated technology RSS feeds (Wired, TechCrunch, Krebs on Security, etc.).
+The system needs raw data to process. A seed script is included to populate the database with curated RSS feeds (security, IT press, wire services, healthcare IT, public-sector tech, and more).
 
 1. Run the seed script inside the backend container:
    ```bash

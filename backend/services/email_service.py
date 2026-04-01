@@ -6,8 +6,13 @@ Public surface:
   run_daily_newsletter(db)               -> None   (called by scheduler)
 """
 
+from __future__ import annotations
+
+import html
 import logging
+import re
 from datetime import UTC, datetime, timedelta
+from urllib.parse import quote
 
 import sendgrid
 from sendgrid.helpers.mail import (
@@ -25,6 +30,7 @@ from ..models.article import Article
 from ..models.content import ContentItem
 from ..models.subscriber import Subscriber
 from ..models.topic import Topic, TopicStatus
+from .pipeline_settings import merge_pipeline_settings, set_last_newsletter_sent_at
 
 logger = logging.getLogger(__name__)
 
@@ -42,177 +48,16 @@ def _get_sg_client() -> sendgrid.SendGridAPIClient:
     return _sg_client
 
 
-# ---------------------------------------------------------------------------
-# HTML template helpers
-# ---------------------------------------------------------------------------
+_FF = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 
 _DOMAIN_COLORS: dict[str, str] = {
-    "AI": "#818cf8",
-    "Security": "#f87171",
-    "Cloud": "#38bdf8",
-    "Finance": "#34d399",
-    "Leadership": "#fbbf24",
-    "Other": "#94a3b8",
+    "AI": "#7C3AED",
+    "Security": "#E91D24",
+    "Cloud": "#0284C7",
+    "Finance": "#019E7C",
+    "Leadership": "#D97706",
+    "Other": "#6B7280",
 }
-
-_TOPIC_BLOCK = """\
-<tr>
-  <td style="padding:0 0 24px 0;">
-    <table cellpadding="0" cellspacing="0" width="100%">
-      <tr>
-        <td style="border-left:3px solid {domain_color};padding:4px 0 4px 18px;">
-          <p style="margin:0 0 5px;font-size:10px;font-weight:700;letter-spacing:.1em;\
-text-transform:uppercase;color:{domain_color};font-family:Arial,Helvetica,sans-serif;">\
-{domain}</p>
-          <h2 style="margin:0 0 8px;font-size:18px;font-weight:700;color:#111827;\
-font-family:Georgia,'Times New Roman',serif;line-height:1.3;">{name}</h2>
-          <p style="margin:0;font-size:14px;color:#374151;\
-font-family:Arial,Helvetica,sans-serif;line-height:1.75;">{summary}</p>
-          {articles_html}
-        </td>
-      </tr>
-    </table>
-  </td>
-</tr>
-"""
-
-_ARTICLE_BLOCK = """\
-<table cellpadding="0" cellspacing="0" width="100%" style="margin-top:12px;">
-  <tr>
-    <td style="background:#f9fafb;border-radius:6px;padding:10px 14px;">
-      <p style="margin:0 0 8px;font-size:14px;font-weight:bold;\
-font-family:Arial,Helvetica,sans-serif;">
-        <a href="{url}" style="color:#4f46e5;text-decoration:none;">{title}</a>
-      </p>
-      <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:#6b7280;\
-font-family:Arial,Helvetica,sans-serif;text-transform:uppercase;letter-spacing:.06em;">
-        What is it
-      </p>
-      <p style="margin:0 0 8px;font-size:13px;color:#111827;\
-font-family:Arial,Helvetica,sans-serif;line-height:1.6;">{what_is_it}</p>
-      <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:#6b7280;\
-font-family:Arial,Helvetica,sans-serif;text-transform:uppercase;letter-spacing:.06em;">
-        Why it matters
-      </p>
-      <p style="margin:0;font-size:13px;color:#374151;\
-font-family:Arial,Helvetica,sans-serif;line-height:1.6;">{why_it_matters}</p>
-    </td>
-  </tr>
-</table>
-"""
-
-_EMAIL_TEMPLATE = """\
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="light">
-</head>
-<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;">
-  <tr>
-    <td align="center" style="padding:24px 16px 40px;">
-
-      <!-- ── Outer card ── -->
-      <table width="600" cellpadding="0" cellspacing="0"
-             style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;
-                    overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);">
-
-        <!-- TOP BAR -->
-        <tr>
-          <td style="background:#111827;padding:10px 32px;">
-            <table width="100%" cellpadding="0" cellspacing="0">
-              <tr>
-                <td style="color:#9ca3af;font-size:11px;font-family:Arial,Helvetica,sans-serif;">
-                  {date}
-                </td>
-                <td align="right">
-                  <a href="#" style="color:#9ca3af;font-size:11px;
-                     font-family:Arial,Helvetica,sans-serif;text-decoration:none;">
-                    Read online &rarr;
-                  </a>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-
-        <!-- BRAND HEADER -->
-        <tr>
-          <td style="padding:32px 32px 8px;">
-            <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:.12em;
-                      text-transform:uppercase;color:#6b7280;
-                      font-family:Arial,Helvetica,sans-serif;">PulseOne Radar</p>
-            <h1 style="margin:0;font-size:28px;font-weight:700;color:#111827;
-                       font-family:Georgia,'Times New Roman',serif;line-height:1.2;">
-              Your Intelligence Briefing
-            </h1>
-          </td>
-        </tr>
-
-        <!-- GREETING + INTRO -->
-        <tr>
-          <td style="padding:20px 32px 28px;">
-            <p style="margin:0 0 12px;font-size:16px;color:#111827;
-                      font-family:Georgia,'Times New Roman',serif;line-height:1.6;">
-              Good morning, {first_name}.
-            </p>
-            <p style="margin:0;font-size:14px;color:#374151;
-                      font-family:Arial,Helvetica,sans-serif;line-height:1.75;">
-              Here are the top technology signals your team needs to know about{industry_line},
-              curated by AI and reviewed by PulseOne experts.
-            </p>
-          </td>
-        </tr>
-
-        <!-- SECTION DIVIDER -->
-        <tr>
-          <td style="padding:0 32px 20px;">
-            <hr style="border:none;border-top:2px solid #111827;margin:0 0 14px;">
-            <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:.12em;
-                      text-transform:uppercase;color:#6b7280;
-                      font-family:Arial,Helvetica,sans-serif;">
-              YOUR DAILY ROLLUP &nbsp;&middot;&nbsp; Top Stories of the Day
-            </p>
-          </td>
-        </tr>
-
-        <!-- TOPIC BLOCKS -->
-        <tr>
-          <td style="padding:0 32px 8px;">
-            <table width="100%" cellpadding="0" cellspacing="0">
-              {topics_html}
-            </table>
-          </td>
-        </tr>
-
-        {promo_html}
-
-        <!-- FOOTER -->
-        <tr>
-          <td style="background:#f9fafb;padding:24px 32px;
-                     border-top:1px solid #e5e7eb;">
-            <p style="margin:0 0 8px;font-size:11px;color:#6b7280;line-height:1.6;
-                      font-family:Arial,Helvetica,sans-serif;">
-              You&rsquo;re receiving this because you subscribed to PulseOne Radar.<br>
-              Domains: {domains_label} &nbsp;&middot;&nbsp; Industry: {industry_label}
-            </p>
-            <p style="margin:0;font-size:11px;font-family:Arial,Helvetica,sans-serif;">
-              <a href="#" style="color:#4f46e5;text-decoration:none;">Manage preferences</a>
-              &nbsp;&nbsp;&middot;&nbsp;&nbsp;
-              <a href="#" style="color:#4f46e5;text-decoration:none;">Unsubscribe</a>
-            </p>
-          </td>
-        </tr>
-
-      </table>
-    </td>
-  </tr>
-</table>
-</body>
-</html>
-"""
 
 _TYPE_LABELS: dict[str, str] = {
     "article": "Article",
@@ -220,22 +65,82 @@ _TYPE_LABELS: dict[str, str] = {
     "landing_page": "Landing Page",
 }
 
-_PROMO_ITEM_BLOCK = """\
-<tr>
-  <td style="padding:0 0 14px 0;">
-    <span style="display:inline-block;margin-bottom:4px;padding:2px 8px;
-                 border-radius:4px;background:#e0e7ff;font-size:10px;font-weight:700;
-                 text-transform:uppercase;letter-spacing:.06em;color:#4338ca;
-                 font-family:Arial,Helvetica,sans-serif;">{type_label}</span>
-    <p style="margin:0 0 4px;">
-      <a href="{url}" style="font-size:15px;font-weight:700;color:#111827;
-         font-family:Georgia,'Times New Roman',serif;text-decoration:none;
-         line-height:1.3;">{title}</a>
-    </p>
-    {summary_html}
-  </td>
-</tr>
-"""
+
+def _format_date_long(d: datetime) -> str:
+    """e.g. April 1, 2026 — portable (no %-d)."""
+    return d.strftime("%B ") + str(d.day) + d.strftime(", %Y")
+
+
+def _short_month_day(d: datetime) -> str:
+    return d.strftime("%b ") + str(d.day)
+
+
+def _first_sentences(text: str | None, max_sentences: int = 3) -> str:
+    if not text:
+        return ""
+    t = text.strip()
+    if not t:
+        return ""
+    parts = re.split(r"(?<=[.!?])\s+", t)
+    out = " ".join(parts[:max_sentences]).strip()
+    return out if out else t[:400]
+
+
+def _first_sentence(text: str | None) -> str:
+    return _first_sentences(text, 1)
+
+
+def _adoption_label(topic: Topic) -> str:
+    a = topic.adoption_state
+    if a is None:
+        return ""
+    return a.value if hasattr(a, "value") else str(a)
+
+
+def _select_articles_for_topic(
+    topic: Topic,
+    db: Session,
+    role_tags: set[str] | None,
+    *,
+    article_ingested_after: datetime | None = None,
+) -> list[Article]:
+    q = db.query(Article).filter(
+        Article.topic_id == topic.id,
+        Article.what_is_it.isnot(None),
+        Article.archived_at.is_(None),
+    )
+    if article_ingested_after is not None:
+        q = q.filter(Article.ingested_at >= article_ingested_after)
+    raw_candidates: list[Article] = q.all()
+    candidates = [
+        a
+        for a in raw_candidates
+        if (a.why_it_matters and str(a.why_it_matters).strip())
+        or (
+            isinstance(a.persona_impacts, dict)
+            and any(str(v).strip() for v in a.persona_impacts.values())
+        )
+    ]
+
+    if role_tags:
+        matched = [a for a in candidates if {t.lower() for t in (a.tags or [])} & role_tags]
+        if not matched:
+            candidates.sort(
+                key=lambda a: a.published_at or datetime.min.replace(tzinfo=UTC),
+                reverse=True,
+            )
+            return candidates[:3]
+        matched.sort(
+            key=lambda a: a.published_at or datetime.min.replace(tzinfo=UTC),
+            reverse=True,
+        )
+        return matched[:3]
+
+    candidates.sort(
+        key=lambda a: a.published_at or datetime.min.replace(tzinfo=UTC),
+        reverse=True,
+    )
+    return candidates[:3]
 
 
 def _article_why_for_subscriber(article: Article, role_obj: object | None) -> str:
@@ -250,23 +155,354 @@ def _article_why_for_subscriber(article: Article, role_obj: object | None) -> st
     return (article.why_it_matters or "").strip()
 
 
-_PROMO_SECTION = """\
-<tr>
-  <td style="padding:0 32px 8px;">
-    <table width="100%" cellpadding="0" cellspacing="0"
-           style="background:#f0f4ff;border-radius:8px;padding:20px 24px;">
+def _persona_text_for_topic(
+    topic: Topic,
+    articles: list[Article],
+    role_obj: object | None,
+) -> str | None:
+    if role_obj is None:
+        return None
+    name = getattr(role_obj, "name", None)
+    if not name:
+        return None
+    pbr = topic.persona_by_role
+    if isinstance(pbr, dict):
+        v = pbr.get(name)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    for a in articles:
+        w = _article_why_for_subscriber(a, role_obj)
+        if w:
+            return w
+    return None
+
+
+_EMAIL_TEMPLATE = """\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+</head>
+<body style="margin:0;padding:0;background:#F3F4F6;font-family:{ff};">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#F3F4F6;">
+  <tr>
+    <td align="center" style="padding:24px 16px 40px;">
+      <table width="600" cellpadding="0" cellspacing="0"
+             style="max-width:600px;width:100%;background:#FFFFFF;border-radius:8px;
+                    overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);">
+
+        <!-- 1 Utility header -->
+        <tr>
+          <td style="background:#FFFFFF;padding:12px 24px;border-bottom:1px solid #E5E7EB;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="color:#4A5F6D;font-size:12px;font-family:{ff};">{date}</td>
+                <td align="right">
+                  <a href="{read_online_url}" style="color:#019E7C;font-size:12px;font-family:{ff};
+                     text-decoration:none;font-weight:600;">Read online &rarr;</a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- 2 Brand banner -->
+        <tr>
+          <td style="padding:28px 32px 8px;text-align:center;">
+            <p style="margin:0 0 8px;font-size:22px;font-weight:800;letter-spacing:0.04em;color:#111827;
+                      font-family:{ff};">PULSE<span style="color:#E91D24;">ONE</span></p>
+            <p style="margin:0;font-size:10px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;
+                      color:#4A5F6D;font-family:{ff};">TECHNOLOGY RADAR BRIEFING</p>
+          </td>
+        </tr>
+
+        <!-- 3 Greeting -->
+        <tr>
+          <td style="padding:16px 32px 24px;">
+            <p style="margin:0 0 10px;font-size:18px;font-weight:700;color:#111827;font-family:{ff};">
+              Good morning, {first_name}.
+            </p>
+            <p style="margin:0 0 14px;font-size:14px;color:#4A5F6D;font-family:{ff};line-height:1.65;">
+              Here are the top technology signals your team needs to know about{industry_line},
+              curated by AI and reviewed by PulseOne analysts.
+            </p>
+            <p style="margin:0;font-size:13px;font-family:{ff};">
+              <a href="{read_online_url}" style="color:#019E7C;text-decoration:none;font-weight:600;">Share this briefing</a>
+              <span style="color:#9CA3AF;"> &middot; </span>
+              <a href="{read_online_url}" style="color:#019E7C;text-decoration:none;font-weight:600;">Forward to a colleague</a>
+            </p>
+          </td>
+        </tr>
+
+        <!-- 4 Top stories -->
+        <tr>
+          <td style="padding:0 32px 8px;">
+            <hr style="border:none;border-top:1px solid #E5E7EB;margin:0 0 12px;">
+            <p style="margin:0 0 16px;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
+                      color:#4A5F6D;font-family:{ff};">YOUR RADAR BRIEFING &middot; Top Stories</p>
+            {top_stories_html}
+          </td>
+        </tr>
+
+        <!-- 5 Deep dives -->
+        {deep_dives_html}
+
+        <!-- 6 Promo -->
+        {promo_html}
+
+        <!-- 7 Quick hits -->
+        {quick_hits_html}
+
+        <!-- 8 Tip -->
+        {tip_html}
+
+        <!-- 9 Survey -->
+        {survey_html}
+
+        <!-- 10 Footer -->
+        <tr>
+          <td style="background:#F4F8FA;padding:28px 32px;border-top:1px solid #E5E7EB;">
+            <p style="margin:0 0 10px;font-size:12px;font-weight:700;color:#111827;font-family:{ff};">Stay Connected</p>
+            <p style="margin:0 0 16px;font-size:12px;font-family:{ff};">
+              <a href="https://www.linkedin.com/company/pulseone" style="color:#019E7C;text-decoration:none;">LinkedIn</a>
+              <span style="color:#9CA3AF;"> &middot; </span>
+              <a href="https://x.com/pulseone" style="color:#019E7C;text-decoration:none;">X</a>
+            </p>
+            <p style="margin:0 0 12px;font-size:11px;color:#6B7280;line-height:1.6;font-family:{ff};">
+              You&rsquo;re receiving this because you subscribed to PulseOne Radar.<br>
+              Domains: {domains_label} &middot; Industry: {industry_label}
+            </p>
+            <p style="margin:0 0 12px;font-size:11px;font-family:{ff};">
+              <a href="{read_online_url}" style="color:#019E7C;text-decoration:none;">Manage preferences</a>
+              <span style="color:#9CA3AF;"> &middot; </span>
+              <a href="{read_online_url}" style="color:#019E7C;text-decoration:none;">Unsubscribe</a>
+            </p>
+            <p style="margin:0;font-size:11px;color:#6B7280;font-family:{ff};">&copy; 2026 PulseOne &middot; pulseone.com</p>
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>
+"""
+
+
+def _build_top_stories_block(topics: list[Topic]) -> str:
+    rows = []
+    for t in topics:
+        summ = _first_sentences(t.summary, 3)
+        rows.append(
+            f'<p style="margin:0 0 12px;font-family:{_FF};">'
+            f'<span style="font-size:15px;font-weight:700;color:#111827;">{html.escape(t.name)}</span><br>'
+            f'<span style="font-size:13px;color:#4A5F6D;line-height:1.6;">{html.escape(summ)}</span>'
+            f"</p>"
+        )
+    return (
+        "\n".join(rows)
+        if rows
+        else (
+            f'<p style="margin:0;font-size:13px;color:#4A5F6D;font-family:{_FF};">No top stories this issue.</p>'
+        )
+    )
+
+
+def _build_deep_dive_section(
+    topic: Topic,
+    articles: list[Article],
+    role_obj: object | None,
+    role_name: str,
+    subscriber: Subscriber | None = None,
+) -> str:
+    dom = topic.domain or "Other"
+    color = _DOMAIN_COLORS.get(dom, "#6B7280")
+    posture = html.escape(_adoption_label(topic))
+    persona = _persona_text_for_topic(topic, articles, role_obj)
+    persona_html = ""
+    if persona:
+        persona_html = f"""
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0;background:#F4F8FA;border-left:3px solid #019E7C;border-radius:4px;">
       <tr>
-        <td style="padding:0 0 14px 0;">
-          <hr style="border:none;border-top:2px solid #4f46e5;margin:0 0 14px;">
-          <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:.12em;
-                    text-transform:uppercase;color:#4f46e5;
-                    font-family:Arial,Helvetica,sans-serif;">
-            FROM PULSEONE &nbsp;&middot;&nbsp; Recommended Resources
-          </p>
+        <td style="padding:12px 14px;font-family:{_FF};">
+          <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#111827;">What this means for you as a {html.escape(role_name)}:</p>
+          <p style="margin:0;font-size:13px;color:#4A5F6D;line-height:1.6;">{html.escape(persona)}</p>
         </td>
       </tr>
-      {promo_items}
+    </table>"""
+
+    art_links = []
+    for a in articles:
+        title = html.escape(a.title or "Read article")
+        url = html.escape(a.url or "#")
+        art_links.append(
+            f'<p style="margin:6px 0 0;font-size:13px;font-family:{_FF};">'
+            f'<a href="{url}" style="color:#019E7C;text-decoration:none;font-weight:600;">&rarr; {title}</a></p>'
+        )
+    arts = "\n".join(art_links) if art_links else ""
+
+    summary_base = (topic.summary or "").strip() or "No summary available."
+    industry_rationale_plain = ""
+    if subscriber and subscriber.industry and isinstance(topic.industry_positions, dict):
+        pos = topic.industry_positions.get(subscriber.industry)
+        if isinstance(pos, dict) and pos.get("rationale"):
+            industry_rationale_plain = f" For {subscriber.industry}: {pos['rationale']}"
+    summary = html.escape(summary_base) + (
+        html.escape(industry_rationale_plain) if industry_rationale_plain else ""
+    )
+
+    return f"""
+<tr>
+  <td style="padding:24px 32px 0;">
+    <hr style="border:none;border-top:1px solid #E5E7EB;margin:0 0 18px;">
+    <p style="margin:0 0 6px;font-size:10px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;
+              color:{color};font-family:{_FF};">{html.escape(dom.upper())}</p>
+    <p style="margin:0 0 10px;font-size:20px;font-weight:700;color:#111827;font-family:{_FF};line-height:1.25;">{html.escape(topic.name)}</p>
+    <p style="margin:0 0 14px;font-family:{_FF};">
+      <span style="display:inline-block;background:#019E7C;color:#FFFFFF;font-size:10px;font-weight:700;
+                   letter-spacing:0.06em;text-transform:uppercase;border-radius:4px;padding:3px 10px;">
+        YOUR POSTURE: {posture}
+      </span>
+    </p>
+    <p style="margin:0 0 8px;font-size:14px;color:#111827;line-height:1.75;font-family:{_FF};">{summary}</p>
+    {persona_html}
+    {arts}
+  </td>
+</tr>
+"""
+
+
+def _build_quick_hits_block(topics: list[Topic]) -> str:
+    if not topics:
+        return ""
+    items = []
+    for t in topics:
+        line = f"{t.name}: {_first_sentence(t.summary)}"
+        items.append(
+            f'<p style="margin:0 0 8px;font-size:13px;color:#111827;font-family:{_FF};line-height:1.5;">'
+            f"{html.escape(line)}</p>"
+        )
+    inner = "\n".join(items)
+    return f"""
+<tr>
+  <td style="padding:24px 32px;">
+    <p style="margin:0 0 12px;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
+              color:#4A5F6D;font-family:{_FF};">ALSO ON OUR RADAR</p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#F4F8FA;border-radius:8px;">
+      <tr><td style="padding:16px 18px;">{inner}</td></tr>
     </table>
+  </td>
+</tr>
+"""
+
+
+def _build_promo_section(items: list[ContentItem]) -> str:
+    if not items:
+        return ""
+    blocks = []
+    for item in items[:3]:
+        tlabel = _TYPE_LABELS.get(item.type, item.type.replace("_", " ").title())
+        img_html = ""
+        if getattr(item, "image_url", None):
+            img_html = (
+                f'<p style="margin:0 0 10px;">'
+                f'<img src="{html.escape(item.image_url)}" width="560" alt="" '
+                f'style="display:block;max-width:100%;height:auto;border-radius:6px;border:0;"></p>'
+            )
+        summ = (
+            f'<p style="margin:8px 0 0;font-size:13px;color:#4A5F6D;line-height:1.6;font-family:{_FF};">'
+            f"{html.escape(item.summary)}</p>"
+            if item.summary
+            else ""
+        )
+        blocks.append(
+            f"""
+    <tr>
+      <td style="padding:0 0 20px 0;">
+        {img_html}
+        <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#FEE2E2;
+                     font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
+                     color:#E91D24;font-family:{_FF};">{html.escape(tlabel)}</span>
+        <p style="margin:8px 0 0;font-family:{_FF};">
+          <a href="{html.escape(item.url)}" style="font-size:15px;font-weight:700;color:#111827;text-decoration:none;line-height:1.35;">
+            {html.escape(item.title)}
+          </a>
+        </p>
+        {summ}
+      </td>
+    </tr>"""
+        )
+    body = "\n".join(blocks)
+    return f"""
+<tr>
+  <td style="padding:8px 32px 8px;">
+    <hr style="border:none;border-top:1px solid #E5E7EB;margin:0 0 14px;">
+    <p style="margin:0 0 16px;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
+              color:#E91D24;font-family:{_FF};">FROM PULSEONE &middot; Recommended Resources</p>
+    <table width="100%" cellpadding="0" cellspacing="0">{body}</table>
+  </td>
+</tr>
+"""
+
+
+def _build_tip_block(top_topic_name: str) -> str:
+    top = html.escape(top_topic_name or "your top radar themes")
+    return f"""
+<tr>
+  <td style="padding:8px 32px 8px;">
+    <p style="margin:0 0 12px;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
+              color:#019E7C;font-family:{_FF};">PULSEONE TIP OF THE WEEK</p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#F4F8FA;border-left:3px solid #019E7C;border-radius:6px;">
+      <tr>
+        <td style="padding:14px 16px;font-size:14px;color:#111827;line-height:1.6;font-family:{_FF};">
+          Is your organization prepared for {top}? Take our free 5-minute readiness assessment
+          &rarr; <a href="https://pulseone.com" style="color:#019E7C;font-weight:600;text-decoration:none;">Get started</a>
+        </td>
+      </tr>
+    </table>
+  </td>
+</tr>
+"""
+
+
+def _build_survey_block(base_url: str, email: str, newsletter_date: str) -> str:
+    qe = quote(email, safe="")
+    b = base_url.rstrip("/")
+    u3 = f"{b}/api/survey?email={qe}&score=3&date={quote(newsletter_date)}"
+    u2 = f"{b}/api/survey?email={qe}&score=2&date={quote(newsletter_date)}"
+    u1 = f"{b}/api/survey?email={qe}&score=1&date={quote(newsletter_date)}"
+    return f"""
+<tr>
+  <td style="padding:24px 32px 16px;">
+    <hr style="border:none;border-top:1px solid #E5E7EB;margin:0 0 20px;">
+    <p style="margin:0 0 8px;text-align:center;font-size:16px;font-weight:700;color:#111827;font-family:{_FF};">
+      Before you go &mdash; how relevant was today&rsquo;s briefing?
+    </p>
+    <p style="margin:0 0 18px;text-align:center;font-size:13px;color:#4A5F6D;font-family:{_FF};">
+      Your feedback helps us personalize future issues.
+    </p>
+    <table align="center" cellpadding="0" cellspacing="0" style="margin:0 auto;">
+      <tr>
+        <td style="padding:4px;">
+          <a href="{u3}" style="display:inline-block;background:#019E7C;color:#FFFFFF;text-decoration:none;
+             font-size:13px;font-weight:600;font-family:{_FF};border-radius:6px;padding:10px 20px;">Highly Relevant</a>
+        </td>
+        <td style="padding:4px;">
+          <a href="{u2}" style="display:inline-block;background:#F4F8FA;color:#111827;text-decoration:none;
+             font-size:13px;font-weight:600;font-family:{_FF};border-radius:6px;padding:10px 20px;border:1px solid #E5E7EB;">Somewhat Relevant</a>
+        </td>
+        <td style="padding:4px;">
+          <a href="{u1}" style="display:inline-block;background:#F4F8FA;color:#111827;text-decoration:none;
+             font-size:13px;font-weight:600;font-family:{_FF};border-radius:6px;padding:10px 20px;border:1px solid #E5E7EB;">Not Relevant</a>
+        </td>
+      </tr>
+    </table>
+    <p style="margin:22px 0 0;text-align:center;font-size:14px;color:#4A5F6D;font-family:{_FF};">
+      Thanks for reading. &mdash; The PulseOne Team
+    </p>
   </td>
 </tr>
 """
@@ -277,8 +513,8 @@ def _build_html(
     topics: list[Topic],
     db: Session | None = None,
     promoted_content: list[ContentItem] | None = None,
+    article_ingested_after: datetime | None = None,
 ) -> str:
-    # Resolve role tags — prefer already-attached role object, fall back to DB lookup
     role_tags: set[str] | None = None
     role_obj = getattr(subscriber, "role", None)
     if role_obj is None and db is not None and subscriber.role_id is not None:
@@ -288,107 +524,66 @@ def _build_html(
     if role_obj and getattr(role_obj, "tags", None):
         role_tags = {t.lower() for t in role_obj.tags}
 
-    topic_blocks = []
-    for topic in topics:
-        color = _DOMAIN_COLORS.get(topic.domain, "#6b7280")
-        articles_html = ""
+    role_name = (getattr(role_obj, "name", None) or "Leader").strip() or "Leader"
 
-        if db is not None:
-            # Fetch articles with a "what is it" and at least one impact line (legacy or persona)
-            raw_candidates: list[Article] = (
-                db.query(Article)
-                .filter(
-                    Article.topic_id == topic.id,
-                    Article.what_is_it.isnot(None),
-                )
-                .all()
+    sorted_topics = sorted(topics, key=lambda t: t.urgency_score, reverse=True)
+    top_stories = sorted_topics[:3]
+    deep_dives = sorted_topics[3:7]
+    quick_hits = sorted_topics[7:]
+
+    top_stories_html = _build_top_stories_block(top_stories)
+
+    deep_parts = []
+    if db is not None:
+        for topic in deep_dives:
+            arts = _select_articles_for_topic(
+                topic, db, role_tags, article_ingested_after=article_ingested_after
             )
-            candidates = [
-                a
-                for a in raw_candidates
-                if (a.why_it_matters and str(a.why_it_matters).strip())
-                or (
-                    isinstance(a.persona_impacts, dict)
-                    and any(str(v).strip() for v in a.persona_impacts.values())
-                )
-            ]
-
-            if role_tags:
-                # Keep only articles whose tags intersect with the role's tags
-                matched = [a for a in candidates if {t.lower() for t in (a.tags or [])} & role_tags]
-                # If no matches, fallback to the most recent articles instead of skipping
-                if not matched:
-                    candidates.sort(
-                        key=lambda a: a.published_at or datetime.min.replace(tzinfo=UTC),
-                        reverse=True,
-                    )
-                    selected = candidates[:3]
-                else:
-                    # Sort by published_at descending, take top 3
-                    matched.sort(
-                        key=lambda a: a.published_at or datetime.min.replace(tzinfo=UTC),
-                        reverse=True,
-                    )
-                    selected = matched[:3]
-            else:
-                # No role filter — show top 3 by published_at
-                candidates.sort(
-                    key=lambda a: a.published_at or datetime.min.replace(tzinfo=UTC),
-                    reverse=True,
-                )
-                selected = candidates[:3]
-
-            articles_html = "\n".join(
-                _ARTICLE_BLOCK.format(
-                    title=a.title or "Read article",
-                    url=a.url or "#",
-                    what_is_it=a.what_is_it or "",
-                    why_it_matters=_article_why_for_subscriber(a, role_obj),
-                )
-                for a in selected
+            deep_parts.append(
+                _build_deep_dive_section(topic, arts, role_obj, role_name, subscriber=subscriber)
             )
-
-        topic_blocks.append(
-            _TOPIC_BLOCK.format(
-                domain_color=color,
-                domain=topic.domain,
-                name=topic.name,
-                summary=topic.summary or "No summary available.",
-                articles_html=articles_html,
+    else:
+        for topic in deep_dives:
+            deep_parts.append(
+                _build_deep_dive_section(topic, [], role_obj, role_name, subscriber=subscriber)
             )
-        )
+    deep_dives_html = "\n".join(deep_parts)
 
-    # ── Build promoted content section ──
+    quick_hits_html = _build_quick_hits_block(quick_hits)
+
     promo_html = ""
     if promoted_content:
-        items_html = []
-        for item in promoted_content[:3]:
-            summary_html = (
-                f'<p style="margin:0;font-size:13px;color:#374151;'
-                f'font-family:Arial,Helvetica,sans-serif;line-height:1.6;">'
-                f"{item.summary}</p>"
-                if item.summary
-                else ""
-            )
-            items_html.append(
-                _PROMO_ITEM_BLOCK.format(
-                    type_label=_TYPE_LABELS.get(item.type, item.type.replace("_", " ").title()),
-                    url=item.url,
-                    title=item.title,
-                    summary_html=summary_html,
-                )
-            )
-        promo_html = _PROMO_SECTION.format(promo_items="\n".join(items_html))
+        promo_html = _build_promo_section(promoted_content)
+
+    tip_name = (
+        top_stories[0].name
+        if top_stories
+        else (sorted_topics[0].name if sorted_topics else "AI adoption")
+    )
+    tip_html = _build_tip_block(tip_name)
+
+    now = datetime.now(UTC)
+    newsletter_date = now.strftime("%Y-%m-%d")
+    base_url = (settings.api_base_url or "http://localhost:8000").rstrip("/")
+    read_online = base_url + "/"
+    survey_html = _build_survey_block(base_url, subscriber.email, newsletter_date)
 
     industry_line = f" for the {subscriber.industry} sector" if subscriber.industry else ""
+
     return _EMAIL_TEMPLATE.format(
-        first_name=subscriber.first_name,
-        date=datetime.now(UTC).strftime("%B %-d, %Y"),
-        industry_line=industry_line,
-        topics_html="\n".join(topic_blocks),
+        ff=_FF,
+        date=html.escape(_format_date_long(now)),
+        read_online_url=read_online,
+        first_name=html.escape(subscriber.first_name or "there"),
+        industry_line=html.escape(industry_line) if industry_line else "",
+        top_stories_html=top_stories_html,
+        deep_dives_html=deep_dives_html,
         promo_html=promo_html,
-        domains_label=", ".join(subscriber.domains or []) or "All",
-        industry_label=subscriber.industry or "Not specified",
+        quick_hits_html=quick_hits_html,
+        tip_html=tip_html,
+        survey_html=survey_html,
+        domains_label=html.escape(", ".join(subscriber.domains or []) or "All"),
+        industry_label=html.escape(subscriber.industry or "Not specified"),
     )
 
 
@@ -402,6 +597,7 @@ def send_daily_newsletter(
     topics: list[Topic],
     db: Session | None = None,
     promoted_content: list[ContentItem] | None = None,
+    article_ingested_after: datetime | None = None,
 ) -> bool:
     """
     Send a personalized newsletter to one subscriber.
@@ -419,11 +615,10 @@ def send_daily_newsletter(
     )
     subject = (
         f"PulseOne Radar: {len(topics)} signal{'s' if len(topics) != 1 else ''} "
-        f"this week — {datetime.now(UTC).strftime('%b %-d')}"
+        f"this week — {_short_month_day(datetime.now(UTC))}"
     )
 
     if settings.sendgrid_newsletter_template_id:
-        # Dynamic template path
         message = Mail(from_email=from_email)
         message.template_id = settings.sendgrid_newsletter_template_id
         p = Personalization()
@@ -447,8 +642,13 @@ def send_daily_newsletter(
         )
         message.add_personalization(p)
     else:
-        # Built-in HTML template
-        html_body = _build_html(subscriber, topics, db=db, promoted_content=promoted_content)
+        html_body = _build_html(
+            subscriber,
+            topics,
+            db=db,
+            promoted_content=promoted_content,
+            article_ingested_after=article_ingested_after,
+        )
         message = Mail(
             from_email=from_email,
             to_emails=To(email=subscriber.email),
@@ -530,11 +730,7 @@ def generate_newsletter_preview(
     """
     Build and return a rendered HTML newsletter for a simulated subscriber.
 
-    Uses the 5 most recently approved topics so the preview is always
-    populated regardless of the 24-hour recency window used by the real job.
-    ``industry`` and ``domains`` control the simulated subscriber profile;
-    ``role_id`` applies role-based article tag filtering.
-    Does NOT write anything to the database or send any email.
+    Uses up to 20 watched/selected topics (by urgency) so tiered sections can be previewed.
     """
     from ..models.role import Role
 
@@ -550,7 +746,6 @@ def generate_newsletter_preview(
         role_id=role_id,
         is_active=True,
     )
-    # Attach the role object directly so _build_html doesn't need a DB lookup
     dummy.role = role  # type: ignore[attr-defined]
 
     eligible: list[Topic] = (
@@ -560,43 +755,51 @@ def generate_newsletter_preview(
         .all()
     )
 
-    topics = assemble_newsletter_topics(dummy, eligible)[:5]
+    topics = assemble_newsletter_topics(dummy, eligible)[:20]
 
     if not topics:
         no_match = f" matching your domain interests ({', '.join(domains)})" if domains else ""
         return (
-            "<!DOCTYPE html><html><body style='background:#f3f4f6;"
-            "color:#374151;font-family:Arial,Helvetica,sans-serif;padding:40px;'>"
+            "<!DOCTYPE html><html><body style='background:#F3F4F6;"
+            "color:#374151;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;padding:40px;'>"
             f"<h2 style='color:#111827;'>No watched or selected topics{no_match}.</h2>"
             "<p>Watch topics in the Research step or broaden the domain filter.</p>"
             "</body></html>"
         )
 
+    merged = merge_pipeline_settings(db)
+    article_cutoff = datetime.now(UTC) - timedelta(days=merged.newsletter_article_lookback_days)
     promoted = assemble_promoted_content(dummy, db)
-    return _build_html(dummy, topics, db=db, promoted_content=promoted)
+    return _build_html(
+        dummy,
+        topics,
+        db=db,
+        promoted_content=promoted,
+        article_ingested_after=article_cutoff,
+    )
 
 
 def run_daily_newsletter(db: Session) -> None:
     """
-    Fetch all active subscribers, match them to recently-approved topics, and
-    dispatch newsletters for those with at least one matching topic.
-
-    "Recently approved" means the topic has at least one article ingested within
-    the last 24 hours (used as a proxy for when the topic entered the pipeline).
+    Fetch all active subscribers and dispatch newsletters for watched/selected (on-radar) topics.
+    Article snippets use newsletter_article_lookback_days and exclude archived rows.
     """
-    from sqlalchemy import exists as sa_exists
+    merged = merge_pipeline_settings(db)
+    if not merged.newsletter_enabled:
+        logger.info("Daily newsletter: disabled (newsletter_enabled=false)")
+        return
+    if not settings.sendgrid_api_key:
+        logger.warning("Daily newsletter: SENDGRID_API_KEY not set — skipping send")
+        return
 
-    cutoff = datetime.now(UTC) - timedelta(hours=24)
+    article_cutoff = datetime.now(UTC) - timedelta(days=merged.newsletter_article_lookback_days)
 
     eligible_topics: list[Topic] = (
-        db.query(Topic)
-        .filter(Topic.status.in_([TopicStatus.watched, TopicStatus.selected]))
-        .filter(sa_exists().where((Article.topic_id == Topic.id) & (Article.ingested_at >= cutoff)))
-        .all()
+        db.query(Topic).filter(Topic.status.in_([TopicStatus.watched, TopicStatus.selected])).all()
     )
 
     if not eligible_topics:
-        logger.info("Daily newsletter: no watched/selected topics with new articles in the last 24 hours")
+        logger.info("Daily newsletter: no watched/selected topics")
         return
 
     subscribers: list[Subscriber] = (
@@ -604,9 +807,10 @@ def run_daily_newsletter(db: Session) -> None:
     )
 
     logger.info(
-        "Daily newsletter: %d topics, %d subscribers",
+        "Daily newsletter: %d topics, %d subscribers (article lookback from %s)",
         len(eligible_topics),
         len(subscribers),
+        article_cutoff.isoformat(),
     )
 
     sent = 0
@@ -614,7 +818,16 @@ def run_daily_newsletter(db: Session) -> None:
         matched = assemble_newsletter_topics(subscriber, eligible_topics)
         if matched:
             promoted = assemble_promoted_content(subscriber, db)
-            if send_daily_newsletter(subscriber, matched, db=db, promoted_content=promoted):
+            if send_daily_newsletter(
+                subscriber,
+                matched,
+                db=db,
+                promoted_content=promoted,
+                article_ingested_after=article_cutoff,
+            ):
                 sent += 1
+
+    if sent > 0:
+        set_last_newsletter_sent_at(db)
 
     logger.info("Daily newsletter: %d emails dispatched", sent)

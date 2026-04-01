@@ -3,7 +3,42 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from ..models.content import ContentItem
+from ..models.site_config import SiteConfig
+from ..models.subscriber import Subscriber
+from ..models.topic import Topic
 from ..services import email_service
+
+
+def _mock_db_for_daily_newsletter(
+    topic_rows: list,
+    subscriber_rows: list,
+) -> MagicMock:
+    """Distinct query chains per model (MagicMock.query overwrites break Topic vs Subscriber)."""
+    mock_db = MagicMock()
+
+    def query_side_effect(model):
+        if model is Topic:
+            q = MagicMock()
+            q.filter.return_value.all.return_value = topic_rows
+            return q
+        if model is Subscriber:
+            q = MagicMock()
+            q.filter.return_value.all.return_value = subscriber_rows
+            return q
+        if model is SiteConfig:
+            q = MagicMock()
+            q.filter.return_value.first.return_value = None
+            return q
+        if model is ContentItem:
+            q = MagicMock()
+            q.filter.return_value.order_by.return_value.all.return_value = []
+            return q
+        return MagicMock()
+
+    mock_db.query.side_effect = query_side_effect
+    return mock_db
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -161,11 +196,13 @@ class TestAssembleNewsletterTopics:
 
 class TestRunDailyNewsletter:
     def test_skips_when_no_recent_topics(self):
-        mock_db = MagicMock()
-        # Simulate no recent topics returned by the query
-        mock_db.query.return_value.filter.return_value.filter.return_value.all.return_value = []
+        mock_db = _mock_db_for_daily_newsletter(topic_rows=[], subscriber_rows=[])
 
-        with patch.object(email_service, "send_daily_newsletter") as mock_send:
+        with (
+            patch.object(email_service.settings, "sendgrid_api_key", "test-key-for-ci"),
+            patch.object(email_service, "send_daily_newsletter") as mock_send,
+            patch.object(email_service, "set_last_newsletter_sent_at"),
+        ):
             email_service.run_daily_newsletter(mock_db)
 
         mock_send.assert_not_called()
@@ -174,14 +211,13 @@ class TestRunDailyNewsletter:
         sub = _sub(domains=["AI"])
         topic = _topic("AI", 9.0)
 
-        mock_db = MagicMock()
-        # First query returns approved topics, second returns subscribers
-        mock_db.query.return_value.filter.return_value.filter.return_value.all.return_value = [
-            topic
-        ]
-        mock_db.query.return_value.filter.return_value.all.return_value = [sub]
+        mock_db = _mock_db_for_daily_newsletter(topic_rows=[topic], subscriber_rows=[sub])
 
-        with patch.object(email_service, "send_daily_newsletter", return_value=True) as mock_send:
+        with (
+            patch.object(email_service.settings, "sendgrid_api_key", "test-key-for-ci"),
+            patch.object(email_service, "send_daily_newsletter", return_value=True) as mock_send,
+            patch.object(email_service, "set_last_newsletter_sent_at"),
+        ):
             email_service.run_daily_newsletter(mock_db)
 
         assert mock_send.call_count == 1
@@ -195,13 +231,13 @@ class TestRunDailyNewsletter:
         sub = _sub(domains=["Finance"])
         topic = _topic("AI", 9.0)
 
-        mock_db = MagicMock()
-        mock_db.query.return_value.filter.return_value.filter.return_value.all.return_value = [
-            topic
-        ]
-        mock_db.query.return_value.filter.return_value.all.return_value = [sub]
+        mock_db = _mock_db_for_daily_newsletter(topic_rows=[topic], subscriber_rows=[sub])
 
-        with patch.object(email_service, "send_daily_newsletter") as mock_send:
+        with (
+            patch.object(email_service.settings, "sendgrid_api_key", "test-key-for-ci"),
+            patch.object(email_service, "send_daily_newsletter") as mock_send,
+            patch.object(email_service, "set_last_newsletter_sent_at"),
+        ):
             email_service.run_daily_newsletter(mock_db)
 
         mock_send.assert_not_called()

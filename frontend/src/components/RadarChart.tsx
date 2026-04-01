@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import { industryColor, INDUSTRY_COLORS } from "@/lib/industryGrid";
+import { industryColor, INDUSTRY_COLORS, INDUSTRY_OPTIONS } from "@/lib/industryGrid";
 import { scrollToSubscribe } from "@/lib/subscribeNavigation";
 
 export { INDUSTRY_COLORS };
@@ -39,7 +39,8 @@ const SIZE = 680 * SCALE;
 const CX = SIZE / 2;
 const CY = SIZE / 2;
 const MAX_R = 175 * SCALE;
-const LABEL_R = MAX_R + 56 * SCALE;
+/** Pill centres sit outside the filled disk; extra gap avoids long labels (e.g. Make the Most Of) overlapping the radar. */
+const LABEL_R = MAX_R + 80 * SCALE;
 const RADAR_PAD = 8 * SCALE;
 const MIN_URGENCY_R = 30 * SCALE;
 const STAR_OUTER_R = 14 * SCALE;
@@ -57,8 +58,21 @@ const PILL_PAD_X = 24 * SCALE;
 const AXIS_SPREAD_DEG = 30 * SCALE;
 const AXIS_SPREAD_STEP = 6 * SCALE;
 
-/** Fraction of viewBox height from top to the 12 o'clock pill top — aligns the side panel with “Learn About”. */
-const RADAR_TOP_PILL_OFFSET_RATIO = (CY - LABEL_R - PILL_H / 2) / SIZE;
+/**
+ * Vertical crop: geometry is a pentagon in a circle; a square SIZE×SIZE viewBox leaves large empty bands
+ * above/below the outer pill ring. Crop to the band that contains spokes, pills, and stars.
+ */
+const RADAR_VIEW_PAD = 10 * SCALE;
+/** Lower two spokes are at 54° and 126° — same positive sin (bottom pill row). */
+const RADAR_BOTTOM_SIN = Math.sin((54 * Math.PI) / 180);
+const RADAR_VIEW_TOP = CY - LABEL_R - PILL_H / 2 - RADAR_VIEW_PAD;
+const RADAR_VIEW_BOTTOM =
+  CY + LABEL_R * RADAR_BOTTOM_SIN + PILL_H / 2 + RADAR_VIEW_PAD;
+const RADAR_VIEW_HEIGHT = RADAR_VIEW_BOTTOM - RADAR_VIEW_TOP;
+
+/** Fraction from cropped view top to 12 o'clock pill top — aligns the side panel with “Learn About”. */
+const RADAR_TOP_PILL_OFFSET_RATIO =
+  (CY - LABEL_R - PILL_H / 2 - RADAR_VIEW_TOP) / RADAR_VIEW_HEIGHT;
 
 // Five adoption-state axes, clockwise from 12 o'clock (270°)
 const ADOPTION_AXES = [
@@ -68,6 +82,26 @@ const ADOPTION_AXES = [
   "Get Your Hands Around",
   "Make the Most Of",
 ] as const;
+
+/** Native SVG title tooltips (shown on hover) — pills render above the full-chart clear-rect hit layer. */
+const ADOPTION_STAGE_TOOLTIPS: Record<(typeof ADOPTION_AXES)[number], string> = {
+  "Learn About":
+    "This wedge is for emerging signals worth monitoring before they demand action. " +
+    "If your star sits here: treat it as early intelligence—invest in awareness and horizon scanning; " +
+    "no urgent deployment is implied.",
+  "Get Ahead Of":
+    "This wedge is for trends that are accelerating—time to build strategy before they become urgent. " +
+    "If your star sits here: prioritise understanding, pilots, and roadmaps so you are not surprised when adoption spikes.",
+  "Get Prepared For":
+    "This wedge is for near-term impact—planning and resources should be lining up. " +
+    "If your star sits here: assign ownership, budget, and timelines; execution is approaching.",
+  "Get Your Hands Around":
+    "This wedge is for active adoption—your organisation should be implementing, not just exploring. " +
+    "If your star sits here: programme delivery, change management, and measurable outcomes matter now.",
+  "Make the Most Of":
+    "This wedge is for high-urgency extraction—maximise value and competitive position from technologies already in play. " +
+    "If your star sits here: optimise, scale, and defend advantage; this is a core execution priority.",
+};
 
 // Domain accent colours (fallback when no industry_positions are set)
 const DOMAIN_COLORS: Record<string, string> = {
@@ -338,6 +372,45 @@ function legendEntriesForTopics(topics: RadarTopic[]): {
   };
 }
 
+const INDUSTRY_PALETTE_ROWS = [...INDUSTRY_OPTIONS, "Other"] as const;
+
+/** Full industry → star colour key (compact, left of radar). */
+function IndustryPaletteLegend({ compact }: { compact?: boolean }) {
+  return (
+    <nav
+      aria-label="Industry star colours"
+      className="w-full shrink-0 rounded-lg border border-gray-200 bg-gray-50/90 px-2 py-2 font-sans shadow-sm lg:sticky lg:top-4 lg:max-h-[min(72vh,380px)] lg:overflow-y-auto lg:self-start"
+    >
+      <p className="text-[10px] font-bold uppercase tracking-wide text-pulse-teal">Legend</p>
+      <p className="mt-0.5 text-[9px] leading-snug text-gray-500">Star colour by industry</p>
+      <div className="mt-1.5 grid grid-cols-1 gap-x-1.5 gap-y-0.5">
+        {INDUSTRY_PALETTE_ROWS.map((name) => (
+          <div key={name} className="flex min-w-0 items-center gap-1">
+            <span
+              className="h-2.5 w-2.5 shrink-0"
+              style={{
+                backgroundColor: INDUSTRY_COLORS[name] ?? "#6B7280",
+                clipPath:
+                  "polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)",
+              }}
+              aria-hidden
+            />
+            <span
+              className={
+                "min-w-0 truncate text-gray-800 " +
+                (compact ? "text-[9px] leading-tight" : "text-[10px] leading-tight")
+              }
+              title={name}
+            >
+              {name}
+            </span>
+          </div>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
 function RadarColorLegend({
   topics,
   compact,
@@ -352,10 +425,8 @@ function RadarColorLegend({
     <nav
       aria-label="Star color legend"
       className={
-        "w-full shrink-0 rounded-xl border border-gray-200 bg-gray-50/90 text-left font-sans shadow-sm lg:sticky lg:top-4 lg:max-h-[min(85vh,720px)] lg:overflow-y-auto lg:self-start " +
-        (compact
-          ? "px-2 py-2 lg:w-40"
-          : "px-3 py-3 lg:w-52")
+        "w-full shrink-0 rounded-xl border border-gray-200 bg-gray-50/90 text-left font-sans shadow-sm lg:sticky lg:top-4 lg:max-h-[min(50vh,280px)] lg:overflow-y-auto lg:self-start " +
+        (compact ? "px-2 py-2" : "px-3 py-3")
       }
     >
       <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">Star colors</p>
@@ -427,7 +498,10 @@ export default function RadarChart({
         } as React.CSSProperties
       }
     >
-      <RadarColorLegend topics={topics} compact={compact} />
+      <div className="flex w-full min-w-0 shrink-0 flex-col gap-2 lg:w-auto lg:max-w-[13.5rem]">
+        <IndustryPaletteLegend compact={compact} />
+        <RadarColorLegend topics={topics} compact={compact} />
+      </div>
 
       <div
         className={
@@ -436,7 +510,7 @@ export default function RadarChart({
         }
       >
       <svg
-        viewBox={`0 0 ${SIZE} ${SIZE}`}
+        viewBox={`0 ${svgCoord(RADAR_VIEW_TOP)} ${SIZE} ${svgCoord(RADAR_VIEW_HEIGHT)}`}
         className="w-full h-auto"
         aria-label="PulseOne Industry Radar — wedge shows adoption stage; distance shows impact band (9+ toward centre)"
       >
@@ -482,28 +556,21 @@ export default function RadarChart({
           />
         ))}
 
-        {/* ── Axis spokes and pill labels ── */}
+        {/* ── Axis spokes (non-interactive; pills drawn above the clear-rect layer for hover tooltips) ── */}
         {ADOPTION_AXES.map((label, i) => {
           const angle = axisAngleDeg(i);
           const [sx, sy] = polarToXY(angle, MAX_R);
-          const [lx, ly] = polarToXY(angle, LABEL_R);
-          const pillW = svgCoord(approxW(label, PILL_FONT) + PILL_PAD_X);
-          const pillH = PILL_H;
-          const pillLeft = svgCoord(lx - pillW / 2);
-          const pillTop = svgCoord(ly - pillH / 2);
           return (
-            <g key={label}>
-              <line x1={CX} y1={CY} x2={sx} y2={sy} stroke="var(--color-radar-bg)" strokeWidth={1 * SCALE} strokeOpacity="0.35" />
-              <rect x={pillLeft} y={pillTop} width={pillW} height={pillH} rx={PILL_RX} fill="var(--color-pulse-teal)" />
-              <text
-                x={lx} y={svgCoord(ly + 1 * SCALE)}
-                textAnchor="middle" dominantBaseline="middle"
-                fill="white" fontSize={PILL_FONT} fontWeight="600"
-                fontFamily="'IBM Plex Sans',system-ui,sans-serif" letterSpacing="0.01em"
-              >
-                {label}
-              </text>
-            </g>
+            <line
+              key={`spoke-${label}`}
+              x1={CX}
+              y1={CY}
+              x2={sx}
+              y2={sy}
+              stroke="var(--color-radar-bg)"
+              strokeWidth={1 * SCALE}
+              strokeOpacity="0.35"
+            />
           );
         })}
 
@@ -569,15 +636,58 @@ export default function RadarChart({
         )}
         </g>
 
-        {/* Tap/click outside stars clears lock (above background, below hit targets) */}
+        {/* Tap/click outside stars clears lock — match cropped viewBox (not full SIZE square). */}
         <rect
+          x={0}
+          y={svgCoord(RADAR_VIEW_TOP)}
           width={SIZE}
-          height={SIZE}
+          height={svgCoord(RADAR_VIEW_HEIGHT)}
           fill="transparent"
           pointerEvents="all"
           style={{ cursor: "default" }}
           onPointerDown={() => setLockedKey(null)}
         />
+
+        {/* Adoption-stage pills above clear rect so native title tooltips receive hover */}
+        <g pointerEvents="auto">
+          {ADOPTION_AXES.map((label, i) => {
+            const angle = axisAngleDeg(i);
+            const [lx, ly] = polarToXY(angle, LABEL_R);
+            const pillW = svgCoord(approxW(label, PILL_FONT) + PILL_PAD_X);
+            const pillH = PILL_H;
+            const pillLeft = svgCoord(lx - pillW / 2);
+            const pillTop = svgCoord(ly - pillH / 2);
+            return (
+              <g key={`pill-${label}`} pointerEvents="all">
+                <title>{ADOPTION_STAGE_TOOLTIPS[label]}</title>
+                <rect
+                  x={pillLeft}
+                  y={pillTop}
+                  width={pillW}
+                  height={pillH}
+                  rx={PILL_RX}
+                  fill="var(--color-pulse-teal)"
+                  className="cursor-help"
+                  onPointerDown={(e) => e.stopPropagation()}
+                />
+                <text
+                  x={lx}
+                  y={svgCoord(ly + 1 * SCALE)}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fill="white"
+                  fontSize={PILL_FONT}
+                  fontWeight="600"
+                  fontFamily="'IBM Plex Sans',system-ui,sans-serif"
+                  letterSpacing="0.01em"
+                  pointerEvents="none"
+                >
+                  {label}
+                </text>
+              </g>
+            );
+          })}
+        </g>
 
         {/* Hit targets drawn last so filtered glow layers cannot sit above them (fixes cursor vs hover offset) */}
         {positions.map((pt) => {

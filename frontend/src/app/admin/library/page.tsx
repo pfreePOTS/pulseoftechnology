@@ -23,6 +23,7 @@ interface ContentItem {
   url: string;
   type: ContentType;
   summary: string | null;
+  image_url: string | null;
   tags: string[];
   is_active: boolean;
   created_at: string;
@@ -45,6 +46,7 @@ const EMPTY_FORM = {
   url: "",
   type: "article" as ContentType,
   summary: "",
+  imageUrl: "",
   tagsRaw: "",
 };
 
@@ -118,6 +120,7 @@ function LibraryPageContent() {
       url: item.url,
       type: item.type,
       summary: item.summary ?? "",
+      imageUrl: item.image_url ?? "",
       tagsRaw: item.tags.join(", "),
     });
     setSaveError("");
@@ -134,6 +137,7 @@ function LibraryPageContent() {
       url: form.url.trim(),
       type: form.type,
       summary: form.summary.trim() || null,
+      image_url: form.imageUrl.trim() || null,
       tags: form.tagsRaw
         .split(",")
         .map((t) => t.trim())
@@ -375,6 +379,18 @@ function LibraryPageContent() {
                   onChange={(e) => setForm({ ...form, summary: e.target.value })}
                   className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   placeholder="One-line description shown in the newsletter…"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-400">
+                  Hero image URL <span className="text-gray-600">(optional, newsletter promo)</span>
+                </label>
+                <input
+                  type="url"
+                  value={form.imageUrl}
+                  onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
+                  className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="https://…"
                 />
               </div>
 

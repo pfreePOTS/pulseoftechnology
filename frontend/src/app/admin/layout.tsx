@@ -18,6 +18,7 @@ const NAV = [
   { label: "Role Profiles", href: "/admin/roles" },
   { label: "Content Library", href: "/admin/library" },
   { label: "System Jobs", href: "/admin/jobs" },
+  { label: "Settings", href: "/admin/settings" },
 ] as const;
 
 type NavItem = (typeof NAV)[number];

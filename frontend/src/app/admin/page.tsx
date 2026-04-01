@@ -190,6 +190,31 @@ function SubdomainPill({ text }: { text: string | null | undefined }) {
   );
 }
 
+function SubdomainCell({
+  row,
+  busy,
+  onSuggest,
+}: {
+  row: TopicRow;
+  busy: boolean;
+  onSuggest: (id: number) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
+      <SubdomainPill text={row.subdomain} />
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => void onSuggest(row.id)}
+        className="self-start text-[10px] font-medium text-cyan-400/90 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
+        title="Suggest a sub-domain theme (AI) — groups trends as Domain × Sub-domain × Topic"
+      >
+        {busy ? "…" : "AI label"}
+      </button>
+    </div>
+  );
+}
+
 function SortHeader({
   label,
   column,
@@ -279,6 +304,8 @@ function TrendDiscoveryInner() {
   const [merging, setMerging] = useState(false);
   const [analyzingId, setAnalyzingId] = useState<number | null>(null);
   const [bulkAnalyzing, setBulkAnalyzing] = useState(false);
+  const [subdomainSuggestingId, setSubdomainSuggestingId] = useState<number | null>(null);
+  const [subdomainBulkBusy, setSubdomainBulkBusy] = useState(false);
   const [selectedTopicId, setSelectedTopicId] = useState<number | null>(null);
   const [topicDetail, setTopicDetail] = useState<TopicDetailResponse | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -295,23 +322,30 @@ function TrendDiscoveryInner() {
   const statusParam =
     tab === "pending" ? "pending" : tab === "watching" ? "watched" : "selected";
 
-  const loadTopics = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const loadTopics = useCallback(async (opts?: { quiet?: boolean }) => {
+    const quiet = opts?.quiet === true;
+    if (!quiet) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const res = await adminFetch(`${API_BASE}/api/admin/topics?status=${statusParam}`);
       if (!res.ok) {
-        setError(await res.text().catch(() => res.statusText));
-        setTopics([]);
+        if (!quiet) {
+          setError(await res.text().catch(() => res.statusText));
+          setTopics([]);
+        }
         return;
       }
       const data = (await res.json()) as TopicRow[];
       setTopics(Array.isArray(data) ? data : []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Request failed");
-      setTopics([]);
+      if (!quiet) {
+        setError(e instanceof Error ? e.message : "Request failed");
+        setTopics([]);
+      }
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, [statusParam]);
 
@@ -573,12 +607,79 @@ function TrendDiscoveryInner() {
         setError(await res.text().catch(() => res.statusText));
         return;
       }
-      await new Promise((r) => setTimeout(r, 6000));
-      await loadTopics();
+      // Server runs one topic at a time in a background thread; release the button and poll quietly.
+      await loadTopics({ quiet: true });
+      void (async () => {
+        for (let i = 0; i < 36; i++) {
+          await new Promise((r) => setTimeout(r, 5000));
+          await loadTopics({ quiet: true });
+        }
+      })();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Bulk analysis failed");
     } finally {
       setBulkAnalyzing(false);
+    }
+  }
+
+  async function suggestSubdomainForRow(id: number) {
+    setSubdomainSuggestingId(id);
+    setError(null);
+    try {
+      const res = await adminFetch(`${API_BASE}/api/admin/topics/${id}/suggest-subdomain`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        setError(await res.text().catch(() => res.statusText));
+        return;
+      }
+      await loadTopics();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Sub-domain suggestion failed");
+    } finally {
+      setSubdomainSuggestingId(null);
+    }
+  }
+
+  async function runBulkSubdomainClassification() {
+    const candidates = (() => {
+      if (selectedIds.size > 0) {
+        return topics
+          .filter((t) => selectedIds.has(t.id) && !(t.subdomain || "").trim())
+          .map((t) => t.id);
+      }
+      return displayedTopics.filter((t) => !(t.subdomain || "").trim()).map((t) => t.id);
+    })();
+    if (candidates.length === 0) {
+      setError(
+        selectedIds.size > 0
+          ? "No selected topics are missing a sub-domain, or none selected. Clear selection to fill all empty rows in this tab."
+          : "No topics in this view are missing a sub-domain.",
+      );
+      return;
+    }
+    const capped = candidates.slice(0, 50);
+    setSubdomainBulkBusy(true);
+    setError(null);
+    try {
+      const res = await adminFetch(`${API_BASE}/api/admin/topics/bulk-suggest-subdomains`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic_ids: capped }),
+      });
+      if (!res.ok) {
+        setError(await res.text().catch(() => res.statusText));
+        return;
+      }
+      const data = (await res.json()) as { errors?: { id: number; detail: string }[] };
+      if (data.errors?.length) {
+        setError(`${data.errors.length} topic(s) could not get a sub-domain (see server logs).`);
+      }
+      await loadTopics();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Bulk sub-domain labelling failed");
+    } finally {
+      setSubdomainBulkBusy(false);
     }
   }
 
@@ -640,12 +741,17 @@ function TrendDiscoveryInner() {
       <header className="mb-8">
         <h1 className="text-3xl font-bold tracking-tight text-white">Trend Discovery</h1>
         <p className="mt-1 max-w-3xl text-sm text-gray-400">
-          Velocity = articles linked in the last 7 days; acceleration = ratio vs the prior 7 days.{" "}
+          Rows are grouped by <strong className="text-gray-300">domain</strong>, then{" "}
+          <strong className="text-gray-300">sub-domain</strong> (theme), then topic name. Sub-domains are{" "}
+          <strong className="text-gray-300">filled automatically</strong> when articles are processed (ingestion); use{" "}
+          <span className="text-gray-300">AI label</span> or <span className="text-gray-300">AI sub-domains (group)</span>{" "}
+          to refresh or backfill manually. If rows stay under <span className="text-gray-300">General</span>, run{" "}
+          <span className="text-gray-300">Admin → System Jobs → Process Raw Articles Now</span> (or RSS Ingestion); sub-domain
+          labeling needs <span className="text-gray-300">ANTHROPIC_API_KEY</span> on the API. Velocity = articles linked in the last 7 days; acceleration = ratio vs the prior 7 days.{" "}
           <span className="text-gray-300">AI analyze</span> returns a trend pick — <strong className="text-gray-300">Watch</strong>{" "}
-          (track), <strong className="text-gray-300">Radar</strong> (ready for the pipeline), or{" "}
-          <strong className="text-gray-300">Remove</strong> (deprioritise). Per-industry adoption is set in Analysis. Use{" "}
-          <span className="text-gray-300">Watch</span> to park a candidate, <span className="text-gray-300">Approve</span> to add
-          it to the radar list, and review <span className="text-gray-300">On radar</span> to demote when momentum fades.
+          (track), <strong className="text-gray-300">Radar</strong> (pipeline), or{" "}
+          <strong className="text-gray-300">Remove</strong> (deprioritise). Per-industry adoption is in Analysis.{" "}
+          <span className="text-gray-300">Approve</span> moves candidates toward the radar list.
         </p>
       </header>
 
@@ -705,23 +811,42 @@ function TrendDiscoveryInner() {
           </button>
         )}
 
-        {(tab === "pending" || tab === "watching") && topics.length > 0 && (
-          <button
-            type="button"
-            disabled={bulkAnalyzing}
-            onClick={() => void runBulkTrendAnalysis()}
-            className="ml-auto inline-flex items-center gap-2 rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 py-1.5 text-sm font-medium text-indigo-200 hover:bg-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {bulkAnalyzing ? (
-              <>
-                <Spinner className="h-4 w-4" />
-                Starting bulk AI…
-              </>
-            ) : (
-              "Run AI analysis (pending & watching)"
-            )}
-          </button>
-        )}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {topics.length > 0 && (
+            <button
+              type="button"
+              disabled={subdomainBulkBusy}
+              onClick={() => void runBulkSubdomainClassification()}
+              className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-sm font-medium text-cyan-200 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {subdomainBulkBusy ? (
+                <>
+                  <Spinner className="h-4 w-4" />
+                  Labelling sub-domains…
+                </>
+              ) : (
+                "AI sub-domains (group)"
+              )}
+            </button>
+          )}
+          {(tab === "pending" || tab === "watching") && topics.length > 0 && (
+            <button
+              type="button"
+              disabled={bulkAnalyzing}
+              onClick={() => void runBulkTrendAnalysis()}
+              className="inline-flex items-center gap-2 rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 py-1.5 text-sm font-medium text-indigo-200 hover:bg-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {bulkAnalyzing ? (
+                <>
+                  <Spinner className="h-4 w-4" />
+                  Queueing…
+                </>
+              ) : (
+                "Run AI analysis (pending & watching)"
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-gray-800 bg-gray-900/30 px-4 py-3">
@@ -851,7 +976,9 @@ function TrendDiscoveryInner() {
                     analyzingId === row.id ||
                     approvingId === row.id ||
                     watchingId === row.id ||
-                    demotingId === row.id;
+                    demotingId === row.id ||
+                    subdomainSuggestingId === row.id ||
+                    subdomainBulkBusy;
                   return (
                     <tr
                       key={row.id}
@@ -881,7 +1008,7 @@ function TrendDiscoveryInner() {
                         <DomainPill domain={row.domain} />
                       </td>
                       <td className="px-3 py-3 align-top">
-                        <SubdomainPill text={row.subdomain} />
+                        <SubdomainCell row={row} busy={rowBusy} onSuggest={suggestSubdomainForRow} />
                       </td>
                       <td className="max-w-xs px-3 py-3 align-top">
                         <p className="font-semibold text-white">{row.name}</p>
@@ -1023,7 +1150,9 @@ function TrendDiscoveryInner() {
                         analyzingId === row.id ||
                         approvingId === row.id ||
                         watchingId === row.id ||
-                        demotingId === row.id;
+                        demotingId === row.id ||
+                        subdomainSuggestingId === row.id ||
+                        subdomainBulkBusy;
                       return (
                         <tr
                           key={row.id}
@@ -1043,7 +1172,7 @@ function TrendDiscoveryInner() {
                             <DomainPill domain={row.domain} />
                           </td>
                           <td className="px-3 py-3 align-top">
-                            <SubdomainPill text={row.subdomain} />
+                            <SubdomainCell row={row} busy={rowBusy} onSuggest={suggestSubdomainForRow} />
                           </td>
                           <td className="max-w-xs px-3 py-3 align-top">
                             <p className="font-semibold text-white">{row.name}</p>
@@ -1169,7 +1298,9 @@ function TrendDiscoveryInner() {
                       analyzingId === row.id ||
                       approvingId === row.id ||
                       watchingId === row.id ||
-                      demotingId === row.id;
+                      demotingId === row.id ||
+                      subdomainSuggestingId === row.id ||
+                      subdomainBulkBusy;
                     return (
                       <tr
                         key={row.id}
@@ -1189,7 +1320,7 @@ function TrendDiscoveryInner() {
                           <DomainPill domain={row.domain} />
                         </td>
                         <td className="px-3 py-3 align-top">
-                          <SubdomainPill text={row.subdomain} />
+                          <SubdomainCell row={row} busy={rowBusy} onSuggest={suggestSubdomainForRow} />
                         </td>
                         <td className="max-w-md px-3 py-3 align-top">
                           <p className="font-semibold text-white">{row.name}</p>

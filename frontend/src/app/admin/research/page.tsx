@@ -15,9 +15,11 @@ interface ArticleRow {
   published_at: string | null;
   ingested_at: string;
   status: string;
+  archived_at?: string | null;
 }
 
 type StatusFilter = "all" | "raw" | "processed";
+type ArchiveView = "active" | "archived";
 
 const PAGE_LIMIT = 200;
 
@@ -39,6 +41,11 @@ type JobState = "idle" | "running" | "success" | "error";
 
 export default function ResearchCollectionPage() {
   const [articles, setArticles] = useState<ArticleRow[]>([]);
+  const [archiveView, setArchiveView] = useState<ArchiveView>("active");
+  const [collectionStats, setCollectionStats] = useState<{
+    active: number;
+    archived: number;
+  } | null>(null);
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -51,6 +58,7 @@ export default function ResearchCollectionPage() {
     async (offset: number, append: boolean) => {
       const params = new URLSearchParams({
         status: statusQueryParam(filter),
+        archive: archiveView === "active" ? "active" : "archived",
         limit: String(PAGE_LIMIT),
         offset: String(offset),
       });
@@ -68,8 +76,25 @@ export default function ResearchCollectionPage() {
       setCanLoadMore(data.length === PAGE_LIMIT);
       setArticles((prev) => (append ? [...prev, ...data] : data));
     },
-    [filter],
+    [filter, archiveView],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await adminFetch(`${API_BASE}/api/admin/articles/stats`);
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { active: number; archived: number };
+        if (!cancelled) setCollectionStats(data);
+      } catch {
+        if (!cancelled) setCollectionStats(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -197,27 +222,58 @@ export default function ResearchCollectionPage() {
         ) : null}
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        {(
-          [
-            ["all", "All"],
-            ["raw", "Raw"],
-            ["processed", "Processed"],
-          ] as const
-        ).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setFilter(value)}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-              filter === value
-                ? "bg-indigo-600 text-white"
-                : "bg-gray-800 text-gray-300 hover:bg-gray-700"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              ["all", "All"],
+              ["raw", "Raw"],
+              ["processed", "Processed"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setFilter(value)}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                filter === value
+                  ? "bg-indigo-600 text-white"
+                  : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <span className="text-gray-600" aria-hidden>
+          |
+        </span>
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              ["active", "Active pipeline"],
+              ["archived", "Archived"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setArchiveView(value)}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                archiveView === value
+                  ? "bg-cyan-700 text-white"
+                  : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {collectionStats ? (
+          <span className="text-sm text-gray-500">
+            {collectionStats.active} active · {collectionStats.archived} archived
+          </span>
+        ) : null}
       </div>
 
       {loading ? (
@@ -247,6 +303,9 @@ export default function ResearchCollectionPage() {
                   </th>
                   <th className="px-4 py-3 font-medium text-gray-300">
                     Status
+                  </th>
+                  <th className="px-4 py-3 font-medium text-gray-300">
+                    Archive
                   </th>
                 </tr>
               </thead>
@@ -278,6 +337,15 @@ export default function ResearchCollectionPage() {
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={row.status} />
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-500">
+                      {row.archived_at ? (
+                        <span className="text-xs text-gray-400">
+                          {new Date(row.archived_at).toLocaleDateString()}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                   </tr>
                 ))}

@@ -18,6 +18,7 @@ class ContentItem(Base):
     url: Mapped[str] = mapped_column(String(2048), nullable=False)
     type: Mapped[str] = mapped_column(String(32), nullable=False)  # article | video | landing_page
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"

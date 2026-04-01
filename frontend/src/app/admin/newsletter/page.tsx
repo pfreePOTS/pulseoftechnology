@@ -5,6 +5,13 @@ import { useCallback, useEffect, useState } from "react";
 import NewsletterSandboxPanel from "@/components/admin/NewsletterSandboxPanel";
 import { adminFetch, API_BASE } from "@/lib/api";
 
+interface SurveyStats {
+  total: number;
+  highly_relevant: number;
+  somewhat_relevant: number;
+  not_relevant: number;
+}
+
 interface RadarTopic {
   id: number;
   name: string;
@@ -21,6 +28,8 @@ export default function NewsletterPublishingPage() {
   const [publishAllBusy, setPublishAllBusy] = useState(false);
   const [newsletterBusy, setNewsletterBusy] = useState(false);
   const [newsletterMessage, setNewsletterMessage] = useState<string | null>(null);
+  const [surveyStats, setSurveyStats] = useState<SurveyStats | null>(null);
+  const [surveyLoading, setSurveyLoading] = useState(true);
 
   const loadRadarTopics = useCallback(async () => {
     setRadarError(null);
@@ -43,6 +52,23 @@ export default function NewsletterPublishingPage() {
   useEffect(() => {
     void loadRadarTopics();
   }, [loadRadarTopics]);
+
+  const loadSurveyStats = useCallback(async () => {
+    setSurveyLoading(true);
+    try {
+      const res = await adminFetch(`${API_BASE}/api/admin/newsletter/survey-stats`);
+      if (res.ok) setSurveyStats((await res.json()) as SurveyStats);
+      else setSurveyStats(null);
+    } catch {
+      setSurveyStats(null);
+    } finally {
+      setSurveyLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSurveyStats();
+  }, [loadSurveyStats]);
 
   async function setPublished(topic: RadarTopic, next: boolean) {
     setToggleBusyId(topic.id);
@@ -248,6 +274,63 @@ export default function NewsletterPublishingPage() {
           Newsletter Preview
         </h2>
         <NewsletterSandboxPanel embedded />
+      </section>
+
+      <section aria-labelledby="feedback-heading" className="mt-10">
+        <h2
+          id="feedback-heading"
+          className="mb-4 text-lg font-semibold text-white"
+        >
+          Feedback Summary
+        </h2>
+        <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6">
+          {surveyLoading ? (
+            <p className="text-sm text-gray-500">Loading survey stats…</p>
+          ) : surveyStats && surveyStats.total > 0 ? (
+            <>
+              <p className="text-sm text-gray-300">
+                Total responses (last 7 days):{" "}
+                <span className="font-semibold text-white">{surveyStats.total}</span>
+              </p>
+              <ul className="mt-3 space-y-2 text-sm text-gray-400">
+                <li>
+                  Highly relevant:{" "}
+                  <span className="text-emerald-400">
+                    {Math.round(
+                      (100 * surveyStats.highly_relevant) / surveyStats.total,
+                    )}
+                    %
+                  </span>{" "}
+                  ({surveyStats.highly_relevant})
+                </li>
+                <li>
+                  Somewhat relevant:{" "}
+                  <span className="text-amber-400/90">
+                    {Math.round(
+                      (100 * surveyStats.somewhat_relevant) / surveyStats.total,
+                    )}
+                    %
+                  </span>{" "}
+                  ({surveyStats.somewhat_relevant})
+                </li>
+                <li>
+                  Not relevant:{" "}
+                  <span className="text-rose-400/90">
+                    {Math.round(
+                      (100 * surveyStats.not_relevant) / surveyStats.total,
+                    )}
+                    %
+                  </span>{" "}
+                  ({surveyStats.not_relevant})
+                </li>
+              </ul>
+            </>
+          ) : (
+            <p className="text-sm text-gray-500">
+              No survey responses in the last 7 days.
+            </p>
+          )}
+        </div>
       </section>
     </div>
   );

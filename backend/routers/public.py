@@ -3,6 +3,7 @@ import re
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session, joinedload
 
@@ -10,6 +11,7 @@ from ..database import get_db
 from ..models.article import Article
 from ..models.role import Role
 from ..models.subscriber import Subscriber
+from ..models.survey_response import SurveyResponse
 from ..models.topic import Topic
 from ..rate_limits import limiter
 from ..services.hubspot_sync import sync_subscriber_to_hubspot
@@ -189,3 +191,26 @@ def subscribe(
     return SubscribeResponse(
         id=subscriber.id, email=subscriber.email, message="Successfully subscribed"
     )
+
+
+@router.get("/survey", response_class=HTMLResponse)
+def record_survey(
+    email: str = Query(..., description="Subscriber email"),
+    score: int = Query(..., ge=1, le=3, description="1=not relevant, 2=somewhat, 3=highly"),
+    date: str = Query(..., description="Newsletter date YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+):
+    """Record a newsletter feedback click and return a thank-you page."""
+    response = SurveyResponse(
+        subscriber_email=email.strip().lower(), score=score, newsletter_date=date
+    )
+    db.add(response)
+    db.commit()
+    html = """<!DOCTYPE html><html><head><meta charset="utf-8">
+    <style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    display:flex;align-items:center;justify-content:center;min-height:100vh;background:#F4F8FA;color:#111827;}
+    .card{text-align:center;padding:48px;border-radius:12px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.08);}
+    h1{font-size:24px;margin:0 0 12px;} p{font-size:16px;color:#4A5F6D;margin:0;}
+    </style></head><body><div class="card"><h1>Thank you for your feedback!</h1>
+    <p>Your response helps us make the briefing more relevant.</p></div></body></html>"""
+    return HTMLResponse(content=html)

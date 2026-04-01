@@ -1,7 +1,7 @@
 {
   "version": "1.0",
-  "repo": "https://github.com/pfreePOTS/ai-dungeon-master",
-  "branch": "main",
+  "repo": "pfreePOTS/pulseoftechnology",
+  "branch": "dev",
   "last_updated": "2026-04-01T20:28:19Z",
   "documents": [
     {
@@ -35,6 +35,24 @@
       "path": "design/14-implementation-reference-autodream-kairos.md",
       "title": "14 Implementation Reference Autodream Kairos",
       "category": "design",
+      "created": "2026-04-01",
+      "updated": "2026-04-01",
+      "version": "1.0",
+      "archived_versions": []
+    },
+    {
+      "path": "prompts/meta-harness-phase-1.md",
+      "title": "Meta Harness Phase 1: Enhanced Logging & Core Models",
+      "category": "prompts",
+      "created": "2026-04-01",
+      "updated": "2026-04-01",
+      "version": "1.0",
+      "archived_versions": []
+    },
+    {
+      "path": "prompts/meta-harness-phase-2.md",
+      "title": "Meta Harness Phase 2: Skill Retrieval & Developer Learning UI",
+      "category": "prompts",
       "created": "2026-04-01",
       "updated": "2026-04-01",
       "version": "1.0",

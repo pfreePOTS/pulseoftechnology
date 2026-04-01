@@ -1,0 +1,17 @@
+{
+  "version": "1.0",
+  "repo": "https://github.com/pfreePOTS/ai-dungeon-master",
+  "branch": "main",
+  "last_updated": "2026-04-01T20:25:27Z",
+  "documents": [
+    {
+      "path": "design/11-meta-harness-self-learning.md",
+      "title": "11 Meta Harness Self Learning",
+      "category": "design",
+      "created": "2026-04-01",
+      "updated": "2026-04-01",
+      "version": "1.0",
+      "archived_versions": []
+    }
+  ]
+}

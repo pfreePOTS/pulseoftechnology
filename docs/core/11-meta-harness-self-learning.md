@@ -410,9 +410,19 @@ The tick interval can be made adaptive: 5 minutes during active sessions, 30 min
 
 The `autoDream` pattern, also from the Claude Code architecture [5], addresses the most dangerous long-term failure mode of any self-learning system: **memory rot**. Over time, the skill library will accumulate redundant rules, near-duplicates with slightly different wording, contradictions from different learning episodes, and stale entries that no longer apply. Without periodic consolidation, the system's memory becomes noisy and retrieval quality degrades.
 
-### 5B.1. What autoDream Does
+### 5B.1. Two-Tier Architecture
 
-The `autoDreamConsolidator` is a sub-process spawned by `KairosDaemon` exclusively during idle periods (no active game sessions for 15+ minutes). It performs four operations in sequence:
+The `autoDreamConsolidator` is a sub-process spawned by `KairosDaemon` exclusively during idle periods (no active game sessions for 15+ minutes). To manage the diverse cleanup needs of the entire system without muddying its core intelligence, autoDream is structured into two tiers:
+
+**Tier A: Smart Consolidation (LLM-Powered)**
+This tier handles the `AgentSkill` index. It requires semantic understanding and LLM reasoning to resolve contradictions and merge knowledge.
+
+**Tier B: Hygiene Sweeps (Deterministic Plugins)**
+This tier handles all other Pinecone indexes and PostgreSQL tables. It requires zero LLM calls, relying entirely on deterministic rules (date thresholds, similarity thresholds, foreign key checks). It is built as a modular plugin system so new sweeps can be added easily as the system scales.
+
+### 5B.2. Tier A: Smart Consolidation Operations
+
+Tier A performs four operations in sequence on the skill library:
 
 **Operation 1 — Merge Near-Duplicates.** Query Pinecone for all active skills. For each skill, find other active skills with embedding similarity > 0.85. If found, invoke the `ReflectorAgent` with both skills and their evidence to produce a single merged skill that captures the best of both. Archive the originals with `archivedReason: 'merged_by_autodream'` and link them to the new merged skill.
 
@@ -420,9 +430,24 @@ The `autoDreamConsolidator` is a sub-process spawned by `KairosDaemon` exclusive
 
 **Operation 3 — Promote Pending Diagnoses.** Scan the `ExperienceDiagnosis` table for clusters of `status: 'pending'` diagnoses with similar `proposedRule` text (embedding similarity > 0.85). If 3+ similar diagnoses exist, auto-promote to a new `AgentSkill`. This is the same logic as Section 3.3 (Path A), but running as a batch process rather than checking after each individual diagnosis.
 
-**Operation 4 — Evict Stale Entries.** Find all active skills where `lastUsedAt` is more than 90 days ago. Auto-archive with `archivedReason: 'staleness_eviction'`. For skills between 30-90 days old, set `status: 'flagged'` with a note for developer review.
+**Operation 4 — Evict Stale Skills.** Find all active skills where `lastUsedAt` is more than 90 days ago. Auto-archive with `archivedReason: 'staleness_eviction'`. For skills between 30-90 days old, set `status: 'flagged'` with a note for developer review.
 
-### 5B.2. Consolidation Report
+### 5B.3. Tier B: Hygiene Sweep Plugins
+
+Tier B runs a registry of deterministic cleanup functions across the broader system. Each plugin takes a database session and Pinecone client, executes its logic, and returns a summary object.
+
+Current sweep plugins include:
+
+| Target | Sweep Logic | Why It's Needed |
+| :--- | :--- | :--- |
+| **Intent Classifications** (Pinecone) | Deduplicate near-identical intents (similarity > 0.95). Keep the one with more usage history, archive the other. | Prevents the intent classifier from becoming sluggish or indecisive due to redundant vectors. |
+| **NPC Conversational Memory** (PostgreSQL/Pinecone) | Prune conversation turns older than N sessions. If history exceeds token budget, trigger a background summarization task. | Prevents NPC context windows from blowing up in long-running campaigns. |
+| **Article Vectors** (`pulseone-articles`) | Remove vectors for deleted/archived articles (orphan check). | Keeps the vector index perfectly synced with the PostgreSQL source of truth. |
+| **PromptLog** (PostgreSQL) | Archive logs older than 90 days to cold storage tables, retaining only aggregated statistics. | Prevents the primary PostgreSQL database from ballooning in size and slowing down active queries. |
+| **Generated Assets** (S3/PostgreSQL) | Identify unused assets (images/audio) not linked to any active game session or blueprint. | Saves storage costs for discarded or failed generation attempts. |
+| **ExperienceDiagnosis** (PostgreSQL) | Archive `rejected` diagnoses older than 30 days. | Keeps the active diagnosis pool clean for Tier A operations. |
+
+### 5B.4. Consolidation Report
 
 After each run, `autoDreamConsolidator` produces a `ConsolidationReport` that is stored in PostgreSQL and surfaced in the Admin Dashboard:
 
@@ -450,6 +475,15 @@ interface ConsolidationReport {
   }[];
   staleSkillsEvicted: string[];         // Skill IDs archived for staleness
   
+  // --- Tier B Hygiene Results ---
+  hygieneSweeps: {
+    pluginName: string;
+    itemsRemoved: number;
+    itemsArchived: number;
+    status: 'success' | 'failed';
+    error?: string;
+  }[];
+  
   // --- Health Metrics ---
   totalActiveSkillsBefore: number;
   totalActiveSkillsAfter: number;
@@ -461,7 +495,7 @@ interface ConsolidationReport {
 }
 ```
 
-### 5B.3. Safety Constraints
+### 5B.5. Safety Constraints
 
 The `autoDreamConsolidator` operates under strict safety constraints to prevent runaway memory modification:
 
@@ -475,7 +509,7 @@ The `autoDreamConsolidator` operates under strict safety constraints to prevent 
 
 **No skill creation from scratch.** The `autoDreamConsolidator` can merge, archive, and promote, but it cannot create entirely new skills that weren't already present as diagnoses. Only the `ReflectorAgent` (triggered by real failures) and the developer can create genuinely new knowledge.
 
-### 5B.4. Relationship to Existing Memory Correction (Section 5)
+### 5B.6. Relationship to Existing Memory Correction (Section 5)
 
 The `autoDreamConsolidator` subsumes and automates the manual processes described in Section 5 of this document:
 

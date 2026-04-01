@@ -11,7 +11,7 @@
 
 ## 1. Purpose
 
-This document provides implementation-ready technical patterns extracted from Anthropic's production Claude Code agent system (as revealed in the source leak and reproduced in the OpenClaude repository). It maps each pattern to the AI Dungeon Master's architecture and provides adapted TypeScript code that can be used directly or handed to an AI coding agent (Cursor, Claude Code) for implementation.
+This document provides implementation-ready technical patterns extracted from Anthropic's production Claude Code agent system (as revealed in the source leak and reproduced in the OpenClaude repository). It maps each pattern to the AI Dungeon Master's architecture and provides adapted Python code that can be used directly or handed to an AI coding agent (Cursor, Claude Code) for implementation.
 
 This is a **companion** to the design document (`11-meta-harness-self-learning.md`), which describes *what* to build and *why*. This document describes *how* to build it, with concrete code patterns.
 

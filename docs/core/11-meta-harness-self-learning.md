@@ -273,6 +273,27 @@ The skill injection section should consume no more than **200-400 tokens** (3 sk
 
 ---
 
+## 4.3. Developer Learning Interface (UI/UX)
+
+To make skill creation frictionless during development and administration, the system includes a dedicated UI layer integrated into the existing Next.js admin dashboard and FastAPI backend.
+
+**"Learn From This" Button (In-Context Learning):**
+- Added to inner admin pages (e.g., viewing an article, topic, or PromptLog entry).
+- Clicking it opens a modal with a natural language text box: "What did you learn?"
+- The developer types an observation (e.g., "The AI keeps missing the competitive angle when summarizing enterprise AI articles").
+- The frontend sends this to `POST /api/admin/learn`.
+- A Side Query parses the natural language, proposes a structured `AgentSkill`, and returns it for confirmation.
+- If the observation is ambiguous, the LLM returns clarifying questions instead of a skill proposal.
+
+**Admin Dashboard (Skill Management):**
+- A new `/admin/skills` route in the Next.js frontend.
+- Displays a data table of all skills with columns for domain, confidence, success rate, and status.
+- Includes a global "Create New Skill" natural language input at the top of the page.
+- Supports natural language filtering (e.g., typing "show me failing image skills" translates to a filter on domain='image-generation' and success_rate < 0.5).
+- Provides actions to edit, archive, restore, or manually adjust confidence for any skill.
+
+---
+
 ## 5. Memory Correction and Housekeeping
 
 ### 5.1. Autonomous Correction Mechanisms

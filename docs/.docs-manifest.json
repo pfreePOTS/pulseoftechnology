@@ -2,7 +2,7 @@
   "version": "1.0",
   "repo": "https://github.com/pfreePOTS/ai-dungeon-master",
   "branch": "main",
-  "last_updated": "2026-04-01T20:28:11Z",
+  "last_updated": "2026-04-01T20:28:19Z",
   "documents": [
     {
       "path": "design/11-meta-harness-self-learning.md",
@@ -25,6 +25,15 @@
     {
       "path": "design/13-claude-code-repos-and-security.md",
       "title": "13 Claude Code Repos And Security",
+      "category": "design",
+      "created": "2026-04-01",
+      "updated": "2026-04-01",
+      "version": "1.0",
+      "archived_versions": []
+    },
+    {
+      "path": "design/14-implementation-reference-autodream-kairos.md",
+      "title": "14 Implementation Reference Autodream Kairos",
       "category": "design",
       "created": "2026-04-01",
       "updated": "2026-04-01",

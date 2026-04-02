@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { adminFetch, API_BASE } from "@/lib/api";
@@ -233,7 +233,10 @@ function SortHeader({
     <th className="px-3 py-3">
       <button
         type="button"
-        onClick={() => onSort(column)}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSort(column);
+        }}
         className={`inline-flex items-center gap-1 font-semibold uppercase tracking-wide hover:text-gray-300 ${
           active ? "text-indigo-300" : "text-gray-500"
         }`}
@@ -263,7 +266,7 @@ function TrendPickBadge({ action }: { action: string | null | undefined }) {
   return (
     <span
       className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${cls}`}
-      title="AI trend pick (watch / radar / remove)"
+      title="Suggestion: Watch (track), Radar (pipeline), or Remove — from Claude Haiku using topic + recent articles"
     >
       {label}
     </span>
@@ -431,30 +434,19 @@ function TrendDiscoveryInner() {
     });
     const cmp = (a: TopicRow, b: TopicRow) => {
       const dir = sortDir === "asc" ? 1 : -1;
+      let delta = 0;
       if (sortColumn === "velocity") {
-        const va = a.velocity_score ?? -1;
-        const vb = b.velocity_score ?? -1;
-        return (va - vb) * dir;
+        delta = (a.velocity_score ?? -1) - (b.velocity_score ?? -1);
+      } else if (sortColumn === "acceleration") {
+        delta = (a.acceleration_score ?? -1) - (b.acceleration_score ?? -1);
+      } else {
+        delta = a.article_count - b.article_count;
       }
-      if (sortColumn === "acceleration") {
-        const va = a.acceleration_score ?? -1;
-        const vb = b.acceleration_score ?? -1;
-        return (va - vb) * dir;
-      }
-      return (a.article_count - b.article_count) * dir;
+      if (delta !== 0) return delta * dir;
+      return a.name.localeCompare(b.name);
     };
     return [...list].sort(cmp);
   }, [topics, filterDomain, filterSubdomain, filterAction, sortColumn, sortDir]);
-
-  const groupedBySubdomain = useMemo(() => {
-    const m = new Map<string, TopicRow[]>();
-    for (const t of displayedTopics) {
-      const k = (t.subdomain || "").trim() || "General";
-      if (!m.has(k)) m.set(k, []);
-      m.get(k)!.push(t);
-    }
-    return [...m.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [displayedTopics]);
 
   const domainOptions = useMemo(() => {
     const s = new Set(topics.map((t) => t.domain));
@@ -741,16 +733,17 @@ function TrendDiscoveryInner() {
       <header className="mb-8">
         <h1 className="text-3xl font-bold tracking-tight text-white">Trend Discovery</h1>
         <p className="mt-1 max-w-3xl text-sm text-gray-400">
-          Rows are grouped by <strong className="text-gray-300">domain</strong>, then{" "}
-          <strong className="text-gray-300">sub-domain</strong> (theme), then topic name. Sub-domains are{" "}
+          Sort the table by velocity, acceleration, or article count. Sub-domains are{" "}
           <strong className="text-gray-300">filled automatically</strong> when articles are processed (ingestion); use{" "}
           <span className="text-gray-300">AI label</span> or <span className="text-gray-300">AI sub-domains (group)</span>{" "}
-          to refresh or backfill manually. If rows stay under <span className="text-gray-300">General</span>, run{" "}
-          <span className="text-gray-300">Admin → System Jobs → Process Raw Articles Now</span> (or RSS Ingestion); sub-domain
-          labeling needs <span className="text-gray-300">ANTHROPIC_API_KEY</span> on the API. Velocity = articles linked in the last 7 days; acceleration = ratio vs the prior 7 days.{" "}
-          <span className="text-gray-300">AI analyze</span> returns a trend pick — <strong className="text-gray-300">Watch</strong>{" "}
-          (track), <strong className="text-gray-300">Radar</strong> (pipeline), or{" "}
-          <strong className="text-gray-300">Remove</strong> (deprioritise). Per-industry adoption is in Analysis.{" "}
+          to refresh. If rows stay under <span className="text-gray-300">General</span>, run{" "}
+          <span className="text-gray-300">System Jobs → Process Raw Articles</span> (or RSS Ingestion); labeling needs{" "}
+          <span className="text-gray-300">ANTHROPIC_API_KEY</span>. Velocity = articles in the trend window; acceleration = ratio vs the prior window.{" "}
+          <strong className="text-gray-300">Suggestion</strong> is <strong className="text-gray-300">Watch</strong> /{" "}
+          <strong className="text-gray-300">Radar</strong> / <strong className="text-gray-300">Remove</strong> from Claude Haiku
+          (topic status + recent article blurbs). It auto-fills after RSS ingestion and in the daily signal job for topics
+          that do not have one yet; use <span className="text-gray-300">AI analyze</span> to refresh a row. High-velocity
+          topics also get scored via a separate threshold job. Per-industry adoption is in Analysis.{" "}
           <span className="text-gray-300">Approve</span> moves candidates toward the radar list.
         </p>
       </header>
@@ -882,7 +875,7 @@ function TrendDiscoveryInner() {
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-500">
-          AI pick
+          Suggestion
           <select
             value={filterAction}
             onChange={(e) => setFilterAction(e.target.value)}
@@ -956,22 +949,12 @@ function TrendDiscoveryInner() {
                     sortDir={sortDir}
                     onSort={toggleSort}
                   />
-                  <th className="px-3 py-3">AI pick</th>
+                  <th className="px-3 py-3">Suggestion</th>
                   <th className="px-3 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800 bg-gray-950">
-                {groupedBySubdomain.map(([subLabel, rows]) => (
-                  <Fragment key={`g-${subLabel}`}>
-                    <tr className="bg-gray-900/80">
-                      <td
-                        colSpan={9}
-                        className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400"
-                      >
-                        Sub-domain: {subLabel}
-                      </td>
-                    </tr>
-                    {rows.map((row) => {
+                {displayedTopics.map((row) => {
                   const rowBusy =
                     analyzingId === row.id ||
                     approvingId === row.id ||
@@ -1086,9 +1069,7 @@ function TrendDiscoveryInner() {
                       </td>
                     </tr>
                   );
-                    })}
-                  </Fragment>
-                ))}
+                })}
               </tbody>
             </table>
           </div>
@@ -1130,114 +1111,102 @@ function TrendDiscoveryInner() {
                     sortDir={sortDir}
                     onSort={toggleSort}
                   />
-                  <th className="px-3 py-3">AI pick</th>
+                  <th className="px-3 py-3">Suggestion</th>
                   <th className="px-3 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800 bg-gray-950">
-                {groupedBySubdomain.map(([subLabel, rows]) => (
-                  <Fragment key={`wg-${subLabel}`}>
-                    <tr className="bg-gray-900/80">
-                      <td
-                        colSpan={8}
-                        className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400"
-                      >
-                        Sub-domain: {subLabel}
+                {displayedTopics.map((row) => {
+                  const rowBusy =
+                    analyzingId === row.id ||
+                    approvingId === row.id ||
+                    watchingId === row.id ||
+                    demotingId === row.id ||
+                    subdomainSuggestingId === row.id ||
+                    subdomainBulkBusy;
+                  return (
+                    <tr
+                      key={row.id}
+                      tabIndex={0}
+                      onClick={() => setSelectedTopicId(row.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelectedTopicId(row.id);
+                        }
+                      }}
+                      className={`cursor-pointer border-l-2 transition-colors hover:bg-gray-900/40 ${
+                        selectedTopicId === row.id ? "border-indigo-500 bg-indigo-500/5" : "border-transparent"
+                      }`}
+                    >
+                      <td className="px-3 py-3 align-top">
+                        <DomainPill domain={row.domain} />
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        <SubdomainCell row={row} busy={rowBusy} onSuggest={suggestSubdomainForRow} />
+                      </td>
+                      <td className="max-w-xs px-3 py-3 align-top">
+                        <p className="font-semibold text-white">{row.name}</p>
+                        {row.signal_rationale?.trim() ? (
+                          <p className="mt-1 line-clamp-2 text-xs italic text-gray-400">{row.signal_rationale}</p>
+                        ) : null}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
+                        {fmtOneDecimal(row.velocity_score)}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
+                        {row.acceleration_score === null || Number.isNaN(row.acceleration_score)
+                          ? "—"
+                          : `${row.acceleration_score.toFixed(1)}x`}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">{row.article_count}</td>
+                      <td className="px-3 py-3 align-top">
+                        <TrendPickBadge action={row.signal_suggested_action} />
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3 align-top text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            disabled={rowBusy}
+                            onClick={() => void analyzeTopicTrend(row.id)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/50 bg-indigo-500/15 px-2.5 py-1.5 text-xs font-medium text-indigo-200 hover:bg-indigo-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {analyzingId === row.id ? (
+                              <>
+                                <Spinner className="h-3.5 w-3.5" />
+                                AI…
+                              </>
+                            ) : (
+                              "AI analyze"
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={rowBusy}
+                            onClick={() => void approveTopic(row.id)}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {approvingId === row.id ? (
+                              <>
+                                <Spinner className="h-3.5 w-3.5" />
+                                <span>Approving…</span>
+                              </>
+                            ) : (
+                              "Approve"
+                            )}
+                          </button>
+                          <Link
+                            href={`/admin/topics/${row.id}`}
+                            className="inline-flex items-center gap-1 text-xs font-medium text-indigo-400 hover:text-indigo-300"
+                          >
+                            <IconPencil className="h-4 w-4" />
+                            Edit
+                          </Link>
+                        </div>
                       </td>
                     </tr>
-                    {rows.map((row) => {
-                      const rowBusy =
-                        analyzingId === row.id ||
-                        approvingId === row.id ||
-                        watchingId === row.id ||
-                        demotingId === row.id ||
-                        subdomainSuggestingId === row.id ||
-                        subdomainBulkBusy;
-                      return (
-                        <tr
-                          key={row.id}
-                          tabIndex={0}
-                          onClick={() => setSelectedTopicId(row.id)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              setSelectedTopicId(row.id);
-                            }
-                          }}
-                          className={`cursor-pointer border-l-2 transition-colors hover:bg-gray-900/40 ${
-                            selectedTopicId === row.id ? "border-indigo-500 bg-indigo-500/5" : "border-transparent"
-                          }`}
-                        >
-                          <td className="px-3 py-3 align-top">
-                            <DomainPill domain={row.domain} />
-                          </td>
-                          <td className="px-3 py-3 align-top">
-                            <SubdomainCell row={row} busy={rowBusy} onSuggest={suggestSubdomainForRow} />
-                          </td>
-                          <td className="max-w-xs px-3 py-3 align-top">
-                            <p className="font-semibold text-white">{row.name}</p>
-                            {row.signal_rationale?.trim() ? (
-                              <p className="mt-1 line-clamp-2 text-xs italic text-gray-400">{row.signal_rationale}</p>
-                            ) : null}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
-                            {fmtOneDecimal(row.velocity_score)}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
-                            {row.acceleration_score === null || Number.isNaN(row.acceleration_score)
-                              ? "—"
-                              : `${row.acceleration_score.toFixed(1)}x`}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">{row.article_count}</td>
-                          <td className="px-3 py-3 align-top">
-                            <TrendPickBadge action={row.signal_suggested_action} />
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-3 align-top text-right" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex flex-wrap items-center justify-end gap-2">
-                              <button
-                                type="button"
-                                disabled={rowBusy}
-                                onClick={() => void analyzeTopicTrend(row.id)}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/50 bg-indigo-500/15 px-2.5 py-1.5 text-xs font-medium text-indigo-200 hover:bg-indigo-500/25 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {analyzingId === row.id ? (
-                                  <>
-                                    <Spinner className="h-3.5 w-3.5" />
-                                    AI…
-                                  </>
-                                ) : (
-                                  "AI analyze"
-                                )}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={rowBusy}
-                                onClick={() => void approveTopic(row.id)}
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {approvingId === row.id ? (
-                                  <>
-                                    <Spinner className="h-3.5 w-3.5" />
-                                    <span>Approving…</span>
-                                  </>
-                                ) : (
-                                  "Approve"
-                                )}
-                              </button>
-                              <Link
-                                href={`/admin/topics/${row.id}`}
-                                className="inline-flex items-center gap-1 text-xs font-medium text-indigo-400 hover:text-indigo-300"
-                              >
-                                <IconPencil className="h-4 w-4" />
-                                Edit
-                              </Link>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </Fragment>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1277,127 +1246,115 @@ function TrendDiscoveryInner() {
                   sortDir={sortDir}
                   onSort={toggleSort}
                 />
-                <th className="px-3 py-3">AI pick</th>
+                <th className="px-3 py-3">Suggestion</th>
                 <th className="px-3 py-3">Published</th>
                 <th className="px-3 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800 bg-gray-950">
-              {groupedBySubdomain.map(([subLabel, rows]) => (
-                <Fragment key={`rg-${subLabel}`}>
-                  <tr className="bg-gray-900/80">
-                    <td
-                      colSpan={9}
-                      className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400"
-                    >
-                      Sub-domain: {subLabel}
+              {displayedTopics.map((row) => {
+                const rowBusy =
+                  analyzingId === row.id ||
+                  approvingId === row.id ||
+                  watchingId === row.id ||
+                  demotingId === row.id ||
+                  subdomainSuggestingId === row.id ||
+                  subdomainBulkBusy;
+                return (
+                  <tr
+                    key={row.id}
+                    tabIndex={0}
+                    onClick={() => setSelectedTopicId(row.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setSelectedTopicId(row.id);
+                      }
+                    }}
+                    className={`cursor-pointer border-l-2 transition-colors hover:bg-gray-900/40 ${
+                      selectedTopicId === row.id ? "border-indigo-500 bg-indigo-500/5" : "border-transparent"
+                    }`}
+                  >
+                    <td className="px-3 py-3 align-top">
+                      <DomainPill domain={row.domain} />
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <SubdomainCell row={row} busy={rowBusy} onSuggest={suggestSubdomainForRow} />
+                    </td>
+                    <td className="max-w-md px-3 py-3 align-top">
+                      <p className="font-semibold text-white">{row.name}</p>
+                      {row.signal_rationale?.trim() ? (
+                        <p className="mt-1 line-clamp-2 text-xs italic text-gray-400">{row.signal_rationale}</p>
+                      ) : null}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
+                      {fmtOneDecimal(row.velocity_score)}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
+                      {row.acceleration_score === null || Number.isNaN(row.acceleration_score)
+                        ? "—"
+                        : `${row.acceleration_score.toFixed(1)}x`}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">{row.article_count}</td>
+                    <td className="px-3 py-3 align-top">
+                      <TrendPickBadge action={row.signal_suggested_action} />
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      {row.is_published ? (
+                        <span className="inline-flex rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400 ring-1 ring-emerald-500/30">
+                          Yes
+                        </span>
+                      ) : (
+                        <span className="inline-flex rounded-full bg-gray-800 px-2 py-0.5 text-xs font-medium text-gray-400 ring-1 ring-gray-700">
+                          No
+                        </span>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3 align-top text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          disabled={rowBusy}
+                          onClick={() => void analyzeTopicTrend(row.id)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/50 bg-indigo-500/15 px-2.5 py-1.5 text-xs font-medium text-indigo-200 hover:bg-indigo-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {analyzingId === row.id ? (
+                            <>
+                              <Spinner className="h-3.5 w-3.5" />
+                              AI…
+                            </>
+                          ) : (
+                            "AI analyze"
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={rowBusy}
+                          onClick={() => void demoteTopic(row.id)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/50 bg-rose-500/15 px-2.5 py-1.5 text-xs font-medium text-rose-200 hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+                          title="Move back to Watching (unpublish)"
+                        >
+                          {demotingId === row.id ? (
+                            <>
+                              <Spinner className="h-3.5 w-3.5" />
+                              …
+                            </>
+                          ) : (
+                            "Demote"
+                          )}
+                        </button>
+                        <Link
+                          href={`/admin/topics/${row.id}`}
+                          className="inline-flex items-center gap-1 text-xs font-medium text-indigo-400 hover:text-indigo-300"
+                        >
+                          <IconPencil className="h-4 w-4" />
+                          Edit
+                        </Link>
+                      </div>
                     </td>
                   </tr>
-                  {rows.map((row) => {
-                    const rowBusy =
-                      analyzingId === row.id ||
-                      approvingId === row.id ||
-                      watchingId === row.id ||
-                      demotingId === row.id ||
-                      subdomainSuggestingId === row.id ||
-                      subdomainBulkBusy;
-                    return (
-                      <tr
-                        key={row.id}
-                        tabIndex={0}
-                        onClick={() => setSelectedTopicId(row.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            setSelectedTopicId(row.id);
-                          }
-                        }}
-                        className={`cursor-pointer border-l-2 transition-colors hover:bg-gray-900/40 ${
-                          selectedTopicId === row.id ? "border-indigo-500 bg-indigo-500/5" : "border-transparent"
-                        }`}
-                      >
-                        <td className="px-3 py-3 align-top">
-                          <DomainPill domain={row.domain} />
-                        </td>
-                        <td className="px-3 py-3 align-top">
-                          <SubdomainCell row={row} busy={rowBusy} onSuggest={suggestSubdomainForRow} />
-                        </td>
-                        <td className="max-w-md px-3 py-3 align-top">
-                          <p className="font-semibold text-white">{row.name}</p>
-                          {row.signal_rationale?.trim() ? (
-                            <p className="mt-1 line-clamp-2 text-xs italic text-gray-400">{row.signal_rationale}</p>
-                          ) : null}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
-                          {fmtOneDecimal(row.velocity_score)}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
-                          {row.acceleration_score === null || Number.isNaN(row.acceleration_score)
-                            ? "—"
-                            : `${row.acceleration_score.toFixed(1)}x`}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">{row.article_count}</td>
-                        <td className="px-3 py-3 align-top">
-                          <TrendPickBadge action={row.signal_suggested_action} />
-                        </td>
-                        <td className="px-3 py-3 align-top">
-                          {row.is_published ? (
-                            <span className="inline-flex rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400 ring-1 ring-emerald-500/30">
-                              Yes
-                            </span>
-                          ) : (
-                            <span className="inline-flex rounded-full bg-gray-800 px-2 py-0.5 text-xs font-medium text-gray-400 ring-1 ring-gray-700">
-                              No
-                            </span>
-                          )}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-3 align-top text-right" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex flex-wrap items-center justify-end gap-2">
-                            <button
-                              type="button"
-                              disabled={rowBusy}
-                              onClick={() => void analyzeTopicTrend(row.id)}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/50 bg-indigo-500/15 px-2.5 py-1.5 text-xs font-medium text-indigo-200 hover:bg-indigo-500/25 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {analyzingId === row.id ? (
-                                <>
-                                  <Spinner className="h-3.5 w-3.5" />
-                                  AI…
-                                </>
-                              ) : (
-                                "AI analyze"
-                              )}
-                            </button>
-                            <button
-                              type="button"
-                              disabled={rowBusy}
-                              onClick={() => void demoteTopic(row.id)}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/50 bg-rose-500/15 px-2.5 py-1.5 text-xs font-medium text-rose-200 hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-60"
-                              title="Move back to Watching (unpublish)"
-                            >
-                              {demotingId === row.id ? (
-                                <>
-                                  <Spinner className="h-3.5 w-3.5" />
-                                  …
-                                </>
-                              ) : (
-                                "Demote"
-                              )}
-                            </button>
-                            <Link
-                              href={`/admin/topics/${row.id}`}
-                              className="inline-flex items-center gap-1 text-xs font-medium text-indigo-400 hover:text-indigo-300"
-                            >
-                              <IconPencil className="h-4 w-4" />
-                              Edit
-                            </Link>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </Fragment>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -1455,7 +1412,7 @@ function TrendDiscoveryInner() {
                     acceleration={selectedRow.acceleration_score}
                   />
                   <div className="mt-4">
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">AI trend pick</h3>
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Suggestion</h3>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <TrendPickBadge action={selectedRow.signal_suggested_action} />
                     </div>

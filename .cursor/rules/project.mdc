@@ -3,6 +3,10 @@ description: Pulse of Technology — how to run and scope changes
 alwaysApply: true
 ---
 
+# Project scope
+
+- **This agent works ONLY on the Pulse of Technology codebase** (`/home/pfree/App Dev Workspace/pulseoftechnology`). Do NOT read, search, edit, or explore files in sibling projects or other repositories — even if the user pastes logs or screenshots from them. If the user shares context from another project, answer conversationally but never touch that project's code. Politely note the boundary.
+
 # Project conventions
 
 - **Run everything with Docker Compose** from the repo root (`docker compose up --build`). Do not rely on ad-hoc host Python/Node for normal dev unless debugging in isolation.

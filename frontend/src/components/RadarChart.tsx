@@ -336,42 +336,6 @@ function sidebarScoreLabel(topic: RadarTopic): string {
   return "topic urgency";
 }
 
-function legendEntriesForTopics(topics: RadarTopic[]): {
-  mode: "industry" | "domain";
-  entries: { label: string; color: string }[];
-} {
-  const industries = new Set<string>();
-  for (const t of topics) {
-    const pos = t.industry_positions;
-    if (!pos) continue;
-    for (const [name, row] of Object.entries(pos)) {
-      if (row?.impact_approved !== false) industries.add(name);
-    }
-  }
-  if (industries.size > 0) {
-    return {
-      mode: "industry",
-      entries: [...industries]
-        .sort((a, b) => a.localeCompare(b))
-        .map((name) => ({
-          label: name,
-          color: industryColor(name),
-        })),
-    };
-  }
-  const domains = new Set<string>();
-  for (const t of topics) domains.add(t.domain);
-  return {
-    mode: "domain",
-    entries: [...domains]
-      .sort((a, b) => a.localeCompare(b))
-      .map((d) => ({
-        label: d,
-        color: DOMAIN_COLORS[d] ?? DEFAULT_COLOR,
-      })),
-  };
-}
-
 const INDUSTRY_PALETTE_ROWS = [...INDUSTRY_OPTIONS, "Other"] as const;
 
 /** Full industry → star colour key (compact, left of radar). */
@@ -407,46 +371,6 @@ function IndustryPaletteLegend({ compact }: { compact?: boolean }) {
           </div>
         ))}
       </div>
-    </nav>
-  );
-}
-
-function RadarColorLegend({
-  topics,
-  compact,
-}: {
-  topics: RadarTopic[];
-  compact?: boolean;
-}) {
-  const { mode, entries } = useMemo(() => legendEntriesForTopics(topics), [topics]);
-  if (topics.length === 0 || entries.length === 0) return null;
-
-  return (
-    <nav
-      aria-label="Star color legend"
-      className={
-        "w-full shrink-0 rounded-xl border border-gray-200 bg-gray-50/90 text-left font-sans shadow-sm lg:sticky lg:top-4 lg:max-h-[min(50vh,280px)] lg:overflow-y-auto lg:self-start " +
-        (compact ? "px-2 py-2" : "px-3 py-3")
-      }
-    >
-      <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">Star colors</p>
-      <p className="mt-0.5 text-xs text-gray-600">
-        {mode === "industry" ? "By industry" : "By topic domain"}
-      </p>
-      <ul className={compact ? "mt-2 space-y-2" : "mt-3 space-y-2.5"}>
-        {entries.map(({ label, color }) => (
-          <li key={label} className="flex items-start gap-2.5 text-sm leading-snug text-gray-800">
-            <span
-              className="mt-0.5 inline-block text-[15px] leading-none"
-              style={{ color }}
-              aria-hidden
-            >
-              ★
-            </span>
-            <span>{label}</span>
-          </li>
-        ))}
-      </ul>
     </nav>
   );
 }
@@ -498,9 +422,8 @@ export default function RadarChart({
         } as React.CSSProperties
       }
     >
-      <div className="flex w-full min-w-0 shrink-0 flex-col gap-2 lg:w-auto lg:max-w-[13.5rem]">
+      <div className="flex w-full min-w-0 shrink-0 flex-col lg:w-auto lg:max-w-[13.5rem]">
         <IndustryPaletteLegend compact={compact} />
-        <RadarColorLegend topics={topics} compact={compact} />
       </div>
 
       <div

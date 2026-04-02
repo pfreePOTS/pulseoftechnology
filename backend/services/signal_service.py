@@ -136,6 +136,43 @@ def upsert_pending_trend_signal(topic_id: int, db: Session) -> SignalRecommendat
     return signal
 
 
+def backfill_missing_trend_suggestions(db: Session, *, limit: int = 25) -> int:
+    """
+    Ensure pipeline topics have at least one SignalRecommendation so the admin
+    "Suggestion" column is populated.
+
+    Unlike run_signal_scorer, this does **not** require velocity ≥ VELOCITY_THRESHOLD
+    or acceleration ≥ ACCELERATION_THRESHOLD — those gates only apply to the
+    high-velocity scorer. Here we only target topics that have **no** signal row yet.
+
+    Returns the number of topics for which upsert_pending_trend_signal succeeded.
+    """
+    ids_with_signal = {r[0] for r in db.query(SignalRecommendation.topic_id).distinct().all()}
+    q = db.query(Topic).filter(
+        Topic.status.in_(
+            [TopicStatus.pending, TopicStatus.watched, TopicStatus.selected],
+        )
+    )
+    if ids_with_signal:
+        q = q.filter(~Topic.id.in_(ids_with_signal))
+    candidates = (
+        q.order_by(Topic.urgency_score.desc().nulls_last(), Topic.id.desc())
+        .limit(limit)
+        .all()
+    )
+    ok = 0
+    for topic in candidates:
+        try:
+            row = upsert_pending_trend_signal(topic.id, db)
+            if row is not None:
+                ok += 1
+        except Exception:
+            logger.exception("backfill_missing_trend_suggestions failed for topic %d", topic.id)
+    if ok:
+        logger.info("backfill_missing_trend_suggestions: filled %d topic(s) (limit=%d)", ok, limit)
+    return ok
+
+
 def _sql_count(topic_id: int, start: datetime, end: datetime, db: Session) -> int:
     """SQL fallback: count non-archived articles assigned to topic_id within the window."""
     return (

@@ -33,6 +33,28 @@ SOURCES = [
     {"name": "NPR Technology", "url": "https://feeds.npr.org/1019/rss.xml"},
     {"name": "Healthcare IT News", "url": "https://www.healthcareitnews.com/rss.xml"},
     {"name": "GovTech", "url": "https://www.govtech.com/rss/top-news"},
+    # Enterprise IT, innovation, business press (URLs verified with feedparser)
+    {
+        "name": "ComputerWeekly — Enterprise software",
+        "url": "https://www.computerweekly.com/rss/Enterprise-software.xml",
+    },
+    {"name": "InformationWeek", "url": "https://www.informationweek.com/rss.xml"},
+    {"name": "ZDNet — Business", "url": "https://www.zdnet.com/topic/business/rss.xml"},
+    {"name": "Computerworld", "url": "https://www.computerworld.com/feed/"},
+    {
+        "name": "VentureBeat — Enterprise",
+        "url": "https://venturebeat.com/category/enterprise/feed/",
+    },
+    {"name": "TechCrunch — Enterprise", "url": "https://techcrunch.com/category/enterprise/feed/"},
+    {
+        "name": "MIT Technology Review — Business",
+        "url": "https://www.technologyreview.com/topic/business/feed/",
+    },
+    {"name": "The Next Web", "url": "https://thenextweb.com/feed"},
+    {"name": "Forbes — Innovation", "url": "https://www.forbes.com/innovation/feed/"},
+    {"name": "Fortune", "url": "https://fortune.com/feed"},
+    {"name": "Network World", "url": "https://www.networkworld.com/feed/"},
+    {"name": "ZDNet — Cloud", "url": "https://www.zdnet.com/topic/cloud/rss.xml"},
 ]
 
 

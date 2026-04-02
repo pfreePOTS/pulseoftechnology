@@ -15,9 +15,18 @@ scheduler = BackgroundScheduler()
 
 def _ingestion_job() -> None:
     """Scheduled job: open a DB session and ingest all active sources."""
+    from .services.signal_service import backfill_missing_trend_suggestions
+
     db = SessionLocal()
     try:
         run_all_sources(db)
+        # Populate Watch/Radar/Remove suggestions for topics that have none yet (no velocity gate).
+        try:
+            n = backfill_missing_trend_suggestions(db, limit=20)
+            if n:
+                logger.info("After ingestion: trend suggestion backfill for %d topic(s)", n)
+        except Exception:
+            logger.exception("Trend suggestion backfill after ingestion failed")
     except Exception:
         logger.exception("Unhandled error in ingestion job")
     finally:
@@ -52,12 +61,22 @@ def _archive_job() -> None:
 
 def _signal_job() -> None:
     """Scheduled job: cleanup empty topics then run the signal scorer."""
-    from .services.signal_service import cleanup_empty_topics, run_signal_scorer
+    from .services.signal_service import (
+        backfill_missing_trend_suggestions,
+        cleanup_empty_topics,
+        run_signal_scorer,
+    )
 
     db = SessionLocal()
     try:
         cleanup_empty_topics(db)
         run_signal_scorer(db)
+        try:
+            n = backfill_missing_trend_suggestions(db, limit=50)
+            if n:
+                logger.info("After signal scorer: trend suggestion backfill for %d topic(s)", n)
+        except Exception:
+            logger.exception("Trend suggestion backfill after signal job failed")
     except Exception:
         logger.exception("Unhandled error in signal scorer job")
     finally:

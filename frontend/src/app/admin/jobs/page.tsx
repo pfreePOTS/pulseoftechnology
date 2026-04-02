@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 import { adminFetch, API_BASE } from "@/lib/api";
@@ -134,8 +135,15 @@ export default function JobsPage() {
           </p>
           <ul className="space-y-1 text-sm text-gray-500">
             <li>RSS fetch + AI processing + sub-domain backfill — hourly</li>
+            <li>Article archiving (retention) — 05:00 UTC daily</li>
             <li>Signal scoring + topic cleanup — 06:00 UTC daily</li>
-            <li>Daily newsletter — 07:00 UTC</li>
+            <li>
+              Daily newsletter — time set in{" "}
+              <Link href="/admin/settings" className="text-gray-400 underline">
+                Settings
+              </Link>{" "}
+              (default 07:00 UTC)
+            </li>
           </ul>
           <p className="mt-3 text-xs text-gray-600">
             <strong className="text-gray-500">Button stuck on &quot;Starting…&quot;?</strong> The POST should return in

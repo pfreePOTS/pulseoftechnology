@@ -619,7 +619,7 @@ def suggest_subdomain_for_topic(topic_id: int, db: Session) -> str:
 
     articles = (
         db.query(Article)
-        .filter(Article.topic_id == topic_id)
+        .filter(Article.topic_id == topic_id, Article.archived_at.is_(None))
         .order_by(Article.ingested_at.desc())
         .limit(20)
         .all()

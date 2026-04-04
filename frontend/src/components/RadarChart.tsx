@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { industryColor, INDUSTRY_COLORS, INDUSTRY_OPTIONS } from "@/lib/industryGrid";
 import { scrollToSubscribe } from "@/lib/subscribeNavigation";
@@ -326,6 +326,27 @@ function topTopicsForSidebar(topics: RadarTopic[], n: number): RadarTopic[] {
   return [...topics].sort((a, b) => topicRankScore(b) - topicRankScore(a)).slice(0, n);
 }
 
+/**
+ * Approved industries for a topic, sorted by descending impact.
+ * Returns empty array when no industry_positions exist (→ "All Industries").
+ */
+function topicApprovedIndustries(topic: RadarTopic): { name: string; color: string }[] {
+  const pos = topic.industry_positions;
+  if (!pos || Object.keys(pos).length === 0) return [];
+  const rows: { name: string; color: string; impact: number }[] = [];
+  for (const [industry, row] of Object.entries(pos)) {
+    if (!row || row.impact_approved === false) continue;
+    const imp = typeof row.impact_score === "number"
+      ? row.impact_score
+      : typeof row.urgency_score === "number"
+        ? row.urgency_score
+        : 0;
+    rows.push({ name: industry, color: industryColor(industry), impact: imp });
+  }
+  rows.sort((a, b) => b.impact - a.impact);
+  return rows;
+}
+
 /** Label for the score shown next to each topic in the default sidebar. */
 function sidebarScoreLabel(topic: RadarTopic): string {
   const pos = topic.industry_positions;
@@ -393,7 +414,17 @@ export default function RadarChart({
   const compact = layout === "compact";
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [lockedKey, setLockedKey] = useState<string | null>(null);
-  const positions = computePositions(topics);
+  const positions = useMemo(() => computePositions(topics), [topics]);
+
+  // Clear stale locked/hovered state when the topic list changes (e.g. filter switch)
+  const prevTopicsRef = useRef(topics);
+  useEffect(() => {
+    if (prevTopicsRef.current !== topics) {
+      prevTopicsRef.current = topics;
+      setHoveredKey(null);
+      setLockedKey(null);
+    }
+  }, [topics]);
 
   /** Hover previews another star while locked; otherwise show locked selection. */
   const displayKey = hoveredKey ?? lockedKey;
@@ -698,27 +729,55 @@ function RadarDefaultPanel({
             <p className="text-xs font-bold uppercase tracking-wide text-gray-400">
               Top 3 (chart impact)
             </p>
-            <ul className="mt-3 space-y-3 text-left">
-              {topThree.map((t) => (
-                <li
-                  key={t.id}
-                  className="flex flex-wrap items-center gap-2 gap-y-1 text-sm"
-                >
-                  <span
-                    className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-white"
-                    style={{
-                      backgroundColor:
-                        DOMAIN_COLORS[t.domain] ?? DEFAULT_COLOR,
-                    }}
-                  >
-                    {t.domain}
-                  </span>
-                  <span className="font-medium text-gray-900">{t.name}</span>
-                  <span className="ml-auto rounded-md bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-800">
-                    {topicRankScore(t).toFixed(1)} {sidebarScoreLabel(t)}
-                  </span>
-                </li>
-              ))}
+            <ul className="mt-3 space-y-4 text-left">
+              {topThree.map((t) => {
+                const approvedIndustries = topicApprovedIndustries(t);
+                return (
+                  <li key={t.id}>
+                    <div className="flex flex-wrap items-center gap-2 gap-y-1 text-sm">
+                      <span
+                        className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-white"
+                        style={{
+                          backgroundColor:
+                            DOMAIN_COLORS[t.domain] ?? DEFAULT_COLOR,
+                        }}
+                      >
+                        {t.domain}
+                      </span>
+                      <span className="font-medium text-gray-900">{t.name}</span>
+                      <span className="ml-auto rounded-md bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-800">
+                        {topicRankScore(t).toFixed(1)} {sidebarScoreLabel(t)}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {approvedIndustries.length === 0 ? (
+                        <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-500">
+                          All Industries
+                        </span>
+                      ) : (
+                        approvedIndustries.map(({ name, color }) => (
+                          <span
+                            key={name}
+                            className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium"
+                            style={{
+                              borderColor: `${color}30`,
+                              backgroundColor: `${color}0D`,
+                              color,
+                            }}
+                          >
+                            <span
+                              className="inline-block h-1.5 w-1.5 rounded-full"
+                              style={{ backgroundColor: color }}
+                              aria-hidden
+                            />
+                            {name}
+                          </span>
+                        ))
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           </div>
           <button

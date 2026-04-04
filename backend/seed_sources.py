@@ -19,7 +19,7 @@ SOURCES = [
     {"name": "Krebs on Security", "url": "https://krebsonsecurity.com/feed/"},
     {"name": "Dark Reading", "url": "https://www.darkreading.com/rss.xml"},
     {"name": "AI News", "url": "https://www.artificialintelligence-news.com/feed/"},
-    {"name": "CIO.com", "url": "https://www.cio.com/feed/"},
+    {"name": "CIO.com", "url": "https://www.cio.com/news/feed/"},
     {"name": "VentureBeat", "url": "https://venturebeat.com/feed/"},
     {"name": "The Hacker News", "url": "https://thehackernews.com/feeds/posts/default"},
     {"name": "Bleeping Computer", "url": "https://www.bleepingcomputer.com/feed/"},
@@ -62,16 +62,22 @@ def seed() -> None:
     db = SessionLocal()
     try:
         added = 0
+        updated = 0
         skipped = 0
         for entry in SOURCES:
-            exists = db.query(Source).filter(Source.url == entry["url"]).first()
-            if exists:
+            by_url = db.query(Source).filter(Source.url == entry["url"]).first()
+            if by_url:
                 skipped += 1
+                continue
+            by_name = db.query(Source).filter(Source.name == entry["name"]).first()
+            if by_name:
+                by_name.url = entry["url"]
+                updated += 1
                 continue
             db.add(Source(name=entry["name"], url=entry["url"], type=SourceType.rss))
             added += 1
         db.commit()
-        print(f"Seeded {added} source(s). Skipped {skipped} already-present.")
+        print(f"Seeded {added} new, updated {updated}, skipped {skipped} already-present.")
     finally:
         db.close()
 

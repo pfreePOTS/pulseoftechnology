@@ -187,6 +187,7 @@ export default function RadarSection({
       >
         <div className={compact ? "mx-auto w-full max-w-none" : "mx-auto max-w-[96rem]"}>
           <RadarChart
+            key={`${selectedIndustry}\0${selectedDomain}`}
             topics={filteredTopics}
             showLabels={showLabels}
             emptyMessage={emptyMessage}

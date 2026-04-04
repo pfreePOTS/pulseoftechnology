@@ -3,6 +3,8 @@ from datetime import UTC, datetime
 
 import feedparser
 from bs4 import BeautifulSoup
+from langdetect import DetectorFactory, detect
+from langdetect.lang_detect_exception import LangDetectException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -12,6 +14,8 @@ from ..services.ai_service import process_raw_articles
 from ..services.vector_service import upsert_article
 
 logger = logging.getLogger(__name__)
+
+DetectorFactory.seed = 0  # deterministic language detection
 
 
 def _strip_html(raw: str | None) -> str | None:
@@ -31,9 +35,20 @@ def _parse_published(entry: feedparser.FeedParserDict) -> datetime | None:
     return None
 
 
+def _is_english(text: str) -> bool:
+    """Return True if *text* appears to be English (or is too short to tell)."""
+    if not text or len(text.strip()) < 20:
+        return True  # too short to judge — let it through
+    try:
+        return detect(text) == "en"
+    except LangDetectException:
+        return True  # detection failed — don't discard
+
+
 def fetch_rss_feed(source: Source, db: Session) -> int:
     """
     Fetch and parse an RSS feed for the given Source, saving new articles.
+    Non-English articles are silently skipped.
 
     Returns the number of new articles inserted.
     """
@@ -46,6 +61,7 @@ def fetch_rss_feed(source: Source, db: Session) -> int:
         return 0
 
     new_count = 0
+    skipped_lang = 0
     for entry in feed.entries:
         url = entry.get("link")
         title = entry.get("title")
@@ -53,18 +69,24 @@ def fetch_rss_feed(source: Source, db: Session) -> int:
         if not url or not title:
             continue
 
-        # Check for duplicate before attempting insert
         exists = db.query(Article.id).filter(Article.url == url).first()
         if exists:
             continue
 
         content_raw = entry.get("content", [{}])[0].get("value") or entry.get("summary")
+        plain_content = _strip_html(content_raw)
+
+        sample = f"{title.strip()} {plain_content or ''}"
+        if not _is_english(sample):
+            skipped_lang += 1
+            logger.debug("Skipped non-English article: %r", title)
+            continue
 
         article = Article(
             source_id=source.id,
             title=title.strip(),
             url=url,
-            content=_strip_html(content_raw),
+            content=plain_content,
             published_at=_parse_published(entry),
             status=ArticleStatus.raw,
         )
@@ -75,10 +97,11 @@ def fetch_rss_feed(source: Source, db: Session) -> int:
             new_count += 1
             logger.debug("Inserted article: %r", title)
         except IntegrityError:
-            # Race condition: another process inserted the same URL
             db.rollback()
             logger.debug("Duplicate skipped (race): %r", url)
 
+    if skipped_lang:
+        logger.info("Source %r: skipped %d non-English article(s)", source.name, skipped_lang)
     logger.info("Source %r: %d new articles ingested", source.name, new_count)
     return new_count
 

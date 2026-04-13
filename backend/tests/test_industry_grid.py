@@ -1,7 +1,11 @@
 """Industry grid backfill — full radar columns when AI returns partial JSON."""
 
 from ..models.topic import AdoptionState, Topic, TopicStatus
-from ..services.ai_service import INDUSTRY_GRID_LABELS, fill_missing_industry_grid_rows
+from ..services.ai_service import (
+    INDUSTRY_GRID_LABELS,
+    _truncate_to_max_sentences,
+    fill_missing_industry_grid_rows,
+)
 
 
 def test_fill_missing_industry_grid_rows_preserves_existing_and_fills_rest():
@@ -27,3 +31,11 @@ def test_fill_missing_industry_grid_rows_preserves_existing_and_fills_rest():
     assert "Healthcare" in out
     assert out["Healthcare"]["impact_score"] == 8.5
     assert "Included so this topic appears across all industries" in (out["Healthcare"].get("rationale") or "")
+
+
+def test_truncate_to_max_sentences_keeps_short_and_caps_long():
+    assert _truncate_to_max_sentences("One. Two.", 6) == "One. Two."
+    long = " ".join(f"Sentence {i}." for i in range(1, 12))
+    out = _truncate_to_max_sentences(long, 6)
+    assert out.count(".") == 6
+    assert out.startswith("Sentence 1.")

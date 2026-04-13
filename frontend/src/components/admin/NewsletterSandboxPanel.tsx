@@ -233,7 +233,7 @@ export default function NewsletterSandboxPanel({ embedded = false }: Props) {
                 Domains (multi)
               </h2>
               <p className="mb-2 text-[11px] leading-snug text-gray-600">
-                List is built from <strong className="font-medium text-gray-500">selected</strong> topics only (same cohort as Radar Publishing when this panel is on that page). Leave all off to
+                List is built from <strong className="font-medium text-gray-500">selected</strong> topics only (same cohort as the live newsletter). Leave all off to
                 preview the full eligible briefing; turn domains on to narrow the simulation.
               </p>
               <div className="flex flex-wrap gap-2">

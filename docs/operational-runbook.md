@@ -71,7 +71,7 @@ Once the ingestion job finishes, the AI will have grouped the raw articles into 
 1. Open **Trend Discovery** (`http://localhost:3100/admin` — sidebar **“2. Trending”**). You will see topics sorted by urgency score.
 2. **Click a topic** to open the **detail drawer**. Review the AI-generated summary and source articles.
 3. Click the **pencil icon** to edit positioning: set **Adoption State** and **Industry Positions** (impact/risk per industry) as needed.
-4. Go to **Step 4: Publishing** (`http://localhost:3100/admin/newsletter`). In the **Radar Publishing** section, toggle the topic **on** so it appears on the public radar (or use **Publish All** where appropriate).
+4. Go to **Publishing** (`http://localhost:3100/admin/publishing`). In the **Radar Publishing** section, toggle the topic **on** so it appears on the public radar (or use **Publish All** where appropriate).
 
 ## 7. View the Radar
 

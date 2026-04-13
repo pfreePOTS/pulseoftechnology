@@ -14,29 +14,16 @@ scheduler = BackgroundScheduler()
 
 
 def _ingestion_job() -> None:
-    """Scheduled job: open a DB session, ingest all active sources, then score signals."""
-    from .services.signal_service import (
-        backfill_missing_trend_suggestions,
-        cleanup_empty_topics,
-        refresh_all_signals,
-        run_signal_scorer,
-    )
+    """Scheduled job: open a DB session, ingest all active sources, prune empty topics."""
+    from .services.signal_service import cleanup_empty_topics
 
     db = SessionLocal()
     try:
         run_all_sources(db)
         try:
             cleanup_empty_topics(db)
-            run_signal_scorer(db)
-            refresh_all_signals(db)
         except Exception:
-            logger.exception("Signal scorer/refresh after ingestion failed")
-        try:
-            n = backfill_missing_trend_suggestions(db, limit=20)
-            if n:
-                logger.info("After ingestion: trend suggestion backfill for %d topic(s)", n)
-        except Exception:
-            logger.exception("Trend suggestion backfill after ingestion failed")
+            logger.exception("cleanup_empty_topics after ingestion failed")
     except Exception:
         logger.exception("Unhandled error in ingestion job")
     finally:

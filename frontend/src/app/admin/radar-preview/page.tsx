@@ -112,7 +112,7 @@ export default function RadarPreviewPage() {
   const emptyMessage = loadError
     ? "Unable to load radar data — see the alert above."
     : mode === "live"
-      ? "Nothing on the live radar yet — enable “On public radar” in Publishing for topics you want visitors to see."
+      ? "Nothing on the live radar yet — enable “On public radar” on the Publishing page for topics you want visitors to see."
       : "No watched or selected topics yet — move candidates to Watched or Selected in Trend Discovery, then refresh.";
 
   return (
@@ -130,8 +130,11 @@ export default function RadarPreviewPage() {
           <strong className="text-white">Live vs pipeline:</strong>{" "}
           <strong className="text-[#019E7C]">Live site</strong> shows the same topics visitors see (published only).{" "}
           <strong className="text-indigo-300">Pipeline staging</strong> shows every watched/selected topic — useful
-          before you publish. This is independent of the Publishing table toggles until you choose{" "}
-          <em className="text-gray-300">Live site</em>.
+          before you publish. This is independent of the public radar toggles on the{" "}
+          <Link href="/admin/publishing" className="text-[#019E7C] underline underline-offset-2 hover:text-teal-300">
+            Publishing
+          </Link>{" "}
+          page until you choose <em className="text-gray-300">Live site</em>.
         </p>
         <div className="mb-3 flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-bold tracking-tight text-white">Radar Preview</h1>
@@ -169,7 +172,11 @@ export default function RadarPreviewPage() {
           {mode === "live" ? (
             <>
               Matches the public Technology Radar: only topics with <strong className="text-gray-300">On public radar</strong>{" "}
-              turned on in Publishing. Same layout and filters as the live page.
+              turned on under{" "}
+              <Link href="/admin/publishing" className="text-[#019E7C] underline underline-offset-2 hover:text-teal-300">
+                Publishing
+              </Link>
+              . Same layout and filters as the live page.
             </>
           ) : (
             <>
@@ -187,7 +194,10 @@ export default function RadarPreviewPage() {
             <strong className="text-white">{crossHint.count} topic(s)</strong> are in watched/selected but not on the live radar.
             Switch to <strong className="text-white">Pipeline staging</strong> above to preview them, or turn on{" "}
             <strong className="text-white">On public radar</strong> in{" "}
-            <Link href="/admin/newsletter" className="text-[#019E7C] underline underline-offset-2 hover:text-teal-300">
+            <Link
+              href="/admin/publishing"
+              className="text-[#019E7C] underline underline-offset-2 hover:text-teal-300"
+            >
               Publishing
             </Link>
             .
@@ -210,7 +220,11 @@ export default function RadarPreviewPage() {
             No topics in <strong className="text-gray-200">either</strong> view yet. Promote topics to{" "}
             <strong className="text-gray-200">Watched</strong> or <strong className="text-gray-200">Selected</strong> in Trend
             Discovery, run RSS ingestion and <strong className="text-gray-200">Process raw articles</strong> so stories attach
-            to topics, then use Publishing when you are ready for the public radar. Backend logs showing{" "}
+            to topics, then use the{" "}
+            <Link href="/admin/publishing" className="text-[#019E7C] underline underline-offset-2 hover:text-teal-300">
+              Publishing
+            </Link>{" "}
+            page when you are ready for the public radar. Backend logs showing{" "}
             <code className="rounded bg-gray-800 px-1 text-xs">0 articles assigned to topics</code> mean classification did not
             link new stories yet — check <code className="rounded bg-gray-800 px-1 text-xs">ANTHROPIC_API_KEY</code> and topic
             coverage.
@@ -218,7 +232,7 @@ export default function RadarPreviewPage() {
         )}
       </div>
 
-      <div className="flex-1 overflow-hidden">
+      <div className="min-h-[min(70vh,560px)] flex-1 overflow-hidden">
         <RadarSection topics={topics} emptyMessage={emptyMessage} layout="compact" />
       </div>
     </div>

@@ -47,7 +47,11 @@ from ..services.ai_service import (
     suggest_subdomain_for_topic,
     suggest_topic_persona_by_role,
 )
-from ..services.email_service import generate_newsletter_preview, run_daily_newsletter
+from ..services.email_service import (
+    generate_newsletter_preview,
+    run_daily_newsletter,
+    send_test_newsletter,
+)
 from ..services.hubspot_sync import sync_subscriber_to_hubspot
 from ..services.ingestion import run_all_sources, run_article_processing_pipeline
 from ..services.pipeline_settings import (
@@ -1509,6 +1513,33 @@ def get_survey_stats(
         "somewhat_relevant": breakdown.get(2, 0),
         "not_relevant": breakdown.get(1, 0),
     }
+
+
+class NewsletterTestSendRequest(BaseModel):
+    """Avoid pydantic EmailStr — it requires optional `email-validator` not in the API image."""
+
+    to_email: str = Field(..., min_length=3, max_length=320)
+
+    @field_validator("to_email")
+    @classmethod
+    def email_format(cls, v: str) -> str:
+        s = v.strip().lower()
+        if not _SUBSCRIBER_EMAIL_RE.match(s):
+            raise ValueError("Invalid email address")
+        return s
+
+
+@router.post("/newsletter/test-send")
+def newsletter_test_send(
+    body: NewsletterTestSendRequest,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """Send one newsletter to the given address using current watched/selected topics (admin QA)."""
+    ok, msg = send_test_newsletter(db, body.to_email)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"message": msg}
 
 
 # ---------------------------------------------------------------------------

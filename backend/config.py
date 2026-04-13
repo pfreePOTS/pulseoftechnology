@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     newsletter_send_hour_utc: int = Field(default=7, ge=0, le=23)
     newsletter_send_minute_utc: int = Field(default=0, ge=0, le=59)
     newsletter_enabled: bool = True
+    # Pause between SendGrid sends in run_daily_newsletter (0 = no delay)
+    newsletter_subscriber_delay_seconds: float = Field(default=0.1, ge=0.0, le=60.0)
 
     model_config = {"env_file": ".env"}
 

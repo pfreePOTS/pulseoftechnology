@@ -7,8 +7,7 @@ watch | radar | remove recommendations when thresholds are met.
 Velocity/acceleration use a **coverage timestamp** per article:
 ``GREATEST(ingested_at, published_at)`` for window membership (see ``_article_coverage_time``).
 
-For the high-velocity scorer only, counts may use Pinecone-derived article IDs first, then the same
-coverage-time SQL filter; SQL fallback uses plain counts per topic when Pinecone is off or empty.
+Velocity windows use SQL counts only until production embeddings exist (Pinecone path disabled).
 
 Also provides topic cleanup utilities.
 """
@@ -228,39 +227,10 @@ def _article_count_in_window(topic_id: int, start: datetime, end: datetime, db: 
     """
     Return article count for topic within [start, end).
 
-    Tries Pinecone semantic query first; falls back to SQL.
+    Uses SQL coverage-time counts only. Pinecone semantic velocity is disabled while
+    embeddings are placeholder / not production-ready.
     """
-    from ..services.vector_service import query_topic_velocity  # lazy import
-
-    # Attempt Pinecone semantic velocity
-    topic = db.query(Topic).filter(Topic.id == topic_id).first()
-    if topic:
-        since_ts = int(start.timestamp())
-        matches = query_topic_velocity(
-            topic_id=topic_id,
-            domain=topic.domain or "",
-            since_ts=since_ts,
-        )
-        if matches:  # empty list means Pinecone not configured, not "zero articles"
-            article_ids = [m.get("article_id") for m in matches if m.get("article_id")]
-            if article_ids:
-                ct = _article_coverage_time()
-                return (
-                    db.query(func.count(Article.id))
-                    .filter(
-                        Article.id.in_(article_ids),
-                        Article.topic_id == topic_id,
-                        Article.archived_at.is_(None),
-                        ct >= start,
-                        ct < end,
-                    )
-                    .scalar()
-                    or 0
-                )
-            # Legacy vectors without article_id in metadata — fall back to SQL counts
-            return _sql_count(topic_id, start, end, db)
-
-    # SQL fallback
+    # TODO: Re-enable when Voyage/OpenAI embeddings ship (query_topic_velocity + article_id metadata)
     return _sql_count(topic_id, start, end, db)
 
 
@@ -269,8 +239,7 @@ def run_signal_scorer(db: Session) -> int:
     Score velocity/acceleration for every topic (pending, watched, selected)
     and create SignalRecommendation records when thresholds are breached.
 
-    Velocity is measured via Pinecone semantic query when configured,
-    otherwise falls back to SQL article counts.
+    Velocity is measured via SQL article counts in coverage-time windows.
 
     Returns the number of new recommendations created.
     """
@@ -283,7 +252,11 @@ def run_signal_scorer(db: Session) -> int:
     recent_start = now - timedelta(days=tw)
     prior_start = now - timedelta(days=tw + pw)
 
-    all_topics: list[Topic] = db.query(Topic).all()
+    all_topics: list[Topic] = (
+        db.query(Topic)
+        .filter(Topic.status.in_([TopicStatus.pending, TopicStatus.watched, TopicStatus.selected]))
+        .all()
+    )
 
     created = 0
     for topic in all_topics:
@@ -390,9 +363,7 @@ def refresh_all_signals(db: Session) -> int:
 
     # Always refresh watched + selected (the active radar pipeline)
     radar_topics: list[Topic] = (
-        db.query(Topic)
-        .filter(Topic.status.in_([TopicStatus.watched, TopicStatus.selected]))
-        .all()
+        db.query(Topic).filter(Topic.status.in_([TopicStatus.watched, TopicStatus.selected])).all()
     )
     for topic in radar_topics:
         try:

@@ -4,6 +4,7 @@ SendGrid email delivery service.
 Public surface:
   send_daily_newsletter(subscriber, topics) -> bool
   run_daily_newsletter(db)               -> None   (called by scheduler)
+  send_test_newsletter(db, to_email)     -> (bool, str)  (admin one-off QA)
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from __future__ import annotations
 import html
 import logging
 import re
+import time
 from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
 
@@ -100,6 +102,7 @@ def _radar_explore_url(public_site_base: str, domain: str | None) -> str:
     base = (public_site_base or "http://localhost:3100").rstrip("/")
     dom = domain or "Other"
     return f"{base}/?domain={quote(dom)}"
+
 
 _TYPE_LABELS: dict[str, str] = {
     "article": "Article",
@@ -520,9 +523,7 @@ def _build_top_stories_block(
         if not summ:
             summ = _subscriber_industry_teaser(t, subscriber)
         if not summ:
-            summ = (
-                "This theme is on your radar — open the full briefing below for linked sources and context."
-            )
+            summ = "This theme is on your radar — open the full briefing below for linked sources and context."
         rows.append(
             f'<p style="margin:0 0 12px;font-family:{_FF};">'
             f'<span style="font-size:15px;font-weight:700;color:#111827;">{html.escape(t.name)}</span><br>'
@@ -827,9 +828,7 @@ def _build_html(
                 topic, db, role_objs, article_ingested_after=article_ingested_after
             )
             if not arts and article_ingested_after is not None:
-                arts = _select_articles_for_topic(
-                    topic, db, role_objs, article_ingested_after=None
-                )
+                arts = _select_articles_for_topic(topic, db, role_objs, article_ingested_after=None)
             deep_parts.append(
                 _build_deep_dive_section(
                     topic,
@@ -1028,7 +1027,9 @@ def _resolve_subscriber_role(subscriber: Subscriber, db: Session | None) -> Role
     return roles[0] if roles else None
 
 
-def _domain_allow_for_newsletter(subscriber: Subscriber, roles: list[Role] | None) -> set[str] | None:
+def _domain_allow_for_newsletter(
+    subscriber: Subscriber, roles: list[Role] | None
+) -> set[str] | None:
     """
     Which topic domains to include for this subscriber.
 
@@ -1181,9 +1182,7 @@ def generate_newsletter_preview(
     )[:20]
 
     if not topics:
-        no_match = (
-            f" matching your domain picks ({', '.join(domain_list)})" if domain_list else ""
-        )
+        no_match = f" matching your domain picks ({', '.join(domain_list)})" if domain_list else ""
         return (
             "<!DOCTYPE html><html><body style='background:#F3F4F6;"
             "color:#374151;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;padding:40px;'>"
@@ -1240,7 +1239,8 @@ def run_daily_newsletter(db: Session) -> None:
     )
 
     sent = 0
-    for subscriber in subscribers:
+    delay_s = settings.newsletter_subscriber_delay_seconds
+    for i, subscriber in enumerate(subscribers):
         matched = assemble_newsletter_topics(subscriber, eligible_topics, db)
         if matched:
             promoted = assemble_promoted_content(subscriber, db)
@@ -1252,8 +1252,70 @@ def run_daily_newsletter(db: Session) -> None:
                 article_ingested_after=article_cutoff,
             ):
                 sent += 1
+        if delay_s > 0 and i < len(subscribers) - 1:
+            time.sleep(delay_s)
 
     if sent > 0:
         set_last_newsletter_sent_at(db)
 
     logger.info("Daily newsletter: %d emails dispatched", sent)
+
+
+def send_test_newsletter(db: Session, to_email: str) -> tuple[bool, str]:
+    """
+    Send one real newsletter to an arbitrary address for admin QA.
+
+    **Pipeline only:** topics must be ``watched`` or ``selected`` (on-radar pipeline). This
+    matches Radar Preview “Pipeline staging” and the scheduled newsletter — it does **not**
+    pull topics that appear on the live site only via ``is_published`` without pipeline status.
+
+    Article lookback matches merged settings. Synthetic subscriber has no domain/role narrowing
+    so all pipeline topics are included (like a subscriber who did not filter domains).
+
+    Does not update last_newsletter_sent_at. Requires SENDGRID_API_KEY.
+    """
+    raw = (to_email or "").strip().lower()
+    if not raw or "@" not in raw:
+        return False, "Invalid email address."
+
+    if not settings.sendgrid_api_key:
+        return False, "SENDGRID_API_KEY is not set — cannot send email."
+
+    merged = merge_pipeline_settings(db)
+    article_cutoff = datetime.now(UTC) - timedelta(days=merged.newsletter_article_lookback_days)
+
+    # Watched + selected only — pipeline cohort, not “published to live site” alone.
+    eligible_topics: list[Topic] = (
+        db.query(Topic).filter(Topic.status.in_([TopicStatus.watched, TopicStatus.selected])).all()
+    )
+    if not eligible_topics:
+        return (
+            False,
+            "No watched or selected topics — promote topics in Research (Trending) first.",
+        )
+
+    dummy = Subscriber(
+        id=-1,
+        email=raw,
+        first_name="Test",
+        last_name="Reader",
+        industries=["Technology"],
+        domains=None,
+        role_ids=None,
+        is_active=True,
+    )
+    matched = assemble_newsletter_topics(dummy, eligible_topics, db)
+    if not matched:
+        return False, "No topics matched for this send (unexpected)."
+
+    promoted = assemble_promoted_content(dummy, db)
+    ok = send_daily_newsletter(
+        dummy,
+        matched,
+        db=db,
+        promoted_content=promoted,
+        article_ingested_after=article_cutoff,
+    )
+    if ok:
+        return True, f"Test newsletter sent to {raw} ({len(matched)} topic(s))."
+    return False, "SendGrid did not accept the message — check server logs."

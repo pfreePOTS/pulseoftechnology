@@ -288,6 +288,44 @@ class TestRunDailyNewsletter:
         mock_send.assert_not_called()
 
 
+# ---------------------------------------------------------------------------
+# send_test_newsletter
+# ---------------------------------------------------------------------------
+
+
+def test_send_test_newsletter_rejects_without_sendgrid():
+    mock_db = MagicMock()
+    with patch.object(email_service.settings, "sendgrid_api_key", ""):
+        ok, msg = email_service.send_test_newsletter(mock_db, "a@b.com")
+    assert ok is False
+    assert "SENDGRID" in msg
+
+
+def test_send_test_newsletter_rejects_when_no_pipeline_topics():
+    mock_db = _mock_db_for_daily_newsletter(topic_rows=[], subscriber_rows=[])
+    with patch.object(email_service.settings, "sendgrid_api_key", "k"):
+        ok, msg = email_service.send_test_newsletter(mock_db, "a@b.com")
+    assert ok is False
+    assert "watched" in msg.lower() or "selected" in msg.lower()
+
+
+def test_send_test_newsletter_dispatches():
+    topic = _topic()
+    mock_db = _mock_db_for_daily_newsletter(topic_rows=[topic], subscriber_rows=[])
+    merged = SimpleNamespace(newsletter_article_lookback_days=7)
+    with (
+        patch.object(email_service.settings, "sendgrid_api_key", "k"),
+        patch.object(email_service, "merge_pipeline_settings", return_value=merged),
+        patch.object(email_service, "send_daily_newsletter", return_value=True) as mock_send,
+    ):
+        ok, msg = email_service.send_test_newsletter(mock_db, "Curator@Example.com")
+    assert ok is True
+    assert "curator@example.com" in msg
+    mock_send.assert_called_once()
+    dummy = mock_send.call_args[0][0]
+    assert dummy.email == "curator@example.com"
+
+
 def test_deep_dive_section_has_structured_briefing_and_trending():
     from ..models.topic import AdoptionState
 

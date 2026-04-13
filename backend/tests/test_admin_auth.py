@@ -121,3 +121,12 @@ def test_newsletter_preview_filters_requires_auth():
     client = TestClient(app)
     r = client.get("/api/admin/newsletter/preview-filters")
     assert r.status_code == 401
+
+
+def test_newsletter_test_send_requires_auth():
+    client = TestClient(app)
+    r = client.post(
+        "/api/admin/newsletter/test-send",
+        json={"to_email": "curator@example.com"},
+    )
+    assert r.status_code == 401

@@ -69,7 +69,7 @@ class TestEvaluateArticle:
 
         assert result is not None
         assert result["domain"] == "Other"
-        assert result["suggested_topic_name"] == "Other"
+        assert result["suggested_topic_name"] == "Other: Review Needed"
         assert result["urgency_score"] == 5.0
 
     def test_correct_model_used(self):

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { industryColor, INDUSTRY_COLORS, INDUSTRY_OPTIONS } from "@/lib/industryGrid";
+import { clampRadarRationaleParagraph } from "@/lib/sentences";
 import { scrollToSubscribe } from "@/lib/subscribeNavigation";
 
 export { INDUSTRY_COLORS };
@@ -229,7 +230,7 @@ function industryPositionRationale(pos: IndustryPosition | undefined): string | 
   if (scoring && scoring !== primary) parts.push(scoring);
   if (phase && phase !== primary && phase !== scoring) parts.push(phase);
   if (parts.length === 0) return null;
-  return parts.join(" ");
+  return clampRadarRationaleParagraph(parts.join(" "));
 }
 
 /**
@@ -831,7 +832,8 @@ function RadarTooltipPanel({ point: pt }: { point: PlotPointXY }) {
   const fromPosition = industryPositionRationale(ind);
   const fromPlotRationale = pt.rationale?.trim();
   const fromSummary = pt.topic.summary?.trim();
-  const narrative = fromPlotRationale || fromPosition || fromSummary || "";
+  const rawNarrative = fromPlotRationale || fromPosition || fromSummary || "";
+  const narrative = rawNarrative ? clampRadarRationaleParagraph(rawNarrative) : "";
   const narrativeLabel = narrative ? (fromPlotRationale || fromPosition ? "Rationale" : "Summary") : "";
 
   return (

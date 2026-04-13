@@ -23,14 +23,18 @@ from sendgrid.helpers.mail import (
     Personalization,
     To,
 )
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..models.article import Article
 from ..models.content import ContentItem
+from ..models.role import Role
 from ..models.subscriber import Subscriber
 from ..models.topic import Topic, TopicStatus
+from .newsletter_selection import select_articles_for_newsletter_topic
 from .pipeline_settings import merge_pipeline_settings, set_last_newsletter_sent_at
+from .trend_service import newsletter_topic_velocity_trend
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +62,44 @@ _DOMAIN_COLORS: dict[str, str] = {
     "Leadership": "#D97706",
     "Other": "#6B7280",
 }
+
+# Stock hero images by radar domain (Unsplash, stable URLs). Email clients may require “load images”.
+_DOMAIN_HERO_IMAGES: dict[str, str] = {
+    "AI": "https://images.unsplash.com/photo-1677442136019-21780ecad995?auto=format&fit=crop&w=1200&q=80",
+    "Security": "https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&w=1200&q=80",
+    "Cloud": "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80",
+    "Finance": "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=1200&q=80",
+    "Leadership": "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=1200&q=80",
+    "Other": "https://images.unsplash.com/photo-1504639725590-34d0984388bd?auto=format&fit=crop&w=1200&q=80",
+}
+
+
+def _hero_image_url_for_domain(domain: str | None) -> str:
+    dom = domain or "Other"
+    return _DOMAIN_HERO_IMAGES.get(dom, _DOMAIN_HERO_IMAGES["Other"])
+
+
+def _posture_badge_colors(topic: Topic) -> tuple[str, str]:
+    """Background and text hex colors for adoption / posture (traffic-light style)."""
+    a = topic.adoption_state
+    if a is None:
+        return "#6B7280", "#FFFFFF"
+    label = a.value if hasattr(a, "value") else str(a)
+    # Maps AdoptionState labels — Learn / Make the Most = greens; Prepared = yellow; Hands around = red; Ahead = amber.
+    mapping: dict[str, tuple[str, str]] = {
+        "Learn About": ("#019E7C", "#FFFFFF"),
+        "Get Ahead Of": ("#D97706", "#FFFFFF"),
+        "Get Prepared For": ("#EAB308", "#111827"),
+        "Get Your Hands Around": ("#E91D24", "#FFFFFF"),
+        "Make the Most Of": ("#059669", "#FFFFFF"),
+    }
+    return mapping.get(label, ("#6B7280", "#FFFFFF"))
+
+
+def _radar_explore_url(public_site_base: str, domain: str | None) -> str:
+    base = (public_site_base or "http://localhost:3100").rstrip("/")
+    dom = domain or "Other"
+    return f"{base}/?domain={quote(dom)}"
 
 _TYPE_LABELS: dict[str, str] = {
     "article": "Article",
@@ -90,6 +132,183 @@ def _first_sentence(text: str | None) -> str:
     return _first_sentences(text, 1)
 
 
+def _industry_position_narrative(pos: object) -> str:
+    """Merge per-industry grid strings (same precedence as radar / Analysis)."""
+    if not isinstance(pos, dict):
+        return ""
+    primary = (str(pos.get("industry_impact") or pos.get("rationale") or "")).strip()
+    scoring = (str(pos.get("scoring_rationale") or "")).strip()
+    phase = (str(pos.get("phase_rationale") or "")).strip()
+    parts: list[str] = []
+    if primary:
+        parts.append(primary)
+    if scoring and scoring != primary:
+        parts.append(scoring)
+    if phase and phase not in (primary, scoring):
+        parts.append(phase)
+    return " ".join(parts)
+
+
+def _subscriber_industry_teaser(topic: Topic, subscriber: Subscriber | None) -> str:
+    if subscriber is None or not isinstance(topic.industry_positions, dict):
+        return ""
+    for ind in getattr(subscriber, "industries", None) or []:
+        pos = topic.industry_positions.get(ind)
+        block = _industry_position_narrative(pos)
+        if block:
+            return _first_sentences(block, 3)
+    return ""
+
+
+NEWSLETTER_BRIEF_KEYS = ("what_is_it", "what_changed", "why_it_matters", "what_to_do")
+
+
+def _clamp_brief_sentences(text: str | None, max_sentences: int = 3) -> str:
+    t = (text or "").strip()
+    return _first_sentences(t, max_sentences) if t else ""
+
+
+def _article_recency_ts(article: Article) -> datetime:
+    ia = article.ingested_at
+    pa = article.published_at
+    if ia is None and pa is None:
+        return datetime.min.replace(tzinfo=UTC)
+    if pa is None:
+        return ia if ia.tzinfo else ia.replace(tzinfo=UTC)
+    if ia is None:
+        return pa if pa.tzinfo else pa.replace(tzinfo=UTC)
+    iau = ia if ia.tzinfo else ia.replace(tzinfo=UTC)
+    pau = pa if pa.tzinfo else pa.replace(tzinfo=UTC)
+    return max(iau, pau)
+
+
+def _subscriber_remediation_teaser(topic: Topic, subscriber: Subscriber | None) -> str:
+    if subscriber is None or not isinstance(topic.industry_positions, dict):
+        return ""
+    for ind in getattr(subscriber, "industries", None) or []:
+        pos = topic.industry_positions.get(ind)
+        if isinstance(pos, dict):
+            r = (pos.get("remediation") or "").strip()
+            if r:
+                return _clamp_brief_sentences(r, 3)
+    return ""
+
+
+def _resolve_newsletter_briefing(
+    topic: Topic,
+    articles: list[Article],
+    subscriber: Subscriber | None,
+) -> dict[str, str]:
+    raw = getattr(topic, "newsletter_briefing", None)
+    stored = {k: "" for k in NEWSLETTER_BRIEF_KEYS}
+    if isinstance(raw, dict):
+        for k in NEWSLETTER_BRIEF_KEYS:
+            stored[k] = _clamp_brief_sentences(str(raw.get(k) or "").strip(), 3)
+    by_recency = sorted(articles, key=_article_recency_ts, reverse=True)
+    a0 = by_recency[0] if by_recency else None
+    a1 = by_recency[1] if len(by_recency) > 1 else None
+
+    out = dict(stored)
+    if not out["what_is_it"]:
+        if a0 and (a0.what_is_it or "").strip():
+            out["what_is_it"] = _clamp_brief_sentences(a0.what_is_it, 3)
+        else:
+            out["what_is_it"] = _clamp_brief_sentences(topic.summary, 3)
+    if not out["what_changed"]:
+        if a1:
+            cand = (a1.what_is_it or a1.why_it_matters or "").strip()
+            if cand and cand != out.get("what_is_it"):
+                out["what_changed"] = _clamp_brief_sentences(cand, 3)
+        if not out["what_changed"] and a0:
+            wi0 = (a0.what_is_it or "").strip()
+            t0 = (a0.title or "").strip()
+            if wi0 and wi0 != out["what_is_it"]:
+                out["what_changed"] = _clamp_brief_sentences(wi0, 3)
+            elif t0:
+                out["what_changed"] = _clamp_brief_sentences(
+                    f"Latest reporting advances this thread — see: {t0}", 2
+                )
+    if not out["why_it_matters"]:
+        if a0 and (a0.why_it_matters or "").strip():
+            out["why_it_matters"] = _clamp_brief_sentences(a0.why_it_matters, 3)
+        else:
+            out["why_it_matters"] = _clamp_brief_sentences(
+                _subscriber_industry_teaser(topic, subscriber), 3
+            )
+    if not out["what_to_do"]:
+        out["what_to_do"] = _subscriber_remediation_teaser(topic, subscriber)
+
+    fallbacks = {
+        "what_is_it": "This theme remains on your executive radar — see linked sources below.",
+        "what_changed": "Today’s briefing draws on the freshest sources attached to this topic.",
+        "why_it_matters": "Monitor for operational, risk, and competitive implications for your sector.",
+        "what_to_do": "Assign an owner to scan the sources and decide what warrants a pilot or policy update.",
+    }
+    for k, fb in fallbacks.items():
+        if not out[k]:
+            out[k] = fb
+    return out
+
+
+def _trend_indicator_html(trend: str) -> str:
+    if trend == "up":
+        sym, label, bg, fg = "&#8593;", "Rising attention", "#ECFDF5", "#065F46"
+    elif trend == "down":
+        sym, label, bg, fg = "&#8595;", "Cooling coverage", "#FFFBEB", "#92400E"
+    else:
+        sym, label, bg, fg = "&#8594;", "Steady coverage", "#F3F4F6", "#374151"
+    return f"""<span style="display:inline-block;background:{bg};color:{fg};font-size:10px;
+                 font-weight:700;letter-spacing:0.07em;text-transform:uppercase;border-radius:4px;
+                 padding:5px 12px;font-family:{_FF};vertical-align:middle;white-space:nowrap;">
+      Trending&nbsp;<span style="font-size:13px;font-weight:800;line-height:1;" aria-hidden="true">{sym}</span>
+      &nbsp;{html.escape(label)}
+    </span>"""
+
+
+def _briefing_subsection(title: str, body: str) -> str:
+    b = (body or "").strip()
+    if not b:
+        return ""
+    return f"""
+    <div style="margin:0 0 22px;">
+      <p style="margin:0 0 8px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6B7280;font-family:{_FF};">{html.escape(title)}</p>
+      <p style="margin:0;font-size:14px;color:#111827;line-height:1.72;font-family:{_FF};">{html.escape(b)}</p>
+    </div>"""
+
+
+def _industry_lens_block(topic: Topic, subscriber: Subscriber | None) -> str:
+    if subscriber is None or not isinstance(topic.industry_positions, dict):
+        return ""
+    lines: list[str] = []
+    for ind in getattr(subscriber, "industries", None) or []:
+        pos = topic.industry_positions.get(ind)
+        blurb = _industry_position_narrative(pos)
+        if blurb:
+            lines.append(f"{ind}: {_clamp_brief_sentences(blurb, 2)}")
+    if not lines:
+        return ""
+    inner = html.escape(" ".join(lines))
+    return f"""
+    <div style="margin:4px 0 8px;padding:14px 16px;background:#FAFAFA;border-radius:6px;border:1px solid #E5E7EB;">
+      <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#6B7280;font-family:{_FF};">Your industries</p>
+      <p style="margin:0;font-size:13px;color:#374151;line-height:1.65;font-family:{_FF};">{inner}</p>
+    </div>"""
+
+
+def _article_teaser_for_email(article: Article) -> str:
+    for raw in (article.why_it_matters, article.what_is_it):
+        s = (raw or "").strip()
+        if s:
+            return _first_sentences(s, 3)
+    content = (article.content or "").strip()
+    if content:
+        plain = re.sub(r"<[^>]+>", " ", content)
+        plain = re.sub(r"\s+", " ", plain).strip()
+        if len(plain) > 40:
+            return _first_sentences(plain, 2)
+    return ""
+
+
 def _adoption_label(topic: Topic) -> str:
     a = topic.adoption_state
     if a is None:
@@ -100,47 +319,24 @@ def _adoption_label(topic: Topic) -> str:
 def _select_articles_for_topic(
     topic: Topic,
     db: Session,
-    role_tags: set[str] | None,
+    role_objs: list,
     *,
     article_ingested_after: datetime | None = None,
 ) -> list[Article]:
-    q = db.query(Article).filter(
-        Article.topic_id == topic.id,
-        Article.what_is_it.isnot(None),
-        Article.archived_at.is_(None),
-    )
-    if article_ingested_after is not None:
-        q = q.filter(Article.ingested_at >= article_ingested_after)
-    raw_candidates: list[Article] = q.all()
-    candidates = [
-        a
-        for a in raw_candidates
-        if (a.why_it_matters and str(a.why_it_matters).strip())
-        or (
-            isinstance(a.persona_impacts, dict)
-            and any(str(v).strip() for v in a.persona_impacts.values())
-        )
-    ]
+    """
+    Pick deep-dive articles for this subscriber's job title(s) using persona-scored ranking.
 
-    if role_tags:
-        matched = [a for a in candidates if {t.lower() for t in (a.tags or [])} & role_tags]
-        if not matched:
-            candidates.sort(
-                key=lambda a: a.published_at or datetime.min.replace(tzinfo=UTC),
-                reverse=True,
-            )
-            return candidates[:3]
-        matched.sort(
-            key=lambda a: a.published_at or datetime.min.replace(tzinfo=UTC),
-            reverse=True,
-        )
-        return matched[:3]
-
-    candidates.sort(
-        key=lambda a: a.published_at or datetime.min.replace(tzinfo=UTC),
-        reverse=True,
+    Domain/topic filtering happens before the newsletter HTML is built; here we only rank
+    within the topic using ``persona_impacts[Role.name]``, recency, and topic urgency.
+    """
+    names = [(getattr(r, "name", None) or "").strip() for r in role_objs]
+    role_names = [n for n in names if n] or None
+    return select_articles_for_newsletter_topic(
+        topic,
+        db,
+        role_names,
+        article_ingested_after=article_ingested_after,
     )
-    return candidates[:3]
 
 
 def _article_why_for_subscriber(article: Article, role_obj: object | None) -> str:
@@ -158,22 +354,24 @@ def _article_why_for_subscriber(article: Article, role_obj: object | None) -> st
 def _persona_text_for_topic(
     topic: Topic,
     articles: list[Article],
-    role_obj: object | None,
+    role_objs: list,
 ) -> str | None:
-    if role_obj is None:
+    if not role_objs:
         return None
-    name = getattr(role_obj, "name", None)
-    if not name:
-        return None
-    pbr = topic.persona_by_role
-    if isinstance(pbr, dict):
-        v = pbr.get(name)
-        if isinstance(v, str) and v.strip():
-            return v.strip()
-    for a in articles:
-        w = _article_why_for_subscriber(a, role_obj)
-        if w:
-            return w
+    for role_obj in role_objs:
+        name = getattr(role_obj, "name", None)
+        if not name:
+            continue
+        pbr = topic.persona_by_role
+        if isinstance(pbr, dict):
+            v = pbr.get(name)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+    for role_obj in role_objs:
+        for a in articles:
+            w = _article_why_for_subscriber(a, role_obj)
+            if w:
+                return w
     return None
 
 
@@ -272,7 +470,7 @@ _EMAIL_TEMPLATE = """\
             </p>
             <p style="margin:0 0 12px;font-size:11px;color:#6B7280;line-height:1.6;font-family:{ff};">
               You&rsquo;re receiving this because you subscribed to PulseOne Radar.<br>
-              Domains: {domains_label} &middot; Industry: {industry_label}
+              Domains: {domains_label} &middot; Industry: {industry_label} &middot; Role: {role_label}
             </p>
             <p style="margin:0 0 12px;font-size:11px;font-family:{ff};">
               <a href="{read_online_url}" style="color:#019E7C;text-decoration:none;">Manage preferences</a>
@@ -292,10 +490,39 @@ _EMAIL_TEMPLATE = """\
 """
 
 
-def _build_top_stories_block(topics: list[Topic]) -> str:
+def _build_top_stories_block(
+    topics: list[Topic],
+    *,
+    db: Session | None = None,
+    subscriber: Subscriber | None = None,
+    role_objs: list | None = None,
+    article_ingested_after: datetime | None = None,
+) -> str:
+    role_names: list[str] | None = None
+    if role_objs:
+        names = [(getattr(r, "name", None) or "").strip() for r in role_objs]
+        role_names = [n for n in names if n] or None
     rows = []
     for t in topics:
-        summ = _first_sentences(t.summary, 3)
+        summ = _first_sentences(t.summary, 3).strip()
+        if not summ and db is not None:
+            for cutoff in (article_ingested_after, None):
+                arts = select_articles_for_newsletter_topic(
+                    t,
+                    db,
+                    role_names,
+                    article_ingested_after=cutoff,
+                    limit=1,
+                )
+                if arts:
+                    summ = _article_teaser_for_email(arts[0])
+                    break
+        if not summ:
+            summ = _subscriber_industry_teaser(t, subscriber)
+        if not summ:
+            summ = (
+                "This theme is on your radar — open the full briefing below for linked sources and context."
+            )
         rows.append(
             f'<p style="margin:0 0 12px;font-family:{_FF};">'
             f'<span style="font-size:15px;font-weight:700;color:#111827;">{html.escape(t.name)}</span><br>'
@@ -314,45 +541,81 @@ def _build_top_stories_block(topics: list[Topic]) -> str:
 def _build_deep_dive_section(
     topic: Topic,
     articles: list[Article],
-    role_obj: object | None,
-    role_name: str,
+    role_objs: list,
+    role_display: str,
     subscriber: Subscriber | None = None,
+    *,
+    db: Session | None = None,
+    public_site_url: str = "http://localhost:3100",
 ) -> str:
     dom = topic.domain or "Other"
     color = _DOMAIN_COLORS.get(dom, "#6B7280")
-    posture = html.escape(_adoption_label(topic))
-    persona = _persona_text_for_topic(topic, articles, role_obj)
+    posture_label = _adoption_label(topic)
+    posture = html.escape(posture_label)
+    badge_bg, badge_fg = _posture_badge_colors(topic)
+    hero_src = html.escape(_hero_image_url_for_domain(dom))
+    explore_href = html.escape(_radar_explore_url(public_site_url, dom))
+
+    persona = _persona_text_for_topic(topic, articles, role_objs)
     persona_html = ""
     if persona:
         persona_html = f"""
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0;background:#F4F8FA;border-left:3px solid #019E7C;border-radius:4px;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0;background:#F4F8FA;border-left:3px solid {badge_bg};border-radius:4px;">
       <tr>
         <td style="padding:12px 14px;font-family:{_FF};">
-          <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#111827;">What this means for you as a {html.escape(role_name)}:</p>
+          <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#111827;">Where to focus &mdash; for you as a {html.escape(role_display)}:</p>
           <p style="margin:0;font-size:13px;color:#4A5F6D;line-height:1.6;">{html.escape(persona)}</p>
         </td>
       </tr>
     </table>"""
 
-    art_links = []
-    for a in articles:
+    art_rows = []
+    for i, a in enumerate(articles[:3], start=1):
         title = html.escape(a.title or "Read article")
         url = html.escape(a.url or "#")
-        art_links.append(
-            f'<p style="margin:6px 0 0;font-size:13px;font-family:{_FF};">'
-            f'<a href="{url}" style="color:#019E7C;text-decoration:none;font-weight:600;">&rarr; {title}</a></p>'
+        art_rows.append(
+            f'<tr><td style="padding:4px 0;font-family:{_FF};">'
+            f'<span style="color:#9CA3AF;font-size:12px;font-weight:600;">{i}.</span> '
+            f'<a href="{url}" style="color:#019E7C;text-decoration:none;font-weight:600;font-size:13px;">{title}</a>'
+            f"</td></tr>"
         )
-    arts = "\n".join(art_links) if art_links else ""
+    arts_block = ""
+    if art_rows:
+        arts_block = f"""
+    <p style="margin:18px 0 8px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#4A5F6D;font-family:{_FF};">
+      Top reads (sources)
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 4px;">
+      {"".join(art_rows)}
+    </table>"""
 
-    summary_base = (topic.summary or "").strip() or "No summary available."
-    industry_rationale_plain = ""
-    if subscriber and subscriber.industry and isinstance(topic.industry_positions, dict):
-        pos = topic.industry_positions.get(subscriber.industry)
-        if isinstance(pos, dict) and pos.get("rationale"):
-            industry_rationale_plain = f" For {subscriber.industry}: {pos['rationale']}"
-    summary = html.escape(summary_base) + (
-        html.escape(industry_rationale_plain) if industry_rationale_plain else ""
+    trend = "flat"
+    if db is not None:
+        try:
+            trend = newsletter_topic_velocity_trend(db, topic.id)
+        except Exception:
+            logger.debug("newsletter trend for topic %s failed", topic.id, exc_info=True)
+            trend = "flat"
+    trend_html = _trend_indicator_html(trend)
+
+    briefing = _resolve_newsletter_briefing(topic, articles, subscriber)
+    briefing_html = (
+        _briefing_subsection("What it is (today)", briefing["what_is_it"])
+        + _briefing_subsection("What has changed", briefing["what_changed"])
+        + _briefing_subsection("Why it matters", briefing["why_it_matters"])
+        + _briefing_subsection("What to do about it", briefing["what_to_do"])
     )
+    industry_lens = _industry_lens_block(topic, subscriber)
+
+    dig_deeper = f"""
+    <p style="margin:18px 0 6px;font-family:{_FF};">
+      <a href="{explore_href}" style="color:#019E7C;text-decoration:none;font-weight:700;font-size:14px;">
+        Dig deeper on the PulseOne Radar &rarr;
+      </a>
+    </p>
+    <p style="margin:0 0 0;font-size:12px;color:#6B7280;line-height:1.5;font-family:{_FF};">
+      Open the live radar filtered to <strong style="color:#4A5F6D;">{html.escape(dom)}</strong> for charts, tracked stories, and more context.
+    </p>"""
 
     return f"""
 <tr>
@@ -360,16 +623,33 @@ def _build_deep_dive_section(
     <hr style="border:none;border-top:1px solid #E5E7EB;margin:0 0 18px;">
     <p style="margin:0 0 6px;font-size:10px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;
               color:{color};font-family:{_FF};">{html.escape(dom.upper())}</p>
-    <p style="margin:0 0 10px;font-size:20px;font-weight:700;color:#111827;font-family:{_FF};line-height:1.25;">{html.escape(topic.name)}</p>
-    <p style="margin:0 0 14px;font-family:{_FF};">
-      <span style="display:inline-block;background:#019E7C;color:#FFFFFF;font-size:10px;font-weight:700;
-                   letter-spacing:0.06em;text-transform:uppercase;border-radius:4px;padding:3px 10px;">
-        YOUR POSTURE: {posture}
-      </span>
-    </p>
-    <p style="margin:0 0 8px;font-size:14px;color:#111827;line-height:1.75;font-family:{_FF};">{summary}</p>
+    <p style="margin:0 0 12px;font-size:20px;font-weight:700;color:#111827;font-family:{_FF};line-height:1.25;">{html.escape(topic.name)}</p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 14px;border-radius:8px;overflow:hidden;">
+      <tr>
+        <td style="padding:0;line-height:0;background:#E5E7EB;">
+          <img src="{hero_src}" width="560" alt="{html.escape(topic.name)}" style="display:block;width:100%;max-width:560px;height:auto;border:0;" />
+        </td>
+      </tr>
+    </table>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 18px;font-family:{_FF};">
+      <tr>
+        <td style="padding:0 10px 0 0;vertical-align:middle;width:1%;white-space:nowrap;">
+          <span style="display:inline-block;vertical-align:middle;background:{badge_bg};color:{badge_fg};font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;border-radius:4px;padding:4px 10px;">
+            YOUR POSTURE: {posture}
+          </span>
+        </td>
+        <td style="padding:0;vertical-align:middle;">
+          {trend_html}
+        </td>
+      </tr>
+    </table>
+    <div style="margin:6px 0 4px;">
+    {briefing_html}
+    </div>
+    {industry_lens}
     {persona_html}
-    {arts}
+    {arts_block}
+    {dig_deeper}
   </td>
 </tr>
 """
@@ -380,7 +660,10 @@ def _build_quick_hits_block(topics: list[Topic]) -> str:
         return ""
     items = []
     for t in topics:
-        line = f"{t.name}: {_first_sentence(t.summary)}"
+        sent = _first_sentence(t.summary).strip()
+        if not sent:
+            sent = "Follow this theme on your radar for linked sources and updates."
+        line = f"{t.name}: {sent}"
         items.append(
             f'<p style="margin:0 0 8px;font-size:13px;color:#111827;font-family:{_FF};line-height:1.5;">'
             f"{html.escape(line)}</p>"
@@ -515,37 +798,61 @@ def _build_html(
     promoted_content: list[ContentItem] | None = None,
     article_ingested_after: datetime | None = None,
 ) -> str:
-    role_tags: set[str] | None = None
-    role_obj = getattr(subscriber, "role", None)
-    if role_obj is None and db is not None and subscriber.role_id is not None:
-        from ..models.role import Role
-
-        role_obj = db.query(Role).filter(Role.id == subscriber.role_id).first()
-    if role_obj and getattr(role_obj, "tags", None):
-        role_tags = {t.lower() for t in role_obj.tags}
-
-    role_name = (getattr(role_obj, "name", None) or "Leader").strip() or "Leader"
+    role_objs = _resolve_subscriber_roles(subscriber, db)
+    role_footer = ", ".join(
+        (getattr(r, "name", None) or "").strip()
+        for r in role_objs
+        if (getattr(r, "name", None) or "").strip()
+    )
+    role_display = role_footer or "Leader"
+    public_site = (settings.public_site_url or "http://localhost:3100").rstrip("/")
 
     sorted_topics = sorted(topics, key=lambda t: t.urgency_score, reverse=True)
     top_stories = sorted_topics[:3]
     deep_dives = sorted_topics[3:7]
     quick_hits = sorted_topics[7:]
 
-    top_stories_html = _build_top_stories_block(top_stories)
+    top_stories_html = _build_top_stories_block(
+        top_stories,
+        db=db,
+        subscriber=subscriber,
+        role_objs=role_objs,
+        article_ingested_after=article_ingested_after,
+    )
 
     deep_parts = []
     if db is not None:
         for topic in deep_dives:
             arts = _select_articles_for_topic(
-                topic, db, role_tags, article_ingested_after=article_ingested_after
+                topic, db, role_objs, article_ingested_after=article_ingested_after
             )
+            if not arts and article_ingested_after is not None:
+                arts = _select_articles_for_topic(
+                    topic, db, role_objs, article_ingested_after=None
+                )
             deep_parts.append(
-                _build_deep_dive_section(topic, arts, role_obj, role_name, subscriber=subscriber)
+                _build_deep_dive_section(
+                    topic,
+                    arts,
+                    role_objs,
+                    role_display,
+                    subscriber=subscriber,
+                    db=db,
+                    public_site_url=public_site,
+                )
             )
     else:
         for topic in deep_dives:
             deep_parts.append(
-                _build_deep_dive_section(topic, [], role_obj, role_name, subscriber=subscriber)
+                _build_deep_dive_section(
+                    topic,
+                    [],
+                    role_objs,
+                    role_display,
+                    subscriber=subscriber,
+                    db=None,
+                    public_site_url=public_site,
+                )
             )
     deep_dives_html = "\n".join(deep_parts)
 
@@ -568,7 +875,13 @@ def _build_html(
     read_online = base_url + "/"
     survey_html = _build_survey_block(base_url, subscriber.email, newsletter_date)
 
-    industry_line = f" for the {subscriber.industry} sector" if subscriber.industry else ""
+    inds = getattr(subscriber, "industries", None) or []
+    if len(inds) == 1:
+        industry_line = f" for the {inds[0]} sector"
+    elif len(inds) > 1:
+        industry_line = f" for the {', '.join(inds)} sectors"
+    else:
+        industry_line = ""
 
     return _EMAIL_TEMPLATE.format(
         ff=_FF,
@@ -583,7 +896,8 @@ def _build_html(
         tip_html=tip_html,
         survey_html=survey_html,
         domains_label=html.escape(", ".join(subscriber.domains or []) or "All"),
-        industry_label=html.escape(subscriber.industry or "Not specified"),
+        industry_label=html.escape(", ".join(inds) or "Not specified"),
+        role_label=html.escape(role_footer or "Not specified"),
     )
 
 
@@ -608,13 +922,19 @@ def send_daily_newsletter(
     Returns True if accepted by SendGrid (HTTP 202), False otherwise.
     """
     sg = _get_sg_client()
+    roles = _resolve_subscriber_roles(subscriber, db)
 
     from_email = Email(
         email=settings.sendgrid_from_email,
         name=settings.sendgrid_from_name,
     )
+    role_bit = ""
+    if roles:
+        names = ", ".join((r.name or "").strip() for r in roles if (r.name or "").strip())
+        if names:
+            role_bit = f" · {names}"
     subject = (
-        f"PulseOne Radar: {len(topics)} signal{'s' if len(topics) != 1 else ''} "
+        f"PulseOne Radar{role_bit}: {len(topics)} signal{'s' if len(topics) != 1 else ''} "
         f"this week — {_short_month_day(datetime.now(UTC))}"
     )
 
@@ -623,18 +943,32 @@ def send_daily_newsletter(
         message.template_id = settings.sendgrid_newsletter_template_id
         p = Personalization()
         p.add_to(To(email=subscriber.email))
+        merged_tags: list[str] = []
+        seen_tag: set[str] = set()
+        for r in roles:
+            for t in r.tags or []:
+                s = str(t).strip()
+                if s and s.lower() not in seen_tag:
+                    seen_tag.add(s.lower())
+                    merged_tags.append(s)
+        industry_str = ", ".join(subscriber.industries or []) if subscriber.industries else ""
+        role_names_list = [r.name for r in roles if r.name]
         p.dynamic_template_data = DynamicTemplateData(
             {
                 "first_name": subscriber.first_name,
                 "last_name": subscriber.last_name,
-                "industry": subscriber.industry or "",
+                "industry": industry_str,
                 "domains": subscriber.domains or [],
+                "role_name": ", ".join(role_names_list) or "",
+                "role_names": role_names_list,
+                "role_tags": merged_tags,
                 "topics": [
                     {
                         "name": t.name,
                         "domain": t.domain,
                         "urgency_score": t.urgency_score,
                         "summary": t.summary or "",
+                        "newsletter_briefing": getattr(t, "newsletter_briefing", None) or {},
                     }
                     for t in topics
                 ],
@@ -673,6 +1007,48 @@ def send_daily_newsletter(
         return False
 
 
+def _resolve_subscriber_roles(subscriber: Subscriber, db: Session | None) -> list[Role]:
+    """Resolve Role rows for this subscriber (order preserved when loading by role_ids)."""
+    explicit = getattr(subscriber, "roles", None)
+    if explicit is not None:
+        return list(explicit)
+    single = getattr(subscriber, "role", None)
+    if single is not None:
+        return [single]
+    rids = getattr(subscriber, "role_ids", None) or []
+    if not rids or db is None:
+        return []
+    rows = db.query(Role).filter(Role.id.in_(rids)).all()
+    id_to_r = {r.id: r for r in rows}
+    return [id_to_r[i] for i in rids if i in id_to_r]
+
+
+def _resolve_subscriber_role(subscriber: Subscriber, db: Session | None) -> Role | None:
+    roles = _resolve_subscriber_roles(subscriber, db)
+    return roles[0] if roles else None
+
+
+def _domain_allow_for_newsletter(subscriber: Subscriber, roles: list[Role] | None) -> set[str] | None:
+    """
+    Which topic domains to include for this subscriber.
+
+    Explicit `subscriber.domains` (from the subscribe wizard) wins. If the subscriber
+    left domains empty, fall back to their job titles' `Role.tags` (unioned; same vocabulary as
+    topic.domain: AI, Security, etc.). If neither applies, return None (all eligible topics).
+    """
+    domains = getattr(subscriber, "domains", None)
+    if domains:
+        return {d for d in domains if d}
+    if roles:
+        tags: list[str] = []
+        for role in roles:
+            if role and getattr(role, "tags", None):
+                tags.extend(str(t).strip() for t in role.tags if t and str(t).strip())
+        if tags:
+            return set(tags)
+    return None
+
+
 def assemble_promoted_content(
     subscriber: Subscriber,
     db: Session,
@@ -690,10 +1066,13 @@ def assemble_promoted_content(
     if not all_active:
         return []
 
-    role_obj = getattr(subscriber, "role", None)
+    role_objs = _resolve_subscriber_roles(subscriber, db)
     role_tags: set[str] | None = None
-    if role_obj and getattr(role_obj, "tags", None):
-        role_tags = {t.lower() for t in role_obj.tags}
+    for role_obj in role_objs:
+        if role_obj and getattr(role_obj, "tags", None):
+            if role_tags is None:
+                role_tags = set()
+            role_tags |= {t.lower() for t in role_obj.tags}
 
     if role_tags:
         matched = [
@@ -707,63 +1086,110 @@ def assemble_promoted_content(
 def assemble_newsletter_topics(
     subscriber: Subscriber,
     all_approved: list[Topic],
+    db: Session | None = None,
+    *,
+    skip_domain_filter: bool = False,
 ) -> list[Topic]:
     """
-    Filter approved topics to those matching the subscriber's domain preferences.
+    Filter approved topics to the subscriber's domain interests.
 
-    If the subscriber has no domain preferences, all approved topics are returned.
-    Topics are returned in descending urgency order.
+    - If the subscriber chose specific domains in the wizard, only those topic domains
+      are included (exact match on ``topic.domain``).
+    - If they left domains empty but have a job title (Role) with ``tags``, those tags
+      are treated as domain filters (case-insensitive match to ``topic.domain``).
+    - If neither applies, all approved topics are returned.
+
+    ``skip_domain_filter=True`` (admin newsletter preview only): ignore domain / role-tag
+    narrowing so the sandbox shows the full eligible topic pool while still using roles
+    for persona scoring in article picks.
+
+    Topics are sorted by descending urgency score.
     """
-    if not subscriber.domains:
+    if skip_domain_filter:
         return sorted(all_approved, key=lambda t: t.urgency_score, reverse=True)
 
-    matched = [t for t in all_approved if t.domain in subscriber.domains]
+    roles = _resolve_subscriber_roles(subscriber, db)
+    allow = _domain_allow_for_newsletter(subscriber, roles)
+
+    if allow is None:
+        return sorted(all_approved, key=lambda t: t.urgency_score, reverse=True)
+
+    if getattr(subscriber, "domains", None):
+        matched = [t for t in all_approved if t.domain in allow]
+    else:
+        allow_l = {x.lower() for x in allow}
+        matched = [t for t in all_approved if (t.domain or "").lower() in allow_l]
+
     return sorted(matched, key=lambda t: t.urgency_score, reverse=True)
 
 
 def generate_newsletter_preview(
     db: Session,
-    industry: str | None = None,
+    industries: list[str] | None = None,
     domains: list[str] | None = None,
-    role_id: int | None = None,
+    role_ids: list[int] | None = None,
 ) -> str:
     """
     Build and return a rendered HTML newsletter for a simulated subscriber.
 
-    Uses up to 20 watched/selected topics (by urgency) so tiered sections can be previewed.
-    """
-    from ..models.role import Role
+    Uses up to 20 topics from the **on-radar pipeline** (watched/selected) **or** topics
+    **published** to the live Radar, so the preview matches content that exists in the
+    product even when pipeline status has not been advanced.
 
-    role = db.query(Role).filter(Role.id == role_id).first() if role_id else None
+    When **no domain filters** are passed, topic filtering by domain / role tags is skipped
+    so the preview shows the full eligible pool (roles still drive persona lines in deep dives).
+    """
+    role_objs: list[Role] = []
+    if role_ids:
+        role_objs = db.query(Role).filter(Role.id.in_(role_ids)).all()
+        order = {rid: i for i, rid in enumerate(role_ids)}
+        role_objs.sort(key=lambda r: order.get(r.id, 999))
+
+    domain_list = list(domains) if domains else []
+    skip_domain_topic_filter = len(domain_list) == 0
 
     dummy = Subscriber(
         id=-1,
         email="preview@pulseone.internal",
         first_name="Jane",
         last_name="Executive",
-        industry=industry or "Technology",
-        domains=domains if domains else None,
-        role_id=role_id,
+        industries=industries if industries else ["Technology"],
+        domains=domain_list if domain_list else None,
+        role_ids=role_ids if role_ids else None,
         is_active=True,
     )
-    dummy.role = role  # type: ignore[attr-defined]
+    if role_objs:
+        dummy.roles = role_objs  # type: ignore[attr-defined]
 
     eligible: list[Topic] = (
         db.query(Topic)
-        .filter(Topic.status.in_([TopicStatus.watched, TopicStatus.selected]))
+        .filter(
+            or_(
+                Topic.status.in_([TopicStatus.watched, TopicStatus.selected]),
+                Topic.is_published == True,  # noqa: E712
+            )
+        )
         .order_by(Topic.urgency_score.desc())
         .all()
     )
 
-    topics = assemble_newsletter_topics(dummy, eligible)[:20]
+    topics = assemble_newsletter_topics(
+        dummy,
+        eligible,
+        db,
+        skip_domain_filter=skip_domain_topic_filter,
+    )[:20]
 
     if not topics:
-        no_match = f" matching your domain interests ({', '.join(domains)})" if domains else ""
+        no_match = (
+            f" matching your domain picks ({', '.join(domain_list)})" if domain_list else ""
+        )
         return (
             "<!DOCTYPE html><html><body style='background:#F3F4F6;"
             "color:#374151;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;padding:40px;'>"
-            f"<h2 style='color:#111827;'>No watched or selected topics{no_match}.</h2>"
-            "<p>Watch topics in the Research step or broaden the domain filter.</p>"
+            f"<h2 style='color:#111827;'>No topics available for preview{no_match}.</h2>"
+            "<p>Promote topics in Research (watched/selected), publish topics to the live Radar, "
+            "or clear domain filters.</p>"
             "</body></html>"
         )
 
@@ -815,7 +1241,7 @@ def run_daily_newsletter(db: Session) -> None:
 
     sent = 0
     for subscriber in subscribers:
-        matched = assemble_newsletter_topics(subscriber, eligible_topics)
+        matched = assemble_newsletter_topics(subscriber, eligible_topics, db)
         if matched:
             promoted = assemble_promoted_content(subscriber, db)
             if send_daily_newsletter(

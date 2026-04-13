@@ -20,6 +20,17 @@ interface RadarTopic {
   is_published: boolean;
 }
 
+function adoptionPillClass(state: string): string {
+  const map: Record<string, string> = {
+    "Learn About": "bg-[#019E7C]/20 text-emerald-100 ring-1 ring-[#019E7C]/40",
+    "Get Ahead Of": "bg-amber-500/15 text-amber-100 ring-1 ring-amber-500/35",
+    "Get Prepared For": "bg-yellow-500/15 text-yellow-100 ring-1 ring-yellow-500/40",
+    "Get Your Hands Around": "bg-[#E91D24]/20 text-red-100 ring-1 ring-[#E91D24]/40",
+    "Make the Most Of": "bg-emerald-700/25 text-emerald-100 ring-1 ring-emerald-500/35",
+  };
+  return map[state] ?? "bg-gray-800 text-gray-300 ring-1 ring-gray-600";
+}
+
 export default function NewsletterPublishingPage() {
   const [topics, setTopics] = useState<RadarTopic[]>([]);
   const [radarLoading, setRadarLoading] = useState(true);
@@ -145,12 +156,47 @@ export default function NewsletterPublishingPage() {
           Publishing
         </h1>
         <p className="mt-1 text-sm text-gray-400">
-          Control public radar visibility and preview the newsletter before
-          dispatch.
+          Decide what visitors see on the public Technology Radar, then preview the newsletter before dispatch.
         </p>
       </div>
 
       <section aria-labelledby="radar-heading" className="mb-10">
+        <details className="mb-4 rounded-lg border border-gray-700 bg-gray-900/50 text-sm text-gray-300">
+          <summary className="cursor-pointer list-none px-4 py-3 font-medium text-white hover:bg-gray-800/60 [&::-webkit-details-marker]:hidden">
+            <span className="inline-flex items-center gap-2">
+              <span
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-700 text-xs font-bold text-gray-200"
+                aria-hidden
+              >
+                i
+              </span>
+              What “Radar Publishing” controls (and what it doesn’t)
+            </span>
+          </summary>
+          <div className="space-y-3 border-t border-gray-800 px-4 py-3 leading-relaxed text-gray-400">
+            <p>
+              <strong className="text-gray-200">On public radar</strong> only changes whether a topic appears on the{" "}
+              <strong className="text-gray-200">live marketing site</strong> Technology Radar and in visitor-facing{" "}
+              <strong className="text-gray-200">tracked stories</strong>. <strong className="text-gray-200">Hidden</strong>{" "}
+              keeps the topic in your internal pipeline (Research / Trending / Analysis) but removes it from what the
+              public sees.
+            </p>
+            <p>
+              <strong className="text-gray-200">Radar Preview</strong> (Workbench → Radar preview) can show either{" "}
+              <strong className="text-[#019E7C]">Live site (published)</strong> — matching visitors — or{" "}
+              <strong className="text-indigo-300">Pipeline staging</strong> (all watched/selected). If you hide every
+              topic here, switch Radar Preview to <em className="text-gray-300">Live site</em> to see an empty chart;{" "}
+              <em className="text-gray-300">Pipeline staging</em> still shows unpublished work.
+            </p>
+            <p>
+              <strong className="text-gray-200">Newsletter</strong> uses topics in your on-radar pipeline (watched /
+              selected) per scheduler rules. Turning off public publishing{" "}
+              <strong className="text-gray-200">does not</strong> by itself remove a topic from email — change pipeline
+              status in Research/Trending if a topic should drop out of sends.
+            </p>
+          </div>
+        </details>
+
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2
             id="radar-heading"
@@ -232,7 +278,13 @@ export default function NewsletterPublishingPage() {
                     <td className="max-w-[280px] px-4 py-3 font-medium text-white">
                       {t.name}
                     </td>
-                    <td className="px-4 py-3 text-gray-400">{t.adoption_state}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-block rounded-md px-2 py-0.5 text-xs font-medium ${adoptionPillClass(t.adoption_state)}`}
+                      >
+                        {t.adoption_state}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">
                       <label className="inline-flex cursor-pointer items-center gap-2">
                         <input
@@ -269,10 +321,14 @@ export default function NewsletterPublishingPage() {
       <section aria-labelledby="preview-heading">
         <h2
           id="preview-heading"
-          className="mb-4 text-lg font-semibold text-white"
+          className="text-lg font-semibold text-white"
         >
           Newsletter Preview
         </h2>
+        <p className="mb-4 text-sm text-gray-500">
+          Simulates the email digest — not the same toggle as public radar. See the info block above for how publishing
+          relates to sends.
+        </p>
         <NewsletterSandboxPanel embedded />
       </section>
 

@@ -5,6 +5,7 @@ import TrackedStoriesSection, {
 import SubscribeWizard from "@/components/SubscribeWizard";
 import { type RadarTopic } from "@/components/RadarChart";
 import { API_BASE } from "@/lib/api";
+import { formatStoryDateUtc } from "@/lib/formatStoryDateUtc";
 
 /** Server-side only: URL the Next.js server uses to call the API (browser still uses NEXT_PUBLIC_API_URL). In Docker, must be http://backend:8000 — localhost would point at this container, not the API. */
 const SSR_API_BASE =
@@ -24,6 +25,8 @@ async function getPublishedTopics(): Promise<RadarTopic[]> {
   }
 }
 
+type TrackedArticleApi = Omit<TrackedArticle, "displayDate">;
+
 async function getTrackedArticles(): Promise<TrackedArticle[]> {
   try {
     const res = await fetch(`${SSR_API_BASE}/api/articles/tracked?limit=12`, {
@@ -31,7 +34,11 @@ async function getTrackedArticles(): Promise<TrackedArticle[]> {
     });
     if (!res.ok) return [];
     const data: unknown = await res.json();
-    return Array.isArray(data) ? data : [];
+    if (!Array.isArray(data)) return [];
+    return (data as TrackedArticleApi[]).map((row) => ({
+      ...row,
+      displayDate: formatStoryDateUtc(row.published_at ?? row.ingested_at),
+    }));
   } catch {
     return [];
   }

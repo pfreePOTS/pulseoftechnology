@@ -9,11 +9,12 @@ from typing import Any, Literal
 
 import anthropic
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from ..config import settings
 from ..models.article import Article
 from ..models.topic import Topic, TopicStatus
+from ..services.signal_service import _article_coverage_time
 from .pipeline_settings import merge_pipeline_settings
 
 logger = logging.getLogger(__name__)
@@ -63,14 +64,16 @@ def _window_counts(
     start: datetime,
     end: datetime,
 ) -> dict[int, int]:
+    """Count articles per topic in [start, end) using coverage time (matches velocity metrics)."""
     if not topic_ids:
         return {}
+    ct = _article_coverage_time()
     rows = (
         db.query(Article.topic_id, func.count(Article.id))
         .filter(
             Article.topic_id.in_(topic_ids),
-            Article.ingested_at >= start,
-            Article.ingested_at < end,
+            ct >= start,
+            ct < end,
             Article.archived_at.is_(None),
         )
         .group_by(Article.topic_id)
@@ -86,15 +89,16 @@ def _sample_titles(
     end: datetime,
     limit: int,
 ) -> list[str]:
+    ct = _article_coverage_time()
     q = (
         db.query(Article.title)
         .filter(
             Article.topic_id == topic_id,
-            Article.ingested_at >= start,
-            Article.ingested_at < end,
+            ct >= start,
+            ct < end,
             Article.archived_at.is_(None),
         )
-        .order_by(Article.ingested_at.desc())
+        .order_by(ct.desc())
         .limit(limit)
     )
     return [r[0] for r in q.all() if r[0]]
@@ -255,8 +259,10 @@ def build_positioning_insights(
                 "domain": t.domain,
                 "urgency_score": t.urgency_score,
                 "article_count": total_by_topic.get(rid, 0),
-                f"articles_last_{tw}d": rn,
-                f"articles_prior_{pw}d": pn,
+                "articles_primary_window": rn,
+                "articles_prior_window": pn,
+                "primary_window_days": tw,
+                "prior_window_days": pw,
                 "trend": trend,
                 "label": label,
                 "note": note,
@@ -265,3 +271,104 @@ def build_positioning_insights(
         )
 
     return results
+
+
+def build_hot_of_day(db: Session) -> dict[str, Any]:
+    """
+    Among **on-radar** topics (``selected``), pick the topic with the highest article count
+    in the primary trend window (coverage time). Tie-break: higher ``urgency_score``, then
+    lower ``topic_id``.
+
+    **Hot article**: the most recently *ingested* article tied to that topic within the same
+    window (among rows matching the count query).
+    """
+    merged = merge_pipeline_settings(db)
+    tw = merged.trend_window_days
+    now = datetime.now(UTC)
+    recent_start = now - timedelta(days=tw)
+    ct = _article_coverage_time()
+
+    topics: list[Topic] = (
+        db.query(Topic)
+        .filter(Topic.status == TopicStatus.selected)
+        .order_by(Topic.urgency_score.desc(), Topic.id.asc())
+        .all()
+    )
+    empty: dict[str, Any] = {
+        "trend_window_days": tw,
+        "hot_topic": None,
+        "articles_in_window": 0,
+        "hot_article": None,
+    }
+    if not topics:
+        return empty
+
+    topic_ids = [t.id for t in topics]
+    recent_c = _window_counts(db, topic_ids, recent_start, now)
+
+    max_n = max(recent_c.values(), default=0)
+    if max_n == 0:
+        return empty
+
+    hot_topic_row: Topic | None = None
+    for t in topics:
+        if recent_c.get(t.id, 0) == max_n:
+            hot_topic_row = t
+            break
+
+    if hot_topic_row is None:
+        return empty
+
+    hot_art = (
+        db.query(Article)
+        .options(joinedload(Article.source))
+        .filter(
+            Article.topic_id == hot_topic_row.id,
+            Article.archived_at.is_(None),
+            ct >= recent_start,
+            ct < now,
+        )
+        .order_by(Article.ingested_at.desc())
+        .first()
+    )
+
+    hot_article_out: dict[str, Any] | None = None
+    if hot_art is not None:
+        hot_article_out = {
+            "id": hot_art.id,
+            "title": hot_art.title,
+            "url": hot_art.url,
+            "published_at": hot_art.published_at,
+            "ingested_at": hot_art.ingested_at,
+            "source_name": hot_art.source.name if hot_art.source else None,
+        }
+
+    return {
+        "trend_window_days": tw,
+        "hot_topic": {
+            "id": hot_topic_row.id,
+            "name": hot_topic_row.name,
+            "domain": hot_topic_row.domain,
+            "subdomain": getattr(hot_topic_row, "subdomain", None) or "",
+            "urgency_score": hot_topic_row.urgency_score,
+        },
+        "articles_in_window": max_n,
+        "hot_article": hot_article_out,
+    }
+
+
+def newsletter_topic_velocity_trend(db: Session, topic_id: int) -> Trend:
+    """
+    Newsletter “Trending” badge: compares article volume in the configured primary window
+    vs the prior window (same basis as Research velocity / positioning insights).
+    """
+    merged = merge_pipeline_settings(db)
+    tw = merged.trend_window_days
+    pw = merged.trend_prior_window_days
+    now = datetime.now(UTC)
+    recent_start = now - timedelta(days=tw)
+    prior_end = recent_start
+    prior_start = now - timedelta(days=tw + pw)
+    recent_n = _window_counts(db, [topic_id], recent_start, now).get(topic_id, 0)
+    prior_n = _window_counts(db, [topic_id], prior_start, prior_end).get(topic_id, 0)
+    return _velocity_trend(recent_n, prior_n)

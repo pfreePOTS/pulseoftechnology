@@ -19,8 +19,14 @@ def _cors_allow_origins() -> list[str]:
     """Explicit origins only — `*` is invalid with `allow_credentials=True` (browser blocks admin cookie fetches)."""
     out = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
     if not out:
-        # Empty env would yield no CORS headers and break all browser API calls
-        return ["http://localhost:3000", "http://localhost:3100"]
+        # Empty env would yield no CORS headers and break all browser API calls.
+        # Include 127.0.0.1 — browsers send a distinct Origin from "localhost".
+        return [
+            "http://localhost:3000",
+            "http://localhost:3100",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:3100",
+        ]
     return out
 
 

@@ -2,6 +2,7 @@ import logging
 from datetime import UTC, datetime
 
 import feedparser
+import httpx
 from bs4 import BeautifulSoup
 from langdetect import DetectorFactory, detect
 from langdetect.lang_detect_exception import LangDetectException
@@ -11,11 +12,31 @@ from sqlalchemy.orm import Session
 from ..models.article import Article, ArticleStatus
 from ..models.source import Source
 from ..services.ai_service import process_raw_articles
+from ..services.article_language import title_contains_hangul
 from ..services.vector_service import upsert_article
 
 logger = logging.getLogger(__name__)
 
 DetectorFactory.seed = 0  # deterministic language detection
+
+_RSS_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (compatible; PulseOfTechnology/1.0; +https://pulseone.com) RSS-Ingestion"
+    ),
+    "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
+}
+
+
+def _fetch_rss_body(url: str) -> bytes | None:
+    """Fetch feed bytes with browser-like headers (many sites block default urllib)."""
+    try:
+        with httpx.Client(timeout=45.0, follow_redirects=True) as client:
+            r = client.get(url, headers=_RSS_HEADERS)
+            r.raise_for_status()
+            return r.content
+    except Exception as e:
+        logger.debug("RSS HTTP fetch failed for %s (%s); using feedparser default fetch", url, e)
+        return None
 
 
 def _strip_html(raw: str | None) -> str | None:
@@ -35,14 +56,32 @@ def _parse_published(entry: feedparser.FeedParserDict) -> datetime | None:
     return None
 
 
-def _is_english(text: str) -> bool:
-    """Return True if *text* appears to be English (or is too short to tell)."""
-    if not text or len(text.strip()) < 20:
-        return True  # too short to judge — let it through
+def _is_english_for_ingest(title: str, plain_content: str | None) -> bool:
+    """
+    Return True if this RSS item should be kept for English-only ingestion.
+
+    We classify the *title* first. Feeds like CIO.com sometimes pair a Korean (or
+    other non-English) title with an English body; detecting language on
+    ``title + summary`` alone can wrongly return English because the summary dominates.
+    """
+    t = (title or "").strip()
+    if not t:
+        return False
+    if title_contains_hangul(t):
+        return False
+    if len(t) >= 4:
+        try:
+            if detect(t) != "en":
+                return False
+        except LangDetectException:
+            pass
+    sample = f"{t} {plain_content or ''}".strip()
+    if len(sample) < 20:
+        return True
     try:
-        return detect(text) == "en"
+        return detect(sample) == "en"
     except LangDetectException:
-        return True  # detection failed — don't discard
+        return True
 
 
 def fetch_rss_feed(source: Source, db: Session) -> int:
@@ -54,7 +93,12 @@ def fetch_rss_feed(source: Source, db: Session) -> int:
     """
     logger.info("Fetching RSS feed for source %r (%s)", source.name, source.url)
 
-    feed = feedparser.parse(source.url)
+    feed = None
+    body = _fetch_rss_body(source.url)
+    if body is not None:
+        feed = feedparser.parse(body)
+    if feed is None or (feed.bozo and not feed.entries):
+        feed = feedparser.parse(source.url)
 
     if feed.bozo and not feed.entries:
         logger.warning("Failed to parse feed for %r: %s", source.name, feed.bozo_exception)
@@ -76,8 +120,7 @@ def fetch_rss_feed(source: Source, db: Session) -> int:
         content_raw = entry.get("content", [{}])[0].get("value") or entry.get("summary")
         plain_content = _strip_html(content_raw)
 
-        sample = f"{title.strip()} {plain_content or ''}"
-        if not _is_english(sample):
+        if not _is_english_for_ingest(title, plain_content):
             skipped_lang += 1
             logger.debug("Skipped non-English article: %r", title)
             continue

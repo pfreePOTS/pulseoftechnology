@@ -3,21 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { adminFetch, API_BASE } from "@/lib/api";
-
-const INDUSTRIES = [
-  "All Industries",
-  "Technology",
-  "Finance & Banking",
-  "Healthcare",
-  "Manufacturing",
-  "Government & Public Sector",
-  "Retail & E-Commerce",
-  "Energy & Utilities",
-  "Education",
-  "Media & Entertainment",
-];
-
-const DOMAINS = ["AI", "Security", "Cloud", "Finance", "Leadership", "Other"];
+import { INDUSTRY_OPTIONS } from "@/lib/industryGrid";
 
 interface Role {
   id: number;
@@ -39,14 +25,29 @@ export default function NewsletterSandboxPanel({ embedded = false }: Props) {
   const [state, setState] = useState<LoadState>("idle");
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
 
-  const [industry, setIndustry] = useState("Technology");
+  const [industryChips, setIndustryChips] = useState<string[]>([]);
+  const [domainChips, setDomainChips] = useState<string[]>([]);
+  const [filterOptionsError, setFilterOptionsError] = useState(false);
+  const [selectedIndustries, setSelectedIndustries] = useState<string[]>([]);
   const [selectedDomains, setSelectedDomains] = useState<string[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
-  const [selectedRoleId, setSelectedRoleId] = useState<number | "">("");
+  const [selectedRoleIds, setSelectedRoleIds] = useState<number[]>([]);
 
   function toggleDomain(domain: string) {
     setSelectedDomains((prev) =>
       prev.includes(domain) ? prev.filter((d) => d !== domain) : [...prev, domain],
+    );
+  }
+
+  function toggleIndustry(ind: string) {
+    setSelectedIndustries((prev) =>
+      prev.includes(ind) ? prev.filter((x) => x !== ind) : [...prev, ind],
+    );
+  }
+
+  function toggleRoleId(id: number) {
+    setSelectedRoleIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
   }
 
@@ -60,13 +61,13 @@ export default function NewsletterSandboxPanel({ embedded = false }: Props) {
   }
 
   const loadPreview = useCallback(
-    async (ind: string, doms: string[], roleId: number | "") => {
+    async (inds: string[], doms: string[], rids: number[]) => {
       setState("loading");
       try {
         const params = new URLSearchParams();
-        if (ind && ind !== "All Industries") params.set("industry", ind);
+        inds.forEach((i) => params.append("industries", i));
         doms.forEach((d) => params.append("domains", d));
-        if (roleId !== "") params.set("role_id", String(roleId));
+        rids.forEach((id) => params.append("role_ids", String(id)));
 
         const url = `${API_BASE}/api/admin/newsletter/preview${
           params.toString() ? `?${params}` : ""
@@ -88,17 +89,58 @@ export default function NewsletterSandboxPanel({ embedded = false }: Props) {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await adminFetch(`${API_BASE}/api/admin/newsletter/preview-filters`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as { industries: string[]; domains: string[] };
+        if (cancelled) return;
+        setFilterOptionsError(false);
+        setIndustryChips(data.industries);
+        setDomainChips(data.domains);
+        const preferred =
+          data.industries.includes("Technology") ? ["Technology"] : data.industries[0] ? [data.industries[0]] : [];
+        setSelectedIndustries(preferred);
+      } catch {
+        if (!cancelled) {
+          setFilterOptionsError(true);
+          setIndustryChips([...INDUSTRY_OPTIONS]);
+          setDomainChips([]);
+          const preferred =
+            INDUSTRY_OPTIONS.includes("Technology") ? ["Technology"] : INDUSTRY_OPTIONS[0] ? [INDUSTRY_OPTIONS[0]] : [];
+          setSelectedIndustries(preferred);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (industryChips.length === 0 && !filterOptionsError) return;
     const id = window.setTimeout(() => {
-      void loadPreview(industry, selectedDomains, selectedRoleId);
+      void loadPreview(selectedIndustries, selectedDomains, selectedRoleIds);
     }, 300);
     return () => window.clearTimeout(id);
-  }, [industry, selectedDomains, selectedRoleId, loadPreview]);
+  }, [
+    industryChips.length,
+    filterOptionsError,
+    selectedIndustries,
+    selectedDomains,
+    selectedRoleIds,
+    loadPreview,
+  ]);
 
-  const selectedRole = roles.find((r) => r.id === selectedRoleId);
-  const rolePart = selectedRole ? selectedRole.name : "No Role";
+  const selectedRoleNames = roles
+    .filter((r) => selectedRoleIds.includes(r.id))
+    .map((r) => r.name);
+  const rolePart = selectedRoleNames.length > 0 ? selectedRoleNames.join(", ") : "No Role";
   const domainPart =
     selectedDomains.length > 0 ? selectedDomains.join(", ") : "All Domains";
-  const industryPart = industry === "All Industries" ? "All Industries" : industry;
+  const industryPart =
+    selectedIndustries.length > 0 ? selectedIndustries.join(", ") : "All Industries";
   const simDesc = `${rolePart} · ${industryPart} · ${domainPart}`;
 
   return (
@@ -124,63 +166,104 @@ export default function NewsletterSandboxPanel({ embedded = false }: Props) {
       <div className="flex flex-col gap-4">
         <div className="rounded-xl border border-gray-800 bg-gray-900/80 p-4">
           <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
-            <div className="min-w-[200px] flex-1">
+            <div className="min-w-[min(100%,320px)] flex-[2]">
               <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-gray-500">
-                Role
+                Role (multi)
               </h2>
-              <select
-                value={selectedRoleId}
-                onChange={(e) =>
-                  setSelectedRoleId(e.target.value === "" ? "" : Number(e.target.value))
-                }
-                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="">No Role (generic impact)</option>
-                {roles.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                    {r.tags && r.tags.length > 0 ? ` · ${r.tags.join(", ")}` : ""}
-                  </option>
-                ))}
-              </select>
+              <div className="flex flex-wrap gap-2">
+                {roles.map((r) => {
+                  const on = selectedRoleIds.includes(r.id);
+                  return (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => toggleRoleId(r.id)}
+                      className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset transition-colors ${
+                        on
+                          ? "bg-indigo-500/25 text-indigo-300 ring-indigo-500/50"
+                          : "bg-gray-800 text-gray-400 ring-gray-700 hover:bg-gray-700/50"
+                      }`}
+                    >
+                      {r.name}
+                    </button>
+                  );
+                })}
+              </div>
+              {roles.length === 0 && (
+                <p className="text-xs text-gray-500">Loading roles…</p>
+              )}
             </div>
 
-            <div className="min-w-[200px] flex-1">
+            <div className="min-w-[min(100%,320px)] flex-[2]">
               <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-gray-500">
-                Industry
+                Industry (multi)
               </h2>
-              <select
-                value={industry}
-                onChange={(e) => setIndustry(e.target.value)}
-                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                {INDUSTRIES.map((ind) => (
-                  <option key={ind} value={ind}>
-                    {ind}
-                  </option>
-                ))}
-              </select>
+              {filterOptionsError && (
+                <p className="mb-2 text-[11px] text-amber-400/90">
+                  Could not load filter options from the API — using local industry grid. Domains unavailable.
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                {industryChips.length === 0 ? (
+                  <p className="text-xs text-gray-500">Loading industries…</p>
+                ) : (
+                  industryChips.map((ind) => {
+                    const on = selectedIndustries.includes(ind);
+                    return (
+                      <button
+                        key={ind}
+                        type="button"
+                        onClick={() => toggleIndustry(ind)}
+                        className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset transition-colors ${
+                          on
+                            ? "bg-[#019E7C]/25 text-[#019E7C] ring-[#019E7C]/50"
+                            : "bg-gray-800 text-gray-400 ring-gray-700 hover:bg-gray-700/50"
+                        }`}
+                      >
+                        {ind}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
             </div>
 
             <div className="min-w-[min(100%,280px)] flex-[2]">
               <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-gray-500">
-                Domains
+                Domains (multi)
               </h2>
-              <div className="flex flex-wrap gap-x-4 gap-y-2">
-                {DOMAINS.map((domain) => (
-                  <label
-                    key={domain}
-                    className="inline-flex cursor-pointer items-center gap-2"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedDomains.includes(domain)}
-                      onChange={() => toggleDomain(domain)}
-                      className="h-3.5 w-3.5 rounded border-gray-600 bg-gray-800 accent-indigo-500"
-                    />
-                    <span className="text-xs text-gray-300">{domain}</span>
-                  </label>
-                ))}
+              <p className="mb-2 text-[11px] leading-snug text-gray-600">
+                List is built from <strong className="font-medium text-gray-500">selected</strong> topics only (same cohort as Radar Publishing when this panel is on that page). Leave all off to
+                preview the full eligible briefing; turn domains on to narrow the simulation.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {industryChips.length === 0 && !filterOptionsError ? (
+                  <p className="text-xs text-gray-500">Loading domains…</p>
+                ) : domainChips.length === 0 ? (
+                  <p className="text-xs text-gray-500">
+                    {filterOptionsError
+                      ? "Domains were not loaded — fix the API connection and reload this page."
+                      : "No domains on selected topics — promote topics to Selected in Research, or topics have no domain set."}
+                  </p>
+                ) : (
+                  domainChips.map((domain) => {
+                    const on = selectedDomains.includes(domain);
+                    return (
+                      <button
+                        key={domain}
+                        type="button"
+                        onClick={() => toggleDomain(domain)}
+                        className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset transition-colors ${
+                          on
+                            ? "bg-amber-500/20 text-amber-200 ring-amber-500/45"
+                            : "bg-gray-800 text-gray-400 ring-gray-700 hover:bg-gray-700/50"
+                        }`}
+                      >
+                        {domain}
+                      </button>
+                    );
+                  })
+                )}
               </div>
             </div>
 
@@ -225,7 +308,7 @@ export default function NewsletterSandboxPanel({ embedded = false }: Props) {
                 <button
                   type="button"
                   onClick={() =>
-                    void loadPreview(industry, selectedDomains, selectedRoleId)
+                    void loadPreview(selectedIndustries, selectedDomains, selectedRoleIds)
                   }
                   className="mt-4 rounded-lg bg-gray-800 px-4 py-2 text-sm text-white hover:bg-gray-700"
                 >

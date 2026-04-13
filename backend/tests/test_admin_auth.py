@@ -75,3 +75,49 @@ def test_expired_jwt_rejected():
         headers={"Authorization": f"Bearer {expired}"},
     )
     assert r.status_code == 401
+
+
+def test_create_subscriber_requires_auth():
+    client = TestClient(app)
+    r = client.post(
+        "/api/admin/subscribers",
+        json={
+            "email": "new@example.com",
+            "first_name": "Test",
+            "last_name": "User",
+            "industries": ["Technology"],
+            "domains": ["AI"],
+            "role_ids": None,
+            "is_active": True,
+        },
+    )
+    assert r.status_code == 401
+
+
+def test_update_subscriber_requires_auth():
+    client = TestClient(app)
+    r = client.put(
+        "/api/admin/subscribers/1",
+        json={
+            "email": "x@example.com",
+            "first_name": "A",
+            "last_name": "B",
+            "industries": None,
+            "domains": None,
+            "role_ids": None,
+            "is_active": True,
+        },
+    )
+    assert r.status_code == 401
+
+
+def test_delete_subscriber_requires_auth():
+    client = TestClient(app)
+    r = client.delete("/api/admin/subscribers/1")
+    assert r.status_code == 401
+
+
+def test_newsletter_preview_filters_requires_auth():
+    client = TestClient(app)
+    r = client.get("/api/admin/newsletter/preview-filters")
+    assert r.status_code == 401

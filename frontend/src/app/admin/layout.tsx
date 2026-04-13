@@ -7,12 +7,14 @@ import { useEffect, useState } from "react";
 
 import { API_BASE } from "@/lib/api";
 
+/** Display labels only — order numbers are computed from list position after drag-and-drop. */
 const NAV = [
-  { label: "1. Collection", href: "/admin/research" },
-  { label: "2. Trending", href: "/admin" },
-  { label: "3. Analysis", href: "/admin/analysis" },
-  { label: "4. Publishing", href: "/admin/newsletter" },
-  { label: "Radar preview", href: "/admin/radar-preview" },
+  { label: "Collection", href: "/admin/research" },
+  { label: "Trending", href: "/admin" },
+  { label: "Daily trends", href: "/admin/trending-daily" },
+  { label: "Analysis", href: "/admin/analysis" },
+  { label: "Publishing", href: "/admin/newsletter" },
+  { label: "Radar Preview", href: "/admin/radar-preview" },
   { label: "Manage Sources", href: "/admin/sources" },
   { label: "Subscribers", href: "/admin/subscribers" },
   { label: "Role Profiles", href: "/admin/roles" },
@@ -22,6 +24,11 @@ const NAV = [
 ] as const;
 
 type NavItem = (typeof NAV)[number];
+
+/** Remove legacy "1. " prefixes so list position is the only numbering (handles stale caches). */
+function navLabelText(label: string): string {
+  return label.replace(/^\d+\.\s*/, "").trim();
+}
 
 const NAV_ORDER_KEY = "pulseone-admin-nav-order";
 
@@ -211,7 +218,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                       : "text-gray-400 hover:bg-gray-800/60 hover:text-white"
                   }`}
                 >
-                  {label}
+                  <span
+                    className={`shrink-0 tabular-nums ${isActive ? "text-gray-400" : "text-gray-500"}`}
+                  >
+                    {index + 1}.
+                  </span>
+                  <span className="ml-1.5 min-w-0">{navLabelText(label)}</span>
                 </Link>
               </div>
             );

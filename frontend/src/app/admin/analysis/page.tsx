@@ -43,7 +43,12 @@ interface IndustryPosition {
   impact_score?: number;
   risk_level?: number;
   adoption_state: string;
+  /** @deprecated Prefer industry_impact; still shown as fallback */
   rationale?: string;
+  industry_impact?: string;
+  scoring_rationale?: string;
+  phase_rationale?: string;
+  remediation?: string;
   impact_approved?: boolean;
 }
 
@@ -195,6 +200,11 @@ function defaultIndustryRow(): IndustryPosition {
   };
 }
 
+function pickOptionalString(row: Record<string, unknown>, key: string): string | undefined {
+  const v = row[key];
+  return typeof v === "string" && v.trim() ? v.trim() : undefined;
+}
+
 function normalizeSuggestionRow(row: Record<string, unknown>): IndustryPosition {
   const adoption =
     typeof row.adoption_state === "string" ? row.adoption_state : ADOPTION_STATES[0];
@@ -205,15 +215,19 @@ function normalizeSuggestionRow(row: Record<string, unknown>): IndustryPosition 
         ? row.score
         : 5;
   const risk = typeof row.risk_level === "number" ? row.risk_level : 5;
-  const rationale = typeof row.rationale === "string" ? row.rationale : undefined;
   return {
     adoption_state: ADOPTION_STATES.includes(adoption as (typeof ADOPTION_STATES)[number])
       ? adoption
       : ADOPTION_STATES[0],
     impact_score: Math.min(10, Math.max(1, impact)),
     risk_level: Math.min(10, Math.max(1, risk)),
-    rationale,
-    impact_approved: false,
+    rationale: pickOptionalString(row, "rationale"),
+    industry_impact: pickOptionalString(row, "industry_impact"),
+    scoring_rationale: pickOptionalString(row, "scoring_rationale"),
+    phase_rationale: pickOptionalString(row, "phase_rationale"),
+    remediation: pickOptionalString(row, "remediation"),
+    /** Default on so every suggested industry appears on the public radar until explicitly cleared. */
+    impact_approved: true,
   };
 }
 
@@ -221,6 +235,85 @@ function impactHeatClass(impact: number): string {
   if (impact >= 9) return "bg-red-500/10";
   if (impact >= 6) return "bg-amber-500/10";
   return "bg-emerald-500/10";
+}
+
+/** Legend copy: phase dot colors match ADOPTION_DOT; cell tint matches impactHeatClass. */
+const PHASE_DOT_LEGEND: { phase: string; dotClass: string }[] = [
+  { phase: "Learn About", dotClass: "bg-slate-400" },
+  { phase: "Get Ahead Of", dotClass: "bg-sky-400" },
+  { phase: "Get Prepared For", dotClass: "bg-amber-400" },
+  { phase: "Get Your Hands Around", dotClass: "bg-orange-400" },
+  { phase: "Make the Most Of", dotClass: "bg-emerald-400" },
+];
+
+function IndustryDetailPanel({
+  row,
+  topicUrgency,
+}: {
+  row: IndustryPosition | undefined;
+  topicUrgency: number;
+}) {
+  const impact = row?.impact_score ?? 5;
+  const risk = row?.risk_level ?? 5;
+  const phase =
+    row?.adoption_state && ADOPTION_STATES.includes(row.adoption_state as (typeof ADOPTION_STATES)[number])
+      ? row.adoption_state
+      : ADOPTION_STATES[0];
+  const industryImpact = row?.industry_impact?.trim() || row?.rationale?.trim() || "";
+  const scoring = row?.scoring_rationale?.trim();
+  const phaseWhy = row?.phase_rationale?.trim();
+  const remediation = row?.remediation?.trim();
+  const emptyHint =
+    "No text stored for this section yet. Run “AI Suggest (all topics)” to regenerate structured detail from the latest prompt.";
+
+  return (
+    <div className="space-y-4 text-sm">
+      <div className="rounded-lg border border-gray-800 bg-gray-900/60 px-3 py-2.5 text-xs text-gray-400">
+        <p className="font-semibold uppercase tracking-wide text-gray-500">Scores and phase (this cell)</p>
+        <p className="mt-1.5 leading-relaxed text-gray-300">
+          Impact{" "}
+          <strong className="tabular-nums text-indigo-200">{impact.toFixed(1)}</strong>
+          {" · "}
+          Risk{" "}
+          <strong className="tabular-nums text-amber-200/90">{risk.toFixed(1)}</strong>
+          {" · "}
+          Adoption phase <strong className="text-gray-100">{phase}</strong>
+        </p>
+        <p className="mt-2 text-[11px] leading-snug text-gray-500">
+          Topic urgency (left column) is <strong className="text-amber-400/90">{topicUrgency.toFixed(1)}</strong> — a
+          single topic-level signal from clustering; per-industry Impact and Risk are set in each cell (AI or manual).
+        </p>
+      </div>
+
+      <section>
+        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-pulse-teal">Industry impact</h4>
+        <p className="mt-1.5 leading-relaxed text-gray-300">
+          {industryImpact || emptyHint}
+        </p>
+      </section>
+
+      <section>
+        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-pulse-teal">
+          Why these scores
+        </h4>
+        <p className="mt-1.5 leading-relaxed text-gray-300">{scoring || emptyHint}</p>
+      </section>
+
+      <section>
+        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-pulse-teal">
+          Why this adoption phase
+        </h4>
+        <p className="mt-1.5 leading-relaxed text-gray-300">{phaseWhy || emptyHint}</p>
+      </section>
+
+      <section>
+        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-pulse-teal">
+          Recommended remediation
+        </h4>
+        <p className="mt-1.5 leading-relaxed text-gray-300">{remediation || emptyHint}</p>
+      </section>
+    </div>
+  );
 }
 
 const ADOPTION_BORDER: Record<string, string> = {
@@ -232,6 +325,7 @@ const ADOPTION_BORDER: Record<string, string> = {
 };
 
 export default function AnalysisPage() {
+  const [gridLegendOpen, setGridLegendOpen] = useState(true);
   const [impactRiskHelpOpen, setImpactRiskHelpOpen] = useState(true);
   const [adoptionHelpOpen, setAdoptionHelpOpen] = useState(true);
   const [mainTab, setMainTab] = useState<"industry" | "persona">("industry");
@@ -375,6 +469,58 @@ export default function AnalysisPage() {
       markDirty(topicId);
     },
     [markDirty],
+  );
+
+  /** Turn Radar (impact_approved) on or off for every filled cell in this topic row. */
+  const setRowRadarApproved = useCallback(
+    (topicId: number, approved: boolean) => {
+      let didChange = false;
+      setDrafts((prev) => {
+        const row = prev[topicId];
+        if (!row || Object.keys(row).length === 0) return prev;
+        const next: Record<string, IndustryPosition> = {};
+        for (const [ind, pos] of Object.entries(row)) {
+          const p = pos!;
+          if (p.impact_approved !== approved) {
+            next[ind] = { ...p, impact_approved: approved };
+            didChange = true;
+          } else {
+            next[ind] = p;
+          }
+        }
+        if (!didChange) return prev;
+        return { ...prev, [topicId]: next };
+      });
+      if (didChange) markDirty(topicId);
+    },
+    [markDirty],
+  );
+
+  /** Turn Radar on or off for a given industry column across all topics that have that cell. */
+  const setColumnRadarApproved = useCallback(
+    (industry: string, approved: boolean) => {
+      const touched: number[] = [];
+      setDrafts((prev) => {
+        let any = false;
+        const out = { ...prev };
+        for (const t of topics) {
+          const row = prev[t.id]?.[industry];
+          if (!row || row.impact_approved === approved) continue;
+          any = true;
+          touched.push(t.id);
+          out[t.id] = { ...prev[t.id], [industry]: { ...row, impact_approved: approved } };
+        }
+        if (!any) return prev;
+        return out;
+      });
+      if (touched.length === 0) return;
+      setDirtyIds((prev) => {
+        const next = new Set(prev);
+        for (const id of touched) next.add(id);
+        return next;
+      });
+    },
+    [topics],
   );
 
   const saveTopic = useCallback(async (topicId: number) => {
@@ -597,7 +743,8 @@ export default function AnalysisPage() {
           <h1 className="text-3xl font-bold tracking-tight text-white">Analysis</h1>
           <p className="mt-2 max-w-3xl text-sm text-gray-400">
             Industry positions for selected topics — spreadsheet view. Tab through Impact and Risk inputs to edit
-            quickly. Heat colors reflect impact magnitude.
+            quickly. Use the <span className="text-gray-300">Grid legend</span> below for phase dot colors and impact
+            heat; open the (i) on any cell for full scoring, phase, and remediation notes.
           </p>
         </div>
         <div className="flex rounded-lg border border-gray-800 bg-gray-900/80 p-0.5" role="tablist">
@@ -630,6 +777,45 @@ export default function AnalysisPage() {
         className="mb-6 rounded-xl border border-gray-800 bg-gray-900/40 p-4 text-sm text-gray-300"
         aria-label="How Impact, Risk, and adoption stage work"
       >
+        <CollapsibleHelpBlock
+          id="analysis-grid-legend"
+          title="Grid legend — dots and heat"
+          open={gridLegendOpen}
+          onToggle={() => setGridLegendOpen((v) => !v)}
+        >
+          <p className="text-gray-400">
+            Two different visuals apply to each topic × industry cell. They are independent:{" "}
+            <span className="font-medium text-gray-200">phase</span> is chosen (AI or dropdown) and does not auto-derive
+            from Impact in code; <span className="font-medium text-gray-200">Impact</span> is its own 1–10 score.
+          </p>
+          <div className="mt-4 space-y-3">
+            <div>
+              <p className="font-medium text-gray-200">Small dot beside the adoption dropdown</p>
+              <p className="mt-1 text-gray-400">
+                Color encodes the <span className="text-gray-300">adoption phase</span> only (which of the five stages
+                this cell uses). It is not a traffic-light for risk or “good/bad.”
+              </p>
+              <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                {PHASE_DOT_LEGEND.map(({ phase, dotClass }) => (
+                  <li key={phase} className="flex items-center gap-2 text-xs text-gray-400">
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${dotClass}`} aria-hidden />
+                    <span className="text-gray-300">{phase}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <p className="font-medium text-gray-200">Cell background tint</p>
+              <p className="mt-1 text-gray-400">
+                <span className="text-gray-300">Impact heat</span> for quick scanning: green-tint = lower impact (under
+                6), amber = medium (6–8.9), red-tint = high (9+). This is separate from the phase dot and from Risk
+                (shown as a number in the cell).
+              </p>
+            </div>
+          </div>
+        </CollapsibleHelpBlock>
+
+        <div className="mt-5 border-t border-gray-800 pt-5">
         <CollapsibleHelpBlock
           id="analysis-impact-risk"
           title="Impact & risk"
@@ -707,6 +893,7 @@ export default function AnalysisPage() {
             </ul>
           </CollapsibleHelpBlock>
         </div>
+        </div>
 
         {mainTab === "persona" ? (
           <p className="border-t border-gray-800 pt-4 text-xs text-gray-500">
@@ -726,36 +913,43 @@ export default function AnalysisPage() {
 
       {loadError && <p className="mb-4 text-sm text-red-400">{loadError}</p>}
 
-      {rationaleOpen && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="rationale-dialog-title"
-          onClick={() => setRationaleOpen(null)}
-        >
+      {rationaleOpen && (() => {
+        const rt = topics.find((t) => t.id === rationaleOpen.topicId);
+        const cell = drafts[rationaleOpen.topicId]?.[rationaleOpen.industry];
+        return (
           <div
-            className="max-h-[min(80vh,520px)] w-full max-w-lg overflow-y-auto rounded-xl border border-gray-700 bg-gray-950 p-5 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rationale-dialog-title"
+            onClick={() => setRationaleOpen(null)}
           >
-            <h3 id="rationale-dialog-title" className="text-base font-semibold text-white">
-              {topics.find((t) => t.id === rationaleOpen.topicId)?.name ?? "Topic"} —{" "}
-              {rationaleOpen.industry}
-            </h3>
-            <p className="mt-3 text-sm leading-relaxed text-gray-300">
-              {drafts[rationaleOpen.topicId]?.[rationaleOpen.industry]?.rationale?.trim() ||
-                "No rationale is stored for this cell yet. Run “AI Suggest (all topics)” to generate per-industry explanations, or edit values manually."}
-            </p>
-            <button
-              type="button"
-              className="mt-5 rounded-lg border border-gray-600 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-800"
-              onClick={() => setRationaleOpen(null)}
+            <div
+              className="max-h-[min(85vh,640px)] w-full max-w-2xl overflow-y-auto rounded-xl border border-gray-700 bg-gray-950 p-5 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
             >
-              Close
-            </button>
+              <h3 id="rationale-dialog-title" className="text-lg font-semibold text-white">
+                {rt?.name ?? "Topic"} — {rationaleOpen.industry}
+              </h3>
+              <p className="mt-1 text-xs text-gray-500">
+                Per-industry analysis for this cell. Populated by the Industry Positioning AI (or your saved edits). The
+                (i) button opens this panel; the colored dot next to the phase dropdown shows adoption stage only; cell
+                tint reflects Impact heat.
+              </p>
+              <div className="mt-4">
+                <IndustryDetailPanel row={cell} topicUrgency={rt?.urgency_score ?? 0} />
+              </div>
+              <button
+                type="button"
+                className="mt-6 rounded-lg border border-gray-600 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-800"
+                onClick={() => setRationaleOpen(null)}
+              >
+                Close
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {mainTab === "persona" ? (
         <>
@@ -927,6 +1121,24 @@ export default function AnalysisPage() {
                           <span className="text-[10px] tabular-nums text-amber-400/90">
                             U {topic.urgency_score.toFixed(1)}
                           </span>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            <button
+                              type="button"
+                              title="Check Radar for every industry cell in this row that already exists"
+                              onClick={() => setRowRadarApproved(topic.id, true)}
+                              className="rounded border border-[#019E7C]/50 bg-[#019E7C]/10 px-1.5 py-0.5 text-[9px] font-medium text-teal-200/90 hover:bg-[#019E7C]/20"
+                            >
+                              All on radar
+                            </button>
+                            <button
+                              type="button"
+                              title="Uncheck Radar for every filled cell in this row"
+                              onClick={() => setRowRadarApproved(topic.id, false)}
+                              className="rounded border border-gray-700 px-1.5 py-0.5 text-[9px] font-medium text-gray-500 hover:bg-gray-800 hover:text-gray-300"
+                            >
+                              Clear row
+                            </button>
+                          </div>
                         </div>
                         {INDUSTRY_OPTIONS.map((industry) => {
                           const row = drafts[topic.id]?.[industry];
@@ -964,8 +1176,8 @@ export default function AnalysisPage() {
                             >
                               <button
                                 type="button"
-                                title="Why these settings — AI or manual rationale"
-                                aria-label="Show rationale for this industry"
+                                title="Open detail: scores, phase rationale, industry impact, remediation"
+                                aria-label="Open per-industry analysis: scoring, phase, impact, remediation"
                                 className="absolute left-0.5 top-0.5 z-10 rounded p-0.5 text-gray-500 hover:bg-gray-800 hover:text-sky-400"
                                 onClick={() => setRationaleOpen({ topicId: topic.id, industry })}
                               >
@@ -1062,6 +1274,36 @@ export default function AnalysisPage() {
                       </Fragment>
                     );
                   })}
+
+                  <div className="sticky left-0 z-30 flex flex-col justify-center gap-1 border-t-2 border-gray-700 bg-gray-900 px-2 py-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Radar</span>
+                    <span className="text-[9px] leading-snug text-gray-500">
+                      Per column: turn Radar on or off for every topic that has this industry.
+                    </span>
+                  </div>
+                  {INDUSTRY_OPTIONS.map((industry) => (
+                    <div
+                      key={`footer-radar-${industry}`}
+                      className="flex flex-col items-stretch justify-center gap-1 border-t-2 border-gray-700 bg-gray-900/90 p-1.5"
+                    >
+                      <button
+                        type="button"
+                        title={`Check Radar for “${industry}” on every topic that has this column`}
+                        onClick={() => setColumnRadarApproved(industry, true)}
+                        className="w-full rounded border border-[#019E7C]/45 bg-[#019E7C]/10 px-1 py-1 text-[9px] font-medium leading-tight text-teal-100 hover:bg-[#019E7C]/20"
+                      >
+                        All on radar
+                      </button>
+                      <button
+                        type="button"
+                        title={`Uncheck Radar for “${industry}” on every topic that has this column`}
+                        onClick={() => setColumnRadarApproved(industry, false)}
+                        className="w-full rounded border border-gray-700 px-1 py-1 text-[9px] font-medium leading-tight text-gray-500 hover:bg-gray-800 hover:text-gray-300"
+                      >
+                        Clear column
+                      </button>
+                    </div>
+                  ))}
                 </div>
               </div>
 

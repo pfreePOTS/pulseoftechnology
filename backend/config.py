@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     sendgrid_newsletter_template_id: str = ""  # optional dynamic template
     # Public API base URL for newsletter links (survey, read online); no trailing slash
     api_base_url: str = "http://localhost:8000"
+    # Public Next.js site (radar home) for “dig deeper” links; no trailing slash
+    public_site_url: str = "http://localhost:3100"
     # HubSpot
     hubspot_api_key: str = ""  # private app access token
     # Pinecone vector database (optional — signal scorer degrades gracefully without it)

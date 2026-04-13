@@ -1,4 +1,5 @@
 import logging
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -16,7 +17,7 @@ from fastapi import (
 )
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
@@ -35,11 +36,13 @@ from ..models.content import ContentItem
 from ..models.role import Role
 from ..models.signal import SignalRecommendation
 from ..models.source import Source, SourceType
-from ..models.subscriber import Subscriber
+from ..models.subscriber import Subscriber, validate_industries_and_role_ids
 from ..models.survey_response import SurveyResponse
 from ..models.topic import AdoptionState, Topic, TopicStatus
 from ..rate_limits import limiter
 from ..services.ai_service import (
+    INDUSTRY_GRID_LABELS,
+    ensure_topic_industry_grid_complete,
     suggest_industry_positions,
     suggest_subdomain_for_topic,
     suggest_topic_persona_by_role,
@@ -54,6 +57,8 @@ from ..services.pipeline_settings import (
 )
 
 logger = logging.getLogger(__name__)
+
+_SUBSCRIBER_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 _bearer_optional = HTTPBearer(auto_error=False)
 
@@ -145,6 +150,13 @@ class ArticleStatsOut(BaseModel):
     archived: int
 
 
+class PipelineProgressOut(BaseModel):
+    raw: int
+    processed: int
+    skipped: int
+    total: int
+
+
 @router.get("/articles/stats", response_model=ArticleStatsOut)
 def article_collection_stats(
     db: Session = Depends(get_db),
@@ -155,6 +167,25 @@ def article_collection_stats(
         db.query(func.count(Article.id)).filter(Article.archived_at.isnot(None)).scalar() or 0
     )
     return ArticleStatsOut(active=int(active), archived=int(archived))
+
+
+@router.get("/articles/pipeline-progress", response_model=PipelineProgressOut)
+def article_pipeline_progress(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """Lightweight counts by article status for the live progress ticker."""
+    rows = (
+        db.query(Article.status, func.count(Article.id))
+        .group_by(Article.status)
+        .all()
+    )
+    counts = {str(status.value): cnt for status, cnt in rows}
+    raw = counts.get("raw", 0)
+    processed = counts.get("processed", 0)
+    skipped = counts.get("skipped", 0)
+    total = raw + processed + skipped + counts.get("published", 0)
+    return PipelineProgressOut(raw=raw, processed=processed, skipped=skipped, total=total)
 
 
 @router.get("/articles", response_model=list[ArticleListItem])
@@ -291,6 +322,7 @@ class TopicOut(BaseModel):
     domain: str
     subdomain: str = ""
     summary: str | None
+    newsletter_briefing: dict[str, str] | None = None
     urgency_score: float
     status: str
     adoption_state: str
@@ -303,6 +335,8 @@ class TopicOut(BaseModel):
     signal_rationale: str | None = None
     signal_suggested_action: str | None = None
     signal_id: int | None = None
+    # Newest linked article: prefers RSS publication time, else ingest time (non-archived only).
+    latest_article_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
@@ -317,16 +351,47 @@ class TopicPositioningInsight(BaseModel):
     domain: str
     urgency_score: float
     article_count: int
-    articles_last_7d: int = Field(description="Articles ingested in the last 7 days")
-    articles_prior_7d: int = Field(description="Articles ingested in the 7 days before that")
+    articles_primary_window: int = Field(
+        description="Article count in primary window (coverage time; see pipeline settings)",
+    )
+    articles_prior_window: int = Field(description="Article count in prior comparison window")
+    primary_window_days: int
+    prior_window_days: int
     trend: str = Field(description="up | down | flat")
     label: str
     note: str
     ai_enriched: bool
 
 
+class HotTopicBrief(BaseModel):
+    id: int
+    name: str
+    domain: str
+    subdomain: str = ""
+    urgency_score: float
+
+
+class HotArticleBrief(BaseModel):
+    id: int
+    title: str
+    url: str
+    published_at: datetime | None
+    ingested_at: datetime
+    source_name: str | None = None
+
+
+class HotOfDayOut(BaseModel):
+    """Hot topic = max article count in primary window among on-radar topics; hot article = latest ingest in-window."""
+
+    trend_window_days: int
+    hot_topic: HotTopicBrief | None
+    articles_in_window: int
+    hot_article: HotArticleBrief | None
+
+
 class TopicUpdate(BaseModel):
     summary: str | None = None
+    newsletter_briefing: dict[str, str] | None = None
     urgency_score: float | None = None
     adoption_state: AdoptionState | None = None
     industry_positions: dict | None = None
@@ -345,7 +410,6 @@ def list_topics(
         description="If true, return watched + selected topics (radar pipeline). Ignores single status filter.",
     ),
 ):
-    from sqlalchemy import func
     from sqlalchemy.orm import aliased
 
     from ..services.signal_service import compute_topic_velocity_metrics
@@ -377,6 +441,22 @@ def list_topics(
     signal_rows = db.query(SigAlias).join(latest_sq, SigAlias.id == latest_sq.c.max_id).all()
     sig_map: dict[int, SignalRecommendation] = {s.topic_id: s for s in signal_rows}
 
+    latest_article_rows = (
+        db.query(
+            Article.topic_id,
+            func.max(func.coalesce(Article.published_at, Article.ingested_at)).label(
+                "latest_article_at"
+            ),
+        )
+        .filter(Article.topic_id.in_(topic_ids))
+        .filter(Article.archived_at.is_(None))
+        .group_by(Article.topic_id)
+        .all()
+    )
+    latest_article_map: dict[int, datetime] = {
+        row.topic_id: row.latest_article_at for row in latest_article_rows
+    }
+
     result = []
     for t in topics:
         sig = sig_map.get(t.id)
@@ -388,6 +468,7 @@ def list_topics(
                 domain=t.domain,
                 subdomain=getattr(t, "subdomain", None) or "",
                 summary=t.summary,
+                newsletter_briefing=t.newsletter_briefing,
                 urgency_score=t.urgency_score,
                 status=t.status.value,
                 adoption_state=t.adoption_state.value
@@ -402,6 +483,7 @@ def list_topics(
                 signal_rationale=sig.rationale if sig else None,
                 signal_suggested_action=sig.suggested_action if sig else None,
                 signal_id=sig.id if sig else None,
+                latest_article_at=latest_article_map.get(t.id),
             )
         )
     return result
@@ -412,10 +494,21 @@ def topic_positioning_insights(
     db: Session = Depends(get_db),
     _: None = Depends(require_admin),
 ):
-    """Article velocity (7d vs prior 7d) plus optional Haiku synthesis for the Positioning workbench."""
+    """Article velocity (primary vs prior window, coverage time) plus optional Haiku synthesis."""
     from ..services.trend_service import build_positioning_insights
 
     return build_positioning_insights(db, status=TopicStatus.selected)
+
+
+@router.get("/trending/hot-of-day", response_model=HotOfDayOut)
+def trending_hot_of_day(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """On-radar topic with the most articles in the primary trend window + latest ingested article in that window."""
+    from ..services.trend_service import build_hot_of_day
+
+    return build_hot_of_day(db)
 
 
 @router.get("/topics/{topic_id}", response_model=TopicDetail)
@@ -448,6 +541,8 @@ def update_topic(
 
     if payload.summary is not None:
         topic.summary = payload.summary
+    if payload.newsletter_briefing is not None:
+        topic.newsletter_briefing = payload.newsletter_briefing
     if payload.urgency_score is not None:
         topic.urgency_score = payload.urgency_score
     if payload.adoption_state is not None:
@@ -478,6 +573,25 @@ def suggest_positions(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return result
+
+
+@router.post("/topics/{topic_id}/ensure-industry-grid")
+def ensure_industry_grid(
+    topic_id: int,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """
+    Add any missing Analysis / radar columns for this topic (same 20 industries as the grid).
+    Use after promoting a topic that only had partial industry JSON, or to repair legacy rows.
+    """
+    topic = db.query(Topic).filter(Topic.id == topic_id).first()
+    if topic is None:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    updated = ensure_topic_industry_grid_complete(topic_id, db)
+    db.refresh(topic)
+    n = len(topic.industry_positions) if isinstance(topic.industry_positions, dict) else 0
+    return {"updated": updated, "industry_columns": n}
 
 
 @router.post("/topics/{topic_id}/suggest-persona-by-role")
@@ -607,6 +721,11 @@ def select_topic(
     )
     db.commit()
     db.refresh(topic)
+    try:
+        ensure_topic_industry_grid_complete(topic_id, db)
+    except Exception:
+        logger.exception("ensure_topic_industry_grid_complete failed after select_topic")
+    db.refresh(topic)
     return topic
 
 
@@ -662,6 +781,11 @@ def approve_topic(
             {"status": "published"}, synchronize_session=False
         )
         db.commit()
+        db.refresh(topic)
+        try:
+            ensure_topic_industry_grid_complete(topic_id, db)
+        except Exception:
+            logger.exception("ensure_topic_industry_grid_complete failed after approve_topic")
         db.refresh(topic)
     except Exception as e:
         db.rollback()
@@ -973,13 +1097,72 @@ class SubscriberOut(BaseModel):
     email: str
     first_name: str
     last_name: str
-    industry: str | None
-    domains: list[str] | None
-    role_id: int | None = None
+    industries: list[str] | None = None
+    domains: list[str] | None = None
+    role_ids: list[int] | None = None
     is_active: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class SubscriberCreate(BaseModel):
+    """Same fields as public subscribe, plus optional is_active — for manual admin setup."""
+
+    email: str
+    first_name: str
+    last_name: str
+    industries: list[str] | None = None
+    domains: list[str] | None = None
+    role_ids: list[int] | None = None
+    is_active: bool = True
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not _SUBSCRIBER_EMAIL_RE.match(v):
+            raise ValueError("Invalid email address")
+        return v
+
+    @field_validator("first_name", "last_name")
+    @classmethod
+    def not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Field cannot be blank")
+        return v
+
+
+@router.post("/subscribers", response_model=SubscriberOut, status_code=201)
+def create_subscriber(
+    payload: SubscriberCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """Create a subscriber manually (same data model as the public subscribe form)."""
+    if db.query(Subscriber).filter(Subscriber.email == payload.email).first():
+        raise HTTPException(
+            status_code=409,
+            detail="A subscriber with this email already exists",
+        )
+    inds, rids = validate_industries_and_role_ids(db, payload.industries, payload.role_ids)
+
+    subscriber = Subscriber(
+        email=payload.email,
+        first_name=payload.first_name,
+        last_name=payload.last_name,
+        industries=inds,
+        domains=payload.domains,
+        role_ids=rids,
+        is_active=payload.is_active,
+    )
+    db.add(subscriber)
+    db.commit()
+    db.refresh(subscriber)
+    background_tasks.add_task(sync_subscriber_to_hubspot, subscriber)
+    return subscriber
 
 
 @router.get("/subscribers", response_model=list[SubscriberOut])
@@ -990,8 +1173,59 @@ def list_subscribers(
     return db.query(Subscriber).order_by(Subscriber.created_at.desc()).all()
 
 
+@router.put("/subscribers/{subscriber_id}", response_model=SubscriberOut)
+def replace_subscriber(
+    subscriber_id: int,
+    payload: SubscriberCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """Replace subscriber fields (same payload as create). Syncs to HubSpot after save."""
+    subscriber = db.query(Subscriber).filter(Subscriber.id == subscriber_id).first()
+    if subscriber is None:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+    other = (
+        db.query(Subscriber)
+        .filter(Subscriber.email == payload.email, Subscriber.id != subscriber_id)
+        .first()
+    )
+    if other:
+        raise HTTPException(
+            status_code=409,
+            detail="Another subscriber already uses this email",
+        )
+    inds, rids = validate_industries_and_role_ids(db, payload.industries, payload.role_ids)
+
+    subscriber.email = payload.email
+    subscriber.first_name = payload.first_name
+    subscriber.last_name = payload.last_name
+    subscriber.industries = inds
+    subscriber.domains = payload.domains
+    subscriber.role_ids = rids
+    subscriber.is_active = payload.is_active
+    db.commit()
+    db.refresh(subscriber)
+    background_tasks.add_task(sync_subscriber_to_hubspot, subscriber)
+    return subscriber
+
+
+@router.delete("/subscribers/{subscriber_id}", status_code=204)
+def delete_subscriber(
+    subscriber_id: int,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    subscriber = db.query(Subscriber).filter(Subscriber.id == subscriber_id).first()
+    if subscriber is None:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+    db.delete(subscriber)
+    db.commit()
+    return None
+
+
 class SubscriberRoleUpdate(BaseModel):
-    role_id: int | None = None
+    role_ids: list[int] | None = None
 
 
 @router.put("/subscribers/{subscriber_id}/role", response_model=SubscriberOut)
@@ -1005,11 +1239,8 @@ def update_subscriber_role(
     subscriber = db.query(Subscriber).filter(Subscriber.id == subscriber_id).first()
     if subscriber is None:
         raise HTTPException(status_code=404, detail="Subscriber not found")
-    if payload.role_id is not None:
-        role = db.query(Role).filter(Role.id == payload.role_id).first()
-        if role is None:
-            raise HTTPException(status_code=404, detail="Role not found")
-    subscriber.role_id = payload.role_id
+    _, rids = validate_industries_and_role_ids(db, None, payload.role_ids)
+    subscriber.role_ids = rids
     db.commit()
     db.refresh(subscriber)
     background_tasks.add_task(sync_subscriber_to_hubspot, subscriber)
@@ -1215,21 +1446,44 @@ def delete_content(
 # ---------------------------------------------------------------------------
 
 
+@router.get("/newsletter/preview-filters")
+def newsletter_preview_filters(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    """
+    Canonical industry grid (same as Analysis / AI) plus distinct topic.domain values.
+
+    Domains are limited to **selected** topics — the same population as the Radar Publishing
+    table (`GET /topics?status=selected`), so chip labels match the DOMAIN column. (Daily sends
+    can still include watched or published topics; those domains are omitted here on purpose.)
+    """
+    domain_rows = (
+        db.query(Topic.domain)
+        .filter(Topic.status == TopicStatus.selected)
+        .distinct()
+        .order_by(Topic.domain.asc())
+        .all()
+    )
+    domains = [row[0] for row in domain_rows if row[0]]
+    return {"industries": list(INDUSTRY_GRID_LABELS), "domains": domains}
+
+
 @router.get("/newsletter/preview", response_class=HTMLResponse)
 def newsletter_preview(
     db: Session = Depends(get_db),
     _: None = Depends(require_admin),
-    industry: str | None = Query(default=None),
+    industries: list[str] = Query(default=[]),
     domains: list[str] = Query(default=[]),
-    role_id: int | None = Query(default=None),
+    role_ids: list[int] = Query(default=[]),
 ):
     """Return a fully rendered HTML newsletter for a simulated subscriber profile."""
     return HTMLResponse(
         content=generate_newsletter_preview(
             db,
-            industry=industry or None,
+            industries=industries or None,
             domains=domains or None,
-            role_id=role_id,
+            role_ids=role_ids or None,
         )
     )
 
@@ -1271,9 +1525,36 @@ def _run_ingest() -> None:
 
 
 def _run_process_raw() -> None:
+    from ..services.signal_service import (
+        backfill_missing_trend_suggestions,
+        cleanup_empty_topics,
+        refresh_all_signals,
+        run_signal_scorer,
+    )
+
     db = SessionLocal()
     try:
-        run_article_processing_pipeline(db)
+        processed = run_article_processing_pipeline(db)
+        if processed:
+            logger.info(
+                "Process-raw: %d articles done — running signal scorer for fresh velocity/acceleration",
+                processed,
+            )
+            try:
+                cleanup_empty_topics(db)
+                run_signal_scorer(db)
+            except Exception:
+                logger.exception("Signal scorer after process-raw failed")
+        try:
+            refresh_all_signals(db)
+        except Exception:
+            logger.exception("refresh_all_signals after process-raw failed")
+        try:
+            n = backfill_missing_trend_suggestions(db, limit=50)
+            if n:
+                logger.info("After process-raw job: trend suggestion backfill for %d topic(s)", n)
+        except Exception:
+            logger.exception("Trend suggestion backfill after process-raw failed")
     finally:
         db.close()
 
@@ -1315,12 +1596,17 @@ def trigger_newsletter(
 
 
 def _run_signals() -> None:
-    from ..services.signal_service import cleanup_empty_topics, run_signal_scorer
+    from ..services.signal_service import (
+        cleanup_empty_topics,
+        refresh_all_signals,
+        run_signal_scorer,
+    )
 
     db = SessionLocal()
     try:
         cleanup_empty_topics(db)
         run_signal_scorer(db)
+        refresh_all_signals(db)
     finally:
         db.close()
 
@@ -1344,7 +1630,11 @@ def _run_trend_analysis_all() -> None:
     try:
         queue = (
             db.query(Topic)
-            .filter(Topic.status.in_([TopicStatus.pending, TopicStatus.watched]))
+            .filter(
+                Topic.status.in_(
+                    [TopicStatus.pending, TopicStatus.watched, TopicStatus.selected]
+                )
+            )
             .all()
         )
         ok = 0
@@ -1364,6 +1654,6 @@ def trigger_trend_analysis(
     background_tasks: BackgroundTasks,
     _: None = Depends(require_admin),
 ):
-    """Run the AI trend-pick agent for every pending and watching topic (background)."""
+    """Run the AI trend-pick agent for every pending, watched, and selected topic (background)."""
     background_tasks.add_task(_run_trend_analysis_all)
-    return {"message": "AI trend analysis started for all pending topics."}
+    return {"message": "AI trend analysis started for all pipeline topics."}

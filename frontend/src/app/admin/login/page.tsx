@@ -56,6 +56,7 @@ export default function AdminLoginPage() {
             placeholder="Admin password"
             required
             autoFocus
+            suppressHydrationWarning
             className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
           />
           {error && <p className="text-sm text-red-400">{error}</p>}

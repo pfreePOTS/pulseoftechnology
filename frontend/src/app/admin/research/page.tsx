@@ -18,13 +18,13 @@ interface ArticleRow {
   archived_at?: string | null;
 }
 
-type StatusFilter = "all" | "raw" | "processed";
+type StatusFilter = "all" | "raw" | "processed" | "skipped";
 type ArchiveView = "active" | "archived";
 
 const PAGE_LIMIT = 200;
 
 function statusQueryParam(filter: StatusFilter): string {
-  if (filter === "all") return "raw,processed";
+  if (filter === "all") return "raw,processed,skipped";
   return filter;
 }
 
@@ -38,6 +38,13 @@ function formatPublished(iso: string | null): string {
 }
 
 type JobState = "idle" | "running" | "success" | "error";
+
+interface PipelineProgress {
+  raw: number;
+  processed: number;
+  skipped: number;
+  total: number;
+}
 
 export default function ResearchCollectionPage() {
   const [articles, setArticles] = useState<ArticleRow[]>([]);
@@ -53,6 +60,7 @@ export default function ResearchCollectionPage() {
   const [ingestJob, setIngestJob] = useState<JobState>("idle");
   const [processJob, setProcessJob] = useState<JobState>("idle");
   const [jobToast, setJobToast] = useState<string | null>(null);
+  const [progress, setProgress] = useState<PipelineProgress | null>(null);
 
   const fetchPage = useCallback(
     async (offset: number, append: boolean) => {
@@ -93,6 +101,28 @@ export default function ResearchCollectionPage() {
     })();
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function poll() {
+      try {
+        const res = await adminFetch(
+          `${API_BASE}/api/admin/articles/pipeline-progress`,
+        );
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as PipelineProgress;
+        if (!cancelled) setProgress(data);
+      } catch {
+        /* ignore */
+      }
+    }
+    void poll();
+    const id = setInterval(() => void poll(), 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
     };
   }, []);
 
@@ -220,6 +250,7 @@ export default function ResearchCollectionPage() {
             {jobToast}
           </p>
         ) : null}
+        {progress ? <PipelineTicker progress={progress} /> : null}
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -229,6 +260,7 @@ export default function ResearchCollectionPage() {
               ["all", "All"],
               ["raw", "Raw"],
               ["processed", "Processed"],
+              ["skipped", "Skipped"],
             ] as const
           ).map(([value, label]) => (
             <button
@@ -371,6 +403,62 @@ export default function ResearchCollectionPage() {
   );
 }
 
+function PipelineTicker({ progress }: { progress: PipelineProgress }) {
+  const { raw, processed, skipped, total } = progress;
+  const done = processed + skipped;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const isProcessing = raw > 0;
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+      <div className="flex items-center gap-2">
+        {isProcessing ? (
+          <span
+            className="inline-block size-2.5 animate-pulse rounded-full bg-amber-400"
+            aria-hidden
+          />
+        ) : (
+          <span
+            className="inline-block size-2.5 rounded-full bg-emerald-500"
+            aria-hidden
+          />
+        )}
+        <span className="font-medium text-gray-300">
+          {isProcessing
+            ? `Processing ${done} of ${total}`
+            : "All articles processed"}
+        </span>
+      </div>
+      <div className="flex items-center gap-3 text-xs text-gray-500">
+        <span>
+          <span className="text-emerald-400">{processed}</span> processed
+        </span>
+        {skipped > 0 && (
+          <span>
+            <span className="text-gray-400">{skipped}</span> skipped
+          </span>
+        )}
+        {raw > 0 && (
+          <span>
+            <span className="text-amber-400">{raw}</span> raw
+          </span>
+        )}
+      </div>
+      {total > 0 && (
+        <div className="flex w-48 items-center gap-2">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-800">
+            <div
+              className="h-full rounded-full bg-emerald-500 transition-all duration-700"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <span className="text-xs tabular-nums text-gray-500">{pct}%</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StatusBadge({ status }: { status: string }) {
   const s = status.toLowerCase();
   if (s === "raw") {
@@ -384,6 +472,13 @@ function StatusBadge({ status }: { status: string }) {
     return (
       <span className="inline-flex rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-medium text-emerald-400">
         processed
+      </span>
+    );
+  }
+  if (s === "skipped") {
+    return (
+      <span className="inline-flex rounded-full bg-gray-500/15 px-2.5 py-0.5 text-xs font-medium text-gray-400">
+        skipped
       </span>
     );
   }

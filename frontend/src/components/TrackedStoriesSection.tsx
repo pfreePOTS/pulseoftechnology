@@ -12,6 +12,8 @@ export type TrackedArticle = {
   ingested_at: string;
   domain: string;
   source_name: string | null;
+  /** Precomputed on the server so client hydration never re-formats dates. */
+  displayDate: string;
 };
 
 /** Matches domain badge colours used on the radar. */
@@ -25,20 +27,6 @@ const DOMAIN_COLORS: Record<string, string> = {
 };
 
 const TEASER_COUNT = 3;
-
-function formatStoryDate(iso: string | null): string {
-  if (!iso) return "";
-  try {
-    const d = new Date(iso);
-    return d.toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-      year: d.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
-    });
-  } catch {
-    return "";
-  }
-}
 
 export default function TrackedStoriesSection({ articles }: { articles: TrackedArticle[] }) {
   const teaserArticles = useMemo(
@@ -62,7 +50,7 @@ export default function TrackedStoriesSection({ articles }: { articles: TrackedA
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {teaserArticles.map((article) => {
             const color = DOMAIN_COLORS[article.domain] ?? DOMAIN_COLORS.Other;
-            const when = formatStoryDate(article.published_at ?? article.ingested_at);
+            const when = article.displayDate;
             return (
               <article
                 key={article.id}

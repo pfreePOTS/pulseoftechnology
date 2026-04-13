@@ -50,12 +50,14 @@ class Topic(Base):
     is_published: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False
     )
+    # Daily newsletter deep-dive copy (optional). Keys: what_is_it, what_changed, why_it_matters, what_to_do
+    newsletter_briefing: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
 
     articles: Mapped[list["Article"]] = relationship("Article", back_populates="topic")
 
     @property
     def article_count(self) -> int:
-        return len(self.articles)
+        return sum(1 for a in self.articles if a.archived_at is None)
 
     def __repr__(self) -> str:
         return f"<Topic id={self.id} name={self.name!r} domain={self.domain!r} status={self.status!r} adoption_state={self.adoption_state!r}>"

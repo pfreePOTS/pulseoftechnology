@@ -51,7 +51,7 @@ def _sub(**kw) -> SimpleNamespace:
         email="jane@example.com",
         first_name="Jane",
         last_name="Smith",
-        industry="Technology",
+        industries=["Technology"],
         domains=["AI", "Security"],
         is_active=True,
     )
@@ -121,7 +121,8 @@ class TestSendDailyNewsletter:
         mail_dict = mail_obj.get()
         assert "ceo@corp.com" in str(mail_dict)
 
-    def test_subject_includes_topic_count(self):
+    def test_subject_includes_topic_count(self, monkeypatch):
+        monkeypatch.setattr(email_service.settings, "sendgrid_newsletter_template_id", "")
         mock_sg = MagicMock()
         mock_sg.send.return_value = self._mock_response(202)
         topics = [_topic("AI", 9.0, "Topic A"), _topic("Security", 7.0, "Topic B")]
@@ -171,6 +172,38 @@ class TestAssembleNewsletterTopics:
         result = email_service.assemble_newsletter_topics(sub, topics)
         assert len(result) == 3
 
+    def test_filters_by_role_tags_when_domains_empty(self):
+        """Job title (Role) tags narrow topics when the subscriber did not pick domains."""
+        role = SimpleNamespace(tags=["Security", "Cloud"])
+        sub = _sub(domains=None, roles=[role])
+        topics = [
+            _topic("AI", 9.0, "A"),
+            _topic("Security", 8.0, "B"),
+            _topic("Cloud", 7.0, "C"),
+            _topic("Finance", 6.0, "D"),
+        ]
+        result = email_service.assemble_newsletter_topics(sub, topics)
+        names = {t.name for t in result}
+        assert names == {"B", "C"}
+
+    def test_subscriber_domains_override_role_tags(self):
+        """Explicit wizard domains win over role tags."""
+        role = SimpleNamespace(tags=["Security", "Cloud"])
+        sub = _sub(domains=["AI"], roles=[role])
+        topics = [
+            _topic("AI", 9.0, "A"),
+            _topic("Security", 8.0, "B"),
+        ]
+        result = email_service.assemble_newsletter_topics(sub, topics)
+        assert [t.name for t in result] == ["A"]
+
+    def test_role_tag_match_is_case_insensitive(self):
+        role = SimpleNamespace(tags=["security"])
+        sub = _sub(domains=None, roles=[role])
+        topics = [_topic("Security", 8.0, "S")]
+        result = email_service.assemble_newsletter_topics(sub, topics)
+        assert len(result) == 1 and result[0].name == "S"
+
     def test_returns_empty_when_no_match(self):
         sub = _sub(domains=["Leadership"])
         topics = [_topic("AI"), _topic("Security")]
@@ -187,6 +220,18 @@ class TestAssembleNewsletterTopics:
         result = email_service.assemble_newsletter_topics(sub, topics)
         scores = [t.urgency_score for t in result]
         assert scores == sorted(scores, reverse=True)
+
+    def test_skip_domain_filter_returns_full_pool(self):
+        """Preview mode: ignore role-tag narrowing when skip_domain_filter is set."""
+        role = SimpleNamespace(tags=["Finance"])
+        sub = _sub(domains=None, roles=[role])
+        topics = [_topic("AI", 9.0, "A"), _topic("Security", 8.0, "B")]
+        narrow = email_service.assemble_newsletter_topics(sub, topics)
+        assert len(narrow) == 0
+        full = email_service.assemble_newsletter_topics(
+            sub, topics, skip_domain_filter=True
+        )
+        assert len(full) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -241,3 +286,38 @@ class TestRunDailyNewsletter:
             email_service.run_daily_newsletter(mock_db)
 
         mock_send.assert_not_called()
+
+
+def test_deep_dive_section_has_structured_briefing_and_trending():
+    from ..models.topic import AdoptionState
+
+    topic = SimpleNamespace(
+        id=42,
+        name="AI Agents",
+        domain="AI",
+        urgency_score=8.0,
+        summary="Legacy block summary should not appear as one blob when briefing is set.",
+        newsletter_briefing={
+            "what_is_it": "Enterprises are wiring agents into workflows.",
+            "what_changed": "New vendor partnerships shifted the pace.",
+            "why_it_matters": "Leaders must balance speed and control.",
+            "what_to_do": "Pilot on one high-value workflow first.",
+        },
+        industry_positions=None,
+        adoption_state=AdoptionState.learn_about,
+    )
+    mock_db = MagicMock()
+    with patch.object(email_service, "newsletter_topic_velocity_trend", return_value="up"):
+        html = email_service._build_deep_dive_section(
+            topic,
+            [],
+            [],
+            "Leader",
+            subscriber=None,
+            db=mock_db,
+        )
+    assert "What it is (today)" in html
+    assert "What has changed" in html
+    assert "Trending" in html
+    assert "&#8593;" in html
+    assert "Enterprises are wiring agents" in html

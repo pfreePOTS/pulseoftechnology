@@ -4,12 +4,11 @@ Signal Intelligence service.
 Calculates article velocity/acceleration per topic and uses Claude to generate
 watch | radar | remove recommendations when thresholds are met.
 
-Velocity/acceleration are measured in two ways (with automatic fallback):
-  1. Semantic (Pinecone) — queries the vector index for semantically similar
-     articles within each time window, catching cross-topic coverage of the
-     same underlying trend.
-  2. SQL fallback — plain article count per topic_id when Pinecone is not
-     configured or the query fails.
+Velocity/acceleration use a **coverage timestamp** per article:
+``GREATEST(ingested_at, published_at)`` for window membership (see ``_article_coverage_time``).
+
+For the high-velocity scorer only, counts may use Pinecone-derived article IDs first, then the same
+coverage-time SQL filter; SQL fallback uses plain counts per topic when Pinecone is off or empty.
 
 Also provides topic cleanup utilities.
 """
@@ -26,6 +25,20 @@ from ..models.topic import Topic, TopicStatus
 from .pipeline_settings import merge_pipeline_settings
 
 logger = logging.getLogger(__name__)
+
+
+def _article_coverage_time():
+    """
+    Effective time for trend windows: max(ingested_at, published_at).
+
+    RSS sets ingested_at when the row is created; published_at is the story date. Using only
+    ingested_at made velocity 0 for backlog processing and misaligned the table with
+    “latest article” dates users see in Collection.
+    """
+    return func.greatest(
+        Article.ingested_at,
+        func.coalesce(Article.published_at, Article.ingested_at),
+    )
 
 
 def _normalize_trend_action(raw: str | None) -> str:
@@ -51,7 +64,14 @@ ACCELERATION_THRESHOLD = 1.5
 def compute_topic_velocity_metrics(topic_id: int, db: Session) -> tuple[float, float]:
     """
     Live article velocity (count in primary window) and acceleration (ratio vs prior window).
-    Same windows as run_signal_scorer — used for API responses even when no SignalRecommendation exists.
+
+    Counts articles whose **coverage time** falls in each window: ``GREATEST(ingested_at,
+    published_at)`` so backlog processing and same-day publishes align with “latest article” in
+    the admin table. Windows come from ``MergedPipelineSettings.trend_window_days`` /
+    ``trend_prior_window_days`` (Admin → Settings or env defaults).
+
+    Intentionally does **not** use the Pinecone path for these headline numbers: semantic matches
+    can diverge from timestamps and confused the admin table vs SQL counts.
     """
     merged = merge_pipeline_settings(db)
     tw = merged.trend_window_days
@@ -59,8 +79,8 @@ def compute_topic_velocity_metrics(topic_id: int, db: Session) -> tuple[float, f
     now = datetime.now(UTC)
     recent_start = now - timedelta(days=tw)
     prior_start = now - timedelta(days=tw + pw)
-    velocity = float(_article_count_in_window(topic_id, recent_start, now, db))
-    prev_count = _article_count_in_window(topic_id, prior_start, recent_start, db)
+    velocity = float(_sql_count(topic_id, recent_start, now, db))
+    prev_count = _sql_count(topic_id, prior_start, recent_start, db)
     acceleration = velocity / max(prev_count, 1)
     return velocity, acceleration
 
@@ -84,18 +104,34 @@ def upsert_pending_trend_signal(topic_id: int, db: Session) -> SignalRecommendat
     recent_start = now - timedelta(days=tw)
     velocity, acceleration = compute_topic_velocity_metrics(topic_id, db)
 
+    ct = _article_coverage_time()
     recent_articles: list[Article] = (
         db.query(Article)
         .filter(
             Article.topic_id == topic_id,
-            Article.ingested_at >= recent_start,
+            ct >= recent_start,
             Article.archived_at.is_(None),
         )
         .all()
     )
 
+    total_linked = (
+        db.query(func.count(Article.id))
+        .filter(Article.topic_id == topic_id, Article.archived_at.is_(None))
+        .scalar()
+        or 0
+    )
+
     try:
-        result = evaluate_trend_pick(topic, recent_articles, db)
+        result = evaluate_trend_pick(
+            topic,
+            recent_articles,
+            db,
+            velocity=float(velocity),
+            acceleration=float(acceleration),
+            total_linked=int(total_linked),
+            window_days=tw,
+        )
     except Exception:
         logger.exception("evaluate_trend_pick failed for topic %d", topic_id)
         return None
@@ -117,6 +153,7 @@ def upsert_pending_trend_signal(topic_id: int, db: Session) -> SignalRecommendat
         existing.rationale = rationale
         existing.velocity_score = velocity
         existing.acceleration_score = acceleration
+        existing.created_at = datetime.now(UTC)
         db.commit()
         db.refresh(existing)
         return existing
@@ -156,9 +193,7 @@ def backfill_missing_trend_suggestions(db: Session, *, limit: int = 25) -> int:
     if ids_with_signal:
         q = q.filter(~Topic.id.in_(ids_with_signal))
     candidates = (
-        q.order_by(Topic.urgency_score.desc().nulls_last(), Topic.id.desc())
-        .limit(limit)
-        .all()
+        q.order_by(Topic.urgency_score.desc().nulls_last(), Topic.id.desc()).limit(limit).all()
     )
     ok = 0
     for topic in candidates:
@@ -174,13 +209,14 @@ def backfill_missing_trend_suggestions(db: Session, *, limit: int = 25) -> int:
 
 
 def _sql_count(topic_id: int, start: datetime, end: datetime, db: Session) -> int:
-    """SQL fallback: count non-archived articles assigned to topic_id within the window."""
+    """SQL fallback: count non-archived articles whose coverage time falls in [start, end)."""
+    ct = _article_coverage_time()
     return (
         db.query(func.count(Article.id))
         .filter(
             Article.topic_id == topic_id,
-            Article.ingested_at >= start,
-            Article.ingested_at < end,
+            ct >= start,
+            ct < end,
             Article.archived_at.is_(None),
         )
         .scalar()
@@ -208,14 +244,15 @@ def _article_count_in_window(topic_id: int, start: datetime, end: datetime, db: 
         if matches:  # empty list means Pinecone not configured, not "zero articles"
             article_ids = [m.get("article_id") for m in matches if m.get("article_id")]
             if article_ids:
+                ct = _article_coverage_time()
                 return (
                     db.query(func.count(Article.id))
                     .filter(
                         Article.id.in_(article_ids),
                         Article.topic_id == topic_id,
                         Article.archived_at.is_(None),
-                        Article.ingested_at >= start,
-                        Article.ingested_at < end,
+                        ct >= start,
+                        ct < end,
                     )
                     .scalar()
                     or 0
@@ -273,15 +310,23 @@ def run_signal_scorer(db: Session) -> int:
             logger.debug("Skipping topic %d — pending signal already exists", topic.id)
             continue
 
+        ct = _article_coverage_time()
         # Fetch recent articles for the AI context
         recent_articles: list[Article] = (
             db.query(Article)
             .filter(
                 Article.topic_id == topic.id,
-                Article.ingested_at >= recent_start,
+                ct >= recent_start,
                 Article.archived_at.is_(None),
             )
             .all()
+        )
+
+        total_linked = (
+            db.query(func.count(Article.id))
+            .filter(Article.topic_id == topic.id, Article.archived_at.is_(None))
+            .scalar()
+            or 0
         )
 
         logger.info(
@@ -292,7 +337,15 @@ def run_signal_scorer(db: Session) -> int:
         )
 
         try:
-            result = evaluate_trend_pick(topic, recent_articles, db)
+            result = evaluate_trend_pick(
+                topic,
+                recent_articles,
+                db,
+                velocity=float(velocity),
+                acceleration=float(acceleration),
+                total_linked=int(total_linked),
+                window_days=tw,
+            )
         except Exception:
             logger.exception("Error evaluating trend pick for topic %d", topic.id)
             continue
@@ -321,6 +374,58 @@ def run_signal_scorer(db: Session) -> int:
 
     logger.info("Signal scorer complete: %d new recommendations", created)
     return created
+
+
+def refresh_all_signals(db: Session) -> int:
+    """
+    Re-evaluate every watched and selected topic regardless of velocity thresholds,
+    and refresh any pending topic whose existing signal is older than 24 h.
+
+    This keeps the Suggestion column, velocity, and acceleration up to date on
+    the Trend Discovery page so curators can promote/demote topics daily.
+
+    Returns the number of signals created or updated.
+    """
+    refreshed = 0
+
+    # Always refresh watched + selected (the active radar pipeline)
+    radar_topics: list[Topic] = (
+        db.query(Topic)
+        .filter(Topic.status.in_([TopicStatus.watched, TopicStatus.selected]))
+        .all()
+    )
+    for topic in radar_topics:
+        try:
+            row = upsert_pending_trend_signal(topic.id, db)
+            if row is not None:
+                refreshed += 1
+        except Exception:
+            logger.exception("refresh_all_signals failed for radar topic %d", topic.id)
+
+    # Refresh pending topics that already have a signal older than 24 h
+    cutoff = datetime.now(UTC) - timedelta(hours=24)
+    stale_signals = (
+        db.query(SignalRecommendation)
+        .join(Topic, SignalRecommendation.topic_id == Topic.id)
+        .filter(
+            Topic.status == TopicStatus.pending,
+            SignalRecommendation.status == "pending",
+            SignalRecommendation.created_at < cutoff,
+        )
+        .all()
+    )
+    stale_topic_ids = {s.topic_id for s in stale_signals}
+    for tid in stale_topic_ids:
+        try:
+            row = upsert_pending_trend_signal(tid, db)
+            if row is not None:
+                refreshed += 1
+        except Exception:
+            logger.exception("refresh_all_signals failed for pending topic %d", tid)
+
+    if refreshed:
+        logger.info("refresh_all_signals: updated %d topic(s)", refreshed)
+    return refreshed
 
 
 def cleanup_empty_topics(db: Session) -> int:

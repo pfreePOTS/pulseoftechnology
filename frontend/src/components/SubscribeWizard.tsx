@@ -41,8 +41,8 @@ interface FormData {
   email: string;
   first_name: string;
   last_name: string;
-  role_id: number | null;
-  industry: string;
+  role_ids: number[];
+  industries: string[];
   domains: string[];
 }
 
@@ -93,8 +93,8 @@ export default function SubscribeWizard({ apiBase }: Props) {
     email: "",
     first_name: "",
     last_name: "",
-    role_id: null,
-    industry: "",
+    role_ids: [],
+    industries: [],
     domains: [],
   });
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
@@ -147,6 +147,26 @@ export default function SubscribeWizard({ apiBase }: Props) {
     }));
   }
 
+  function toggleRoleId(id: number) {
+    setForm((prev) => ({
+      ...prev,
+      role_ids: prev.role_ids.includes(id)
+        ? prev.role_ids.filter((x) => x !== id)
+        : [...prev.role_ids, id],
+    }));
+    setErrors((prev) => ({ ...prev, role_ids: undefined }));
+  }
+
+  function toggleIndustry(ind: string) {
+    setForm((prev) => ({
+      ...prev,
+      industries: prev.industries.includes(ind)
+        ? prev.industries.filter((x) => x !== ind)
+        : [...prev.industries, ind],
+    }));
+    setErrors((prev) => ({ ...prev, industries: undefined }));
+  }
+
   function validateStep1(): boolean {
     const e: typeof errors = {};
     if (!form.first_name.trim()) e.first_name = "Required";
@@ -162,16 +182,16 @@ export default function SubscribeWizard({ apiBase }: Props) {
 
   function validateStep2(): boolean {
     if (roles.length === 0) return true;
-    if (form.role_id === null) {
-      setErrors({ role_id: "Please select your role" });
+    if (form.role_ids.length === 0) {
+      setErrors({ role_ids: "Select at least one role" });
       return false;
     }
     return true;
   }
 
   function validateStep3(): boolean {
-    if (!form.industry) {
-      setErrors({ industry: "Please select your industry" });
+    if (form.industries.length === 0) {
+      setErrors({ industries: "Select at least one industry" });
       return false;
     }
     return true;
@@ -194,8 +214,8 @@ export default function SubscribeWizard({ apiBase }: Props) {
       email: "",
       first_name: "",
       last_name: "",
-      role_id: null,
-      industry: "",
+      role_ids: [],
+      industries: [],
       domains: [],
     });
     setStep(1);
@@ -216,8 +236,8 @@ export default function SubscribeWizard({ apiBase }: Props) {
           email: form.email.trim().toLowerCase(),
           first_name: form.first_name.trim(),
           last_name: form.last_name.trim(),
-          role_id: form.role_id,
-          industry: form.industry || null,
+          role_ids: form.role_ids.length > 0 ? form.role_ids : null,
+          industries: form.industries.length > 0 ? form.industries : null,
           domains: form.domains.length > 0 ? form.domains : null,
         }),
       });
@@ -276,7 +296,13 @@ export default function SubscribeWizard({ apiBase }: Props) {
   }
 
   if (done) {
-    const roleLabel = roles.find((r) => r.id === form.role_id)?.name ?? "your role";
+    const roleLabel =
+      form.role_ids.length > 0
+        ? form.role_ids
+            .map((id) => roles.find((r) => r.id === id)?.name)
+            .filter(Boolean)
+            .join(", ") || "your role"
+        : "your role";
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-pulse-teal/10">
@@ -303,8 +329,14 @@ export default function SubscribeWizard({ apiBase }: Props) {
   const allDomainsMode = form.domains.length === 0;
 
   const roleLabel =
-    roles.find((r) => r.id === form.role_id)?.name ??
-    (roles.length === 0 ? "Not specified" : "—");
+    form.role_ids.length > 0
+      ? form.role_ids
+          .map((id) => roles.find((r) => r.id === id)?.name)
+          .filter(Boolean)
+          .join(", ") || (roles.length === 0 ? "Not specified" : "—")
+      : roles.length === 0
+        ? "Not specified"
+        : "—";
 
   const inputCls =
     "w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:border-pulse-teal focus:outline-none focus:ring-2 focus:ring-pulse-teal";
@@ -367,7 +399,9 @@ export default function SubscribeWizard({ apiBase }: Props) {
 
           {step === 2 && (
             <div>
-              <label className="mb-2 block text-xs font-medium text-gray-700">Your role</label>
+              <label className="mb-2 block text-xs font-medium text-gray-700">
+                Your role (select one or more)
+              </label>
               {!rolesError && roles.length === 0 && (
                 <p className="mb-2 text-sm text-gray-600">
                   Role options are not available yet; you can continue and we&apos;ll still personalize your briefing by
@@ -377,45 +411,55 @@ export default function SubscribeWizard({ apiBase }: Props) {
               {rolesError ? (
                 <p className="text-sm text-red-600">{rolesError}</p>
               ) : roles.length > 0 ? (
-                <select
-                  value={form.role_id ?? ""}
-                  onChange={(e) =>
-                    set("role_id", e.target.value === "" ? null : Number(e.target.value))
-                  }
-                  className={`${inputCls} appearance-none`}
-                >
-                  <option value="" disabled>
-                    Select your role…
-                  </option>
-                  {roles.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex flex-wrap gap-2">
+                  {roles.map((r) => {
+                    const on = form.role_ids.includes(r.id);
+                    return (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => toggleRoleId(r.id)}
+                        className={`rounded-full px-4 py-2 text-xs font-semibold ring-1 ring-inset transition-colors ${
+                          on
+                            ? "bg-pulse-teal/15 text-pulse-teal ring-pulse-teal/40"
+                            : "bg-white text-gray-700 ring-gray-200 hover:bg-gray-50"
+                        }`}
+                      >
+                        {r.name}
+                      </button>
+                    );
+                  })}
+                </div>
               ) : null}
-              {errors.role_id && <p className={errorCls}>{errors.role_id}</p>}
+              {errors.role_ids && <p className={errorCls}>{errors.role_ids}</p>}
             </div>
           )}
 
           {step === 3 && (
             <div>
-              <label className="mb-2 block text-xs font-medium text-gray-700">Your industry</label>
-              <select
-                value={form.industry}
-                onChange={(e) => set("industry", e.target.value)}
-                className={`${inputCls} appearance-none`}
-              >
-                <option value="" disabled>
-                  Select your industry…
-                </option>
-                {INDUSTRIES.map((ind) => (
-                  <option key={ind} value={ind}>
-                    {ind}
-                  </option>
-                ))}
-              </select>
-              {errors.industry && <p className={errorCls}>{errors.industry}</p>}
+              <label className="mb-2 block text-xs font-medium text-gray-700">
+                Your industry (select one or more)
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {INDUSTRIES.map((ind) => {
+                  const on = form.industries.includes(ind);
+                  return (
+                    <button
+                      key={ind}
+                      type="button"
+                      onClick={() => toggleIndustry(ind)}
+                      className={`rounded-full px-4 py-2 text-xs font-semibold ring-1 ring-inset transition-colors ${
+                        on
+                          ? "bg-pulse-teal/15 text-pulse-teal ring-pulse-teal/40"
+                          : "bg-white text-gray-700 ring-gray-200 hover:bg-gray-50"
+                      }`}
+                    >
+                      {ind}
+                    </button>
+                  );
+                })}
+              </div>
+              {errors.industries && <p className={errorCls}>{errors.industries}</p>}
             </div>
           )}
 
@@ -543,7 +587,9 @@ export default function SubscribeWizard({ apiBase }: Props) {
                   <div className="flex flex-wrap items-start justify-between gap-2 py-3">
                     <div>
                       <dt className="text-xs font-medium text-gray-500">Industry</dt>
-                      <dd className="mt-0.5 text-sm text-gray-900">{form.industry}</dd>
+                      <dd className="mt-0.5 text-sm text-gray-900">
+                        {form.industries.length > 0 ? form.industries.join(", ") : "—"}
+                      </dd>
                     </div>
                     <button
                       type="button"

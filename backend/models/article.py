@@ -11,6 +11,8 @@ class ArticleStatus(str, enum.Enum):
     raw = "raw"
     processed = "processed"
     published = "published"
+    skipped = "skipped"  # gated as irrelevant or permanent failure — no retry
+    retry = "retry"  # transient error (API, parse) — requeue by scheduler or manual job
 
 
 class Article(Base):

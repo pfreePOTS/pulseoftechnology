@@ -1,5 +1,5 @@
 from sqlalchemy import JSON, Integer, String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
 
@@ -12,8 +12,6 @@ class Role(Base):
     # List of domain/tag strings that define what content this role cares about.
     # e.g. ["AI", "Security", "Leadership"] for a CTO profile.
     tags: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
-
-    subscribers: Mapped[list["Subscriber"]] = relationship("Subscriber", back_populates="role")
 
     def __repr__(self) -> str:
         return f"<Role id={self.id} name={self.name!r}>"

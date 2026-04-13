@@ -6,10 +6,10 @@ Performs a one-way push of subscriber data to HubSpot contacts.
 Custom HubSpot properties required (create these in HubSpot Settings → Properties):
   - pulse_domains   (string)  — comma-separated domain interests, e.g. "AI,Security"
   - pulse_subscribed (string/checkbox) — "true" / "false"
-  - pulse_role (string) — subscriber persona label, e.g. "CTO"
+  - pulse_role (string) — subscriber persona label(s), e.g. "CTO" or "CTO, CFO"
 
 Standard HubSpot properties used (exist by default):
-  - email, firstname, lastname, industry
+  - email, firstname, lastname, industry (comma-separated when multiple)
 """
 
 import logging
@@ -21,10 +21,10 @@ from hubspot.crm.contacts import (
     SimplePublicObjectInputForCreate,
 )
 from hubspot.crm.contacts.exceptions import ApiException
-from sqlalchemy.orm import joinedload
 
 from ..config import settings
 from ..database import SessionLocal
+from ..models.role import Role
 from ..models.subscriber import Subscriber
 
 logger = logging.getLogger(__name__)
@@ -48,20 +48,29 @@ def _get_hs_client() -> hubspot.Client:
 # ---------------------------------------------------------------------------
 
 
+def _role_names_from_subscriber(subscriber: Subscriber) -> list[str]:
+    roles_attr = getattr(subscriber, "roles", None)
+    if roles_attr is not None:
+        return [(getattr(r, "name", None) or "").strip() for r in roles_attr if (getattr(r, "name", None) or "").strip()]
+    single = getattr(subscriber, "role", None)
+    if single is not None and getattr(single, "name", None):
+        return [single.name.strip()]
+    return []
+
+
 def _build_properties(subscriber: Subscriber) -> dict[str, str]:
-    role_name = ""
-    role_obj = getattr(subscriber, "role", None)
-    if role_obj is not None:
-        role_name = role_obj.name or ""
+    industries = getattr(subscriber, "industries", None) or []
+    industry_str = ", ".join(industries) if industries else ""
+    role_names = _role_names_from_subscriber(subscriber)
     return {
         "email": subscriber.email,
         "firstname": subscriber.first_name,
         "lastname": subscriber.last_name,
-        "industry": subscriber.industry or "",
+        "industry": industry_str,
         # Custom PulseOne properties
         "pulse_domains": ",".join(subscriber.domains or []),
         "pulse_subscribed": "true" if subscriber.is_active else "false",
-        "pulse_role": role_name,
+        "pulse_role": ", ".join(role_names),
     }
 
 
@@ -88,12 +97,14 @@ def sync_subscriber_to_hubspot(subscriber: Subscriber) -> bool:
     try:
         db = SessionLocal()
         try:
-            sub = (
-                db.query(Subscriber)
-                .options(joinedload(Subscriber.role))
-                .filter(Subscriber.id == subscriber.id)
-                .first()
-            )
+            sub = db.query(Subscriber).filter(Subscriber.id == subscriber.id).first()
+            if sub is not None:
+                rids = sub.role_ids or []
+                if rids:
+                    rows = db.query(Role).filter(Role.id.in_(rids)).all()
+                    order = {rid: i for i, rid in enumerate(rids)}
+                    rows.sort(key=lambda r: order.get(r.id, 999))
+                    sub.roles = rows  # type: ignore[attr-defined]
         finally:
             db.close()
     except Exception:

@@ -1,7 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { adminFetch, API_BASE } from "@/lib/api";
@@ -22,6 +31,8 @@ export interface TopicRow {
   signal_rationale: string | null;
   signal_suggested_action: string | null;
   signal_id: number | null;
+  /** ISO datetime: newest linked article (published_at, else ingested_at). */
+  latest_article_at?: string | null;
 }
 
 interface TopicDetailArticle {
@@ -112,6 +123,56 @@ function fmtOneDecimal(n: number | null): string {
   return n.toFixed(1);
 }
 
+type PipelineTrendWindows = {
+  trend_window_days: number;
+  trend_prior_window_days: number;
+};
+
+const DEFAULT_TREND_WINDOWS: PipelineTrendWindows = {
+  trend_window_days: 7,
+  trend_prior_window_days: 7,
+};
+
+/** Explains velocity for the native `title` tooltip on table cells and charts. */
+function velocityTooltipText(row: TopicRow, w: PipelineTrendWindows): string {
+  const tw = w.trend_window_days;
+  const v = row.velocity_score;
+  const n = typeof v === "number" && !Number.isNaN(v) ? v : 0;
+  const base = `Velocity is how many linked articles have coverage time in the last ${tw} days. Coverage time is the later of publication date and when Pulse stored the RSS row (UTC). Archived articles are excluded.`;
+  if (n === 0) {
+    return `${base} This shows 0.0 because nothing falls in that window—stories may be older than ${tw} days, or there are no linked articles yet. Total linked articles on this topic: ${row.article_count}.`;
+  }
+  return `${base} Current value: ${n.toFixed(1)} article(s) in the last ${tw} days.`;
+}
+
+/** Explains acceleration (ratio vs prior window) for the native `title` tooltip. */
+function accelerationTooltipText(row: TopicRow, w: PipelineTrendWindows): string {
+  const tw = w.trend_window_days;
+  const pw = w.trend_prior_window_days;
+  const v = row.velocity_score;
+  const a = row.acceleration_score;
+  const base = `Acceleration is velocity divided by max(prior-window article count, 1). The prior window is the ${pw} days immediately before the last ${tw}-day primary window. Values above 1.0 mean more activity than in that prior period.`;
+  if (a === null || Number.isNaN(a)) {
+    return "Acceleration is not available for this row.";
+  }
+  const vn = typeof v === "number" && !Number.isNaN(v) ? v : 0;
+  if (vn === 0) {
+    return `${base} With velocity 0, acceleration is ${a.toFixed(1)}× (no articles in the primary window, so the ratio is zero).`;
+  }
+  return `${base} Current value: ${a.toFixed(1)}×.`;
+}
+
+function MetricHint({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <span
+      className="cursor-help underline decoration-dotted decoration-gray-500/70 underline-offset-2"
+      title={title}
+    >
+      {children}
+    </span>
+  );
+}
+
 function articleSourceLabel(a: TopicDetailArticle): string {
   if (a.source_name?.trim()) return a.source_name;
   try {
@@ -132,12 +193,122 @@ function fmtPublished(iso: string | null): string {
   });
 }
 
+function IconChevronDown({ className, expanded }: { className?: string; expanded?: boolean }) {
+  return (
+    <svg
+      className={`${className ?? ""} ${expanded ? "rotate-180" : ""} transition-transform duration-200`}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+    </svg>
+  );
+}
+
+/** Articles shown under an expanded topic row (proof for velocity / acceleration). */
+function ArticleProofList({ articles }: { articles: TopicDetailArticle[] }) {
+  const sorted = useMemo(() => {
+    return [...articles].sort((a, b) => {
+      const ta = a.published_at ? new Date(a.published_at).getTime() : 0;
+      const tb = b.published_at ? new Date(b.published_at).getTime() : 0;
+      return tb - ta;
+    });
+  }, [articles]);
+
+  if (sorted.length === 0) {
+    return (
+      <p className="px-1 py-2 text-xs text-gray-500">No articles linked to this topic yet.</p>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-gray-800/90 bg-gray-950/90">
+      <p className="border-b border-gray-800 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+        Supporting articles ({sorted.length})
+      </p>
+      <ul className="max-h-[min(400px,55vh)] divide-y divide-gray-800/80 overflow-y-auto">
+        {sorted.map((a) => (
+          <li key={a.id} className="px-3 py-2.5">
+            <a
+              href={a.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-medium text-indigo-400 hover:text-indigo-300 hover:underline"
+            >
+              {a.title}
+            </a>
+            <p className="mt-0.5 text-[11px] text-gray-500">
+              {articleSourceLabel(a)} · {fmtPublished(a.published_at)}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Primary cluster cell: domain + subdomain on one line, topic title, rationale, subdomain AI. */
+function TopicClusterCell({
+  row,
+  rowBusy,
+  onSuggestSubdomain,
+  onOpenDetail,
+}: {
+  row: TopicRow;
+  rowBusy: boolean;
+  onSuggestSubdomain: (id: number) => void;
+  onOpenDetail: (id: number) => void;
+}) {
+  return (
+    <div className="min-w-0 max-w-md">
+      <div className="flex flex-wrap items-center gap-2">
+        <DomainPill domain={row.domain} />
+        <SubdomainPill text={row.subdomain} />
+      </div>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpenDetail(row.id);
+        }}
+        className="mt-1.5 block w-full text-left font-semibold text-white hover:text-indigo-200"
+      >
+        {row.name}
+      </button>
+      {row.signal_rationale?.trim() ? (
+        <p className="mt-1 line-clamp-2 text-xs italic text-gray-500">{row.signal_rationale}</p>
+      ) : null}
+      <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          disabled={rowBusy}
+          onClick={() => void onSuggestSubdomain(row.id)}
+          className="text-[10px] font-medium text-cyan-400/90 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
+          title="Optional: re-run sub-domain from this topic’s articles if auto-fill after ingest missed it (or to retry after API issues). Normal flow: Process raw articles fills sub-domains when ANTHROPIC_API_KEY is set."
+        >
+          {rowBusy ? "…" : "Refresh sub-domain"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const topicToolbarBtn =
+  "inline-flex items-center justify-center rounded border border-gray-700/90 bg-gray-900/80 px-1.5 py-0.5 text-[10px] font-medium leading-tight text-gray-200 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50";
+
 function VelocityMini({
   velocity,
   acceleration,
+  velocityTitle,
+  accelerationTitle,
 }: {
   velocity: number | null;
   acceleration: number | null;
+  velocityTitle?: string;
+  accelerationTitle?: string;
 }) {
   const v = typeof velocity === "number" && !Number.isNaN(velocity) ? velocity : 0;
   const a = typeof acceleration === "number" && !Number.isNaN(acceleration) ? acceleration : 0;
@@ -146,15 +317,22 @@ function VelocityMini({
   return (
     <div className="flex gap-3 rounded-lg border border-gray-800 bg-gray-900/50 p-3">
       <div className="flex flex-1 flex-col gap-1">
-        <span className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Velocity (7d)</span>
+        <span className="text-[10px] font-medium uppercase tracking-wide text-gray-500">
+          Velocity (coverage window)
+        </span>
         <div className="flex h-14 items-end rounded-md bg-gray-800/80 px-2 pt-2">
           <div
             className="w-full min-h-[6px] rounded-sm bg-indigo-500/90 transition-[height]"
             style={{ height: `${vh}%` }}
-            title={`${v.toFixed(1)} articles`}
+            title={velocityTitle ?? `${v.toFixed(1)} articles in the primary window`}
           />
         </div>
-        <span className="text-center text-xs tabular-nums text-indigo-300">{fmtOneDecimal(velocity)}</span>
+        <span
+          className="cursor-help text-center text-xs tabular-nums text-indigo-300 underline decoration-dotted decoration-indigo-400/50 underline-offset-2"
+          title={velocityTitle}
+        >
+          {fmtOneDecimal(velocity)}
+        </span>
       </div>
       <div className="flex flex-1 flex-col gap-1">
         <span className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Acceleration</span>
@@ -162,10 +340,13 @@ function VelocityMini({
           <div
             className="w-full min-h-[6px] rounded-sm bg-amber-500/90 transition-[height]"
             style={{ height: `${ah}%` }}
-            title={`${a.toFixed(2)}× vs prior week`}
+            title={accelerationTitle ?? `${a.toFixed(2)}× vs prior window`}
           />
         </div>
-        <span className="text-center text-xs tabular-nums text-amber-300">
+        <span
+          className="cursor-help text-center text-xs tabular-nums text-amber-300 underline decoration-dotted decoration-amber-400/50 underline-offset-2"
+          title={accelerationTitle}
+        >
           {acceleration === null || Number.isNaN(acceleration) ? "—" : `${acceleration.toFixed(1)}×`}
         </span>
       </div>
@@ -173,7 +354,7 @@ function VelocityMini({
   );
 }
 
-type SortColumn = "velocity" | "acceleration" | "articles";
+type SortColumn = "velocity" | "acceleration" | "articles" | "latest_article";
 
 function SubdomainPill({ text }: { text: string | null | undefined }) {
   const s = (text || "").trim();
@@ -190,49 +371,28 @@ function SubdomainPill({ text }: { text: string | null | undefined }) {
   );
 }
 
-function SubdomainCell({
-  row,
-  busy,
-  onSuggest,
-}: {
-  row: TopicRow;
-  busy: boolean;
-  onSuggest: (id: number) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
-      <SubdomainPill text={row.subdomain} />
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => void onSuggest(row.id)}
-        className="self-start text-[10px] font-medium text-cyan-400/90 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
-        title="Suggest a sub-domain theme (AI) — groups trends as Domain × Sub-domain × Topic"
-      >
-        {busy ? "…" : "AI label"}
-      </button>
-    </div>
-  );
-}
-
 function SortHeader({
   label,
   column,
   sortColumn,
   sortDir,
   onSort,
+  headerTitle,
 }: {
   label: string;
   column: SortColumn;
   sortColumn: SortColumn;
   sortDir: "asc" | "desc";
   onSort: (c: SortColumn) => void;
+  /** Optional: longer hint for column meaning (shown on hover over header). */
+  headerTitle?: string;
 }) {
   const active = sortColumn === column;
   return (
     <th className="px-3 py-3">
       <button
         type="button"
+        title={headerTitle}
         onClick={(e) => {
           e.stopPropagation();
           onSort(column);
@@ -298,6 +458,8 @@ function TrendDiscoveryInner() {
   const [topics, setTopics] = useState<TopicRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** Short-lived confirmation so Analyze / Refresh sub-domain feel responsive (no visible change if data unchanged). */
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [approvingId, setApprovingId] = useState<number | null>(null);
   const [watchingId, setWatchingId] = useState<number | null>(null);
   const [demotingId, setDemotingId] = useState<number | null>(null);
@@ -317,8 +479,16 @@ function TrendDiscoveryInner() {
   const [filterDomain, setFilterDomain] = useState("");
   const [filterSubdomain, setFilterSubdomain] = useState("");
   const [filterAction, setFilterAction] = useState("");
-  const [sortColumn, setSortColumn] = useState<SortColumn>("velocity");
+  const [sortColumn, setSortColumn] = useState<SortColumn>("latest_article");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [pipelineWindows, setPipelineWindows] =
+    useState<PipelineTrendWindows>(DEFAULT_TREND_WINDOWS);
+  /** Expanded topic rows → show supporting articles */
+  const [expandedRows, setExpandedRows] = useState<Record<number, boolean>>({});
+  const [topicArticles, setTopicArticles] = useState<Record<number, TopicDetailArticle[]>>({});
+  const [topicArticlesLoadingId, setTopicArticlesLoadingId] = useState<number | null>(null);
+  const articleFetchInflight = useRef<Set<number>>(new Set());
+  const articlesLoadedRef = useRef<Set<number>>(new Set());
   const selectedTopicIdRef = useRef<number | null>(null);
   selectedTopicIdRef.current = selectedTopicId;
 
@@ -355,6 +525,70 @@ function TrendDiscoveryInner() {
   useEffect(() => {
     void loadTopics();
   }, [loadTopics]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await adminFetch(`${API_BASE}/api/admin/settings`);
+        if (!res.ok) return;
+        const data = (await res.json()) as Partial<PipelineTrendWindows>;
+        setPipelineWindows({
+          trend_window_days:
+            typeof data.trend_window_days === "number" && data.trend_window_days > 0
+              ? data.trend_window_days
+              : DEFAULT_TREND_WINDOWS.trend_window_days,
+          trend_prior_window_days:
+            typeof data.trend_prior_window_days === "number" && data.trend_prior_window_days > 0
+              ? data.trend_prior_window_days
+              : DEFAULT_TREND_WINDOWS.trend_prior_window_days,
+        });
+      } catch {
+        /* keep defaults */
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    setExpandedRows({});
+    setTopicArticles({});
+    setTopicArticlesLoadingId(null);
+    articleFetchInflight.current.clear();
+    articlesLoadedRef.current.clear();
+  }, [statusParam]);
+
+  const ensureTopicArticles = useCallback(async (id: number) => {
+    if (articlesLoadedRef.current.has(id) || articleFetchInflight.current.has(id)) return;
+    articleFetchInflight.current.add(id);
+    setTopicArticlesLoadingId(id);
+    try {
+      const res = await adminFetch(`${API_BASE}/api/admin/topics/${id}`);
+      if (res.ok) {
+        const data = (await res.json()) as TopicDetailResponse;
+        const arts = data.articles ?? [];
+        setTopicArticles((c) => ({ ...c, [id]: arts }));
+      } else {
+        setTopicArticles((c) => ({ ...c, [id]: [] }));
+      }
+      articlesLoadedRef.current.add(id);
+    } catch {
+      setTopicArticles((c) => ({ ...c, [id]: [] }));
+      articlesLoadedRef.current.add(id);
+    } finally {
+      articleFetchInflight.current.delete(id);
+      setTopicArticlesLoadingId((cur) => (cur === id ? null : cur));
+    }
+  }, []);
+
+  const toggleTopicExpanded = useCallback(
+    (id: number) => {
+      setExpandedRows((prev) => {
+        const nextOpen = !prev[id];
+        if (nextOpen) void ensureTopicArticles(id);
+        return { ...prev, [id]: nextOpen };
+      });
+    },
+    [ensureTopicArticles],
+  );
 
   useEffect(() => {
     setSelectedIds(new Set());
@@ -432,6 +666,12 @@ function TrendDiscoveryInner() {
       }
       return true;
     });
+    const latestTime = (row: TopicRow): number | null => {
+      const iso = row.latest_article_at;
+      if (!iso) return null;
+      const t = new Date(iso).getTime();
+      return Number.isNaN(t) ? null : t;
+    };
     const cmp = (a: TopicRow, b: TopicRow) => {
       const dir = sortDir === "asc" ? 1 : -1;
       let delta = 0;
@@ -439,6 +679,13 @@ function TrendDiscoveryInner() {
         delta = (a.velocity_score ?? -1) - (b.velocity_score ?? -1);
       } else if (sortColumn === "acceleration") {
         delta = (a.acceleration_score ?? -1) - (b.acceleration_score ?? -1);
+      } else if (sortColumn === "latest_article") {
+        const ta = latestTime(a);
+        const tb = latestTime(b);
+        if (ta === null && tb === null) delta = 0;
+        else if (ta === null) delta = 1;
+        else if (tb === null) delta = -1;
+        else delta = ta - tb;
       } else {
         delta = a.article_count - b.article_count;
       }
@@ -565,6 +812,7 @@ function TrendDiscoveryInner() {
   async function analyzeTopicTrend(id: number) {
     setAnalyzingId(id);
     setError(null);
+    setActionSuccess(null);
     try {
       const res = await adminFetch(`${API_BASE}/api/admin/topics/${id}/trend-analysis`, {
         method: "POST",
@@ -575,6 +823,10 @@ function TrendDiscoveryInner() {
         return;
       }
       await loadTopics();
+      setActionSuccess(
+        "Analyze: updated Watch / Radar / Remove suggestion and rationale (see Suggestion column and italic text under the topic).",
+      );
+      window.setTimeout(() => setActionSuccess(null), 8000);
       if (selectedTopicIdRef.current === id) {
         const detailRes = await adminFetch(`${API_BASE}/api/admin/topics/${id}`);
         if (detailRes.ok) {
@@ -617,6 +869,7 @@ function TrendDiscoveryInner() {
   async function suggestSubdomainForRow(id: number) {
     setSubdomainSuggestingId(id);
     setError(null);
+    setActionSuccess(null);
     try {
       const res = await adminFetch(`${API_BASE}/api/admin/topics/${id}/suggest-subdomain`, {
         method: "POST",
@@ -626,6 +879,8 @@ function TrendDiscoveryInner() {
         return;
       }
       await loadTopics();
+      setActionSuccess("Sub-domain refreshed (grey pill next to the domain badge).");
+      window.setTimeout(() => setActionSuccess(null), 8000);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sub-domain suggestion failed");
     } finally {
@@ -728,17 +983,38 @@ function TrendDiscoveryInner() {
     });
   }, [topicDetail?.articles]);
 
+  const velocityHeaderHint = useMemo(
+    () =>
+      `Sort by primary-window article count (last ${pipelineWindows.trend_window_days} days, coverage time). Hover a cell for details.`,
+    [pipelineWindows.trend_window_days],
+  );
+  const accelerationHeaderHint = useMemo(
+    () =>
+      `Sort by acceleration vs the ${pipelineWindows.trend_prior_window_days} days before that. Hover a cell for details.`,
+    [pipelineWindows.trend_prior_window_days],
+  );
+
   return (
     <div className="mx-auto max-w-6xl">
       <header className="mb-8">
         <h1 className="text-3xl font-bold tracking-tight text-white">Trend Discovery</h1>
         <p className="mt-1 max-w-3xl text-sm text-gray-400">
-          Sort the table by velocity, acceleration, or article count. Sub-domains are{" "}
+          Each row is one topic cluster: domain and sub-domain on the first line with velocity, acceleration, and article
+          count. Use the chevron to expand and see all supporting articles. Sort the table by velocity, acceleration, or
+          article count. Sub-domains are{" "}
           <strong className="text-gray-300">filled automatically</strong> when articles are processed (ingestion); use{" "}
-          <span className="text-gray-300">AI label</span> or <span className="text-gray-300">AI sub-domains (group)</span>{" "}
-          to refresh. If rows stay under <span className="text-gray-300">General</span>, run{" "}
+          <span className="text-gray-300">Refresh sub-domain</span> or <span className="text-gray-300">AI sub-domains (group)</span>{" "}
+          only if you need a manual retry. If rows stay under <span className="text-gray-300">General</span>, run{" "}
           <span className="text-gray-300">System Jobs → Process Raw Articles</span> (or RSS Ingestion); labeling needs{" "}
-          <span className="text-gray-300">ANTHROPIC_API_KEY</span>. Velocity = articles in the trend window; acceleration = ratio vs the prior window.{" "}
+          <span className="text-gray-300">ANTHROPIC_API_KEY</span>.{" "}
+          <strong className="text-gray-300">Velocity</strong> counts articles in the rolling window using{" "}
+          <strong className="text-gray-300">coverage time</strong> — the later of publish date or when Pulse
+          stored the RSS row (UTC). That matches backlog processing and the{" "}
+          <strong className="text-gray-300">Latest article</strong> column better than ingest-only. Window length
+          comes from <span className="text-gray-300">Admin → Settings</span> (defaults: 7 + 7 days). It can still be{" "}
+          <strong className="text-gray-300">0</strong> when all linked stories fall outside the window.{" "}
+          <strong className="text-gray-300">Acceleration</strong> is velocity divided by
+          the prior window&apos;s count.{" "}
           <strong className="text-gray-300">Suggestion</strong> is <strong className="text-gray-300">Watch</strong> /{" "}
           <strong className="text-gray-300">Radar</strong> / <strong className="text-gray-300">Remove</strong> from Claude Haiku
           (topic status + recent article blurbs). It auto-fills after RSS ingestion and in the daily signal job for topics
@@ -754,6 +1030,15 @@ function TrendDiscoveryInner() {
           role="alert"
         >
           {error}
+        </div>
+      )}
+
+      {actionSuccess && (
+        <div
+          className="mb-4 rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200"
+          role="status"
+        >
+          {actionSuccess}
         </div>
       )}
 
@@ -913,10 +1198,11 @@ function TrendDiscoveryInner() {
           <p className="py-12 text-center text-sm text-gray-500">No topics match the current filters.</p>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-gray-800">
-            <table className="w-full min-w-[1040px] text-left text-sm">
+            <table className="w-full min-w-[960px] text-left text-sm">
               <thead className="bg-gray-900 text-xs uppercase tracking-wide text-gray-500">
                 <tr>
-                  <th className="w-10 px-3 py-3">
+                  <th className="w-9 px-2 py-3" aria-hidden />
+                  <th className="w-10 px-2 py-3">
                     <input
                       type="checkbox"
                       className="rounded border-gray-600 bg-gray-900 text-indigo-500 focus:ring-indigo-500/40"
@@ -925,15 +1211,21 @@ function TrendDiscoveryInner() {
                       title="Select all"
                     />
                   </th>
-                  <th className="px-3 py-3">Domain</th>
-                  <th className="px-3 py-3">Sub-domain</th>
-                  <th className="px-3 py-3">Topic</th>
+                  <th className="min-w-[220px] px-3 py-3">Domain · Sub-domain · Topic</th>
+                  <SortHeader
+                    label="Latest article"
+                    column="latest_article"
+                    sortColumn={sortColumn}
+                    sortDir={sortDir}
+                    onSort={toggleSort}
+                  />
                   <SortHeader
                     label="Velocity"
                     column="velocity"
                     sortColumn={sortColumn}
                     sortDir={sortDir}
                     onSort={toggleSort}
+                    headerTitle={velocityHeaderHint}
                   />
                   <SortHeader
                     label="Acceleration"
@@ -941,6 +1233,7 @@ function TrendDiscoveryInner() {
                     sortColumn={sortColumn}
                     sortDir={sortDir}
                     onSort={toggleSort}
+                    headerTitle={accelerationHeaderHint}
                   />
                   <SortHeader
                     label="Articles"
@@ -950,11 +1243,14 @@ function TrendDiscoveryInner() {
                     onSort={toggleSort}
                   />
                   <th className="px-3 py-3">Suggestion</th>
-                  <th className="px-3 py-3 text-right">Actions</th>
+                  <th className="w-[140px] px-2 py-3 text-right font-semibold normal-case tracking-normal">
+                    Tools
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800 bg-gray-950">
                 {displayedTopics.map((row) => {
+                  const expanded = !!expandedRows[row.id];
                   const rowBusy =
                     analyzingId === row.id ||
                     approvingId === row.id ||
@@ -962,112 +1258,128 @@ function TrendDiscoveryInner() {
                     demotingId === row.id ||
                     subdomainSuggestingId === row.id ||
                     subdomainBulkBusy;
+                  const arts = topicArticles[row.id];
+                  const artsLoad = topicArticlesLoadingId === row.id;
                   return (
-                    <tr
-                      key={row.id}
-                      tabIndex={0}
-                      onClick={() => setSelectedTopicId(row.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          setSelectedTopicId(row.id);
-                        }
-                      }}
-                      className={`cursor-pointer border-l-2 transition-colors hover:bg-gray-900/40 ${
-                        selectedTopicId === row.id
-                          ? "border-indigo-500 bg-indigo-500/5"
-                          : "border-transparent"
-                      }`}
-                    >
-                      <td className="px-3 py-3 align-top" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          className="rounded border-gray-600 bg-gray-900 text-indigo-500 focus:ring-indigo-500/40"
-                          checked={selectedIds.has(row.id)}
-                          onChange={(e) => toggleRow(row.id, e.target.checked)}
-                        />
-                      </td>
-                      <td className="px-3 py-3 align-top">
-                        <DomainPill domain={row.domain} />
-                      </td>
-                      <td className="px-3 py-3 align-top">
-                        <SubdomainCell row={row} busy={rowBusy} onSuggest={suggestSubdomainForRow} />
-                      </td>
-                      <td className="max-w-xs px-3 py-3 align-top">
-                        <p className="font-semibold text-white">{row.name}</p>
-                        {row.signal_rationale?.trim() ? (
-                          <p className="mt-1 line-clamp-2 text-xs italic text-gray-400">{row.signal_rationale}</p>
-                        ) : null}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
-                        {fmtOneDecimal(row.velocity_score)}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
-                        {row.acceleration_score === null || Number.isNaN(row.acceleration_score)
-                          ? "—"
-                          : `${row.acceleration_score.toFixed(1)}x`}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">{row.article_count}</td>
-                      <td className="px-3 py-3 align-top">
-                        <TrendPickBadge action={row.signal_suggested_action} />
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3 align-top text-right" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex flex-wrap items-center justify-end gap-2">
+                    <Fragment key={row.id}>
+                      <tr
+                        className={`border-l-2 transition-colors hover:bg-gray-900/40 ${
+                          selectedTopicId === row.id
+                            ? "border-indigo-500 bg-indigo-500/5"
+                            : "border-transparent"
+                        }`}
+                      >
+                        <td className="px-2 py-3 align-top">
                           <button
                             type="button"
-                            disabled={rowBusy}
-                            onClick={() => void analyzeTopicTrend(row.id)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/50 bg-indigo-500/15 px-2.5 py-1.5 text-xs font-medium text-indigo-200 hover:bg-indigo-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => toggleTopicExpanded(row.id)}
+                            className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-white"
+                            aria-expanded={expanded}
+                            aria-label={expanded ? "Hide supporting articles" : "Show supporting articles"}
                           >
-                            {analyzingId === row.id ? (
-                              <>
-                                <Spinner className="h-3.5 w-3.5" />
-                                AI…
-                              </>
-                            ) : (
-                              "AI analyze"
-                            )}
+                            <IconChevronDown className="h-4 w-4" expanded={expanded} />
                           </button>
-                          <button
-                            type="button"
-                            disabled={rowBusy}
-                            onClick={() => void watchTopic(row.id)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/50 bg-amber-500/15 px-2.5 py-1.5 text-xs font-medium text-amber-200 hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {watchingId === row.id ? (
-                              <>
-                                <Spinner className="h-3.5 w-3.5" />
-                                …
-                              </>
-                            ) : (
-                              "Watch"
-                            )}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={rowBusy}
-                            onClick={() => void approveTopic(row.id)}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {approvingId === row.id ? (
-                              <>
-                                <Spinner className="h-3.5 w-3.5" />
-                                <span>Approving…</span>
-                              </>
-                            ) : (
-                              "Approve"
-                            )}
-                          </button>
-                          <Link
-                            href={`/admin/topics/${row.id}`}
-                            className="inline-flex items-center gap-1 text-xs font-medium text-indigo-400 hover:text-indigo-300"
-                          >
-                            <IconPencil className="h-4 w-4" />
-                            Edit
-                          </Link>
-                        </div>
-                      </td>
-                    </tr>
+                        </td>
+                        <td className="px-2 py-3 align-top" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            className="rounded border-gray-600 bg-gray-900 text-indigo-500 focus:ring-indigo-500/40"
+                            checked={selectedIds.has(row.id)}
+                            onChange={(e) => toggleRow(row.id, e.target.checked)}
+                          />
+                        </td>
+                        <td className="px-3 py-3 align-top">
+                          <TopicClusterCell
+                            row={row}
+                            rowBusy={rowBusy}
+                            onSuggestSubdomain={suggestSubdomainForRow}
+                            onOpenDetail={setSelectedTopicId}
+                          />
+                        </td>
+                        <td
+                          className="whitespace-nowrap px-3 py-3 align-top text-xs text-gray-400"
+                          title="Publication date of the most recent linked article (or ingest date if unknown)"
+                        >
+                          {fmtPublished(row.latest_article_at)}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
+                          <MetricHint title={velocityTooltipText(row, pipelineWindows)}>
+                            {fmtOneDecimal(row.velocity_score)}
+                          </MetricHint>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
+                          {row.acceleration_score === null || Number.isNaN(row.acceleration_score) ? (
+                            <MetricHint title={accelerationTooltipText(row, pipelineWindows)}>—</MetricHint>
+                          ) : (
+                            <MetricHint title={accelerationTooltipText(row, pipelineWindows)}>
+                              {`${row.acceleration_score.toFixed(1)}x`}
+                            </MetricHint>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">{row.article_count}</td>
+                        <td className="px-3 py-3 align-top">
+                          <TrendPickBadge action={row.signal_suggested_action} />
+                        </td>
+                        <td className="px-2 py-3 align-top text-right" onClick={(e) => e.stopPropagation()}>
+                          <div className="inline-flex flex-wrap items-center justify-end gap-0.5">
+                            <button
+                              type="button"
+                              disabled={rowBusy}
+                              title="Re-run Claude Haiku trend pick: fills Suggestion (Watch/Radar/Remove) and italic rationale. Needs ANTHROPIC_API_KEY."
+                              onClick={() => void analyzeTopicTrend(row.id)}
+                              className={`${topicToolbarBtn} border-indigo-500/40 text-indigo-200 hover:border-indigo-400`}
+                            >
+                              {analyzingId === row.id ? (
+                                <Spinner className="h-3 w-3" />
+                              ) : (
+                                "Analyze"
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={rowBusy}
+                              title="Watch"
+                              onClick={() => void watchTopic(row.id)}
+                              className={`${topicToolbarBtn} border-amber-500/35 text-amber-200/90`}
+                            >
+                              {watchingId === row.id ? <Spinner className="h-3 w-3" /> : "Watch"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={rowBusy}
+                              title="Approve to radar"
+                              onClick={() => void approveTopic(row.id)}
+                              className={`${topicToolbarBtn} border-emerald-600/50 bg-emerald-900/30 text-emerald-200 hover:bg-emerald-900/45`}
+                            >
+                              {approvingId === row.id ? <Spinner className="h-3 w-3" /> : "Radar"}
+                            </button>
+                            <Link
+                              href={`/admin/topics/${row.id}`}
+                              title="Edit topic"
+                              className={`${topicToolbarBtn} border-gray-600 text-gray-400 hover:text-indigo-300`}
+                            >
+                              <IconPencil className="h-3 w-3" />
+                            </Link>
+                          </div>
+                        </td>
+                      </tr>
+                      {expanded ? (
+                        <tr className="bg-gray-900/40">
+                          <td colSpan={9} className="px-3 pb-4 pt-0">
+                            <div className="ml-6 border-l border-gray-700 pl-4">
+                              {artsLoad ? (
+                                <div className="flex items-center gap-2 py-4 text-xs text-gray-500">
+                                  <Spinner className="h-4 w-4" />
+                                  Loading articles…
+                                </div>
+                              ) : (
+                                <ArticleProofList articles={arts ?? []} />
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -1084,18 +1396,25 @@ function TrendDiscoveryInner() {
           <p className="py-12 text-center text-sm text-gray-500">No topics match the current filters.</p>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-gray-800">
-            <table className="w-full min-w-[1000px] text-left text-sm">
+            <table className="w-full min-w-[900px] text-left text-sm">
               <thead className="bg-gray-900 text-xs uppercase tracking-wide text-gray-500">
                 <tr>
-                  <th className="px-3 py-3">Domain</th>
-                  <th className="px-3 py-3">Sub-domain</th>
-                  <th className="px-3 py-3">Topic</th>
+                  <th className="w-9 px-2 py-3" aria-hidden />
+                  <th className="min-w-[220px] px-3 py-3">Domain · Sub-domain · Topic</th>
+                  <SortHeader
+                    label="Latest article"
+                    column="latest_article"
+                    sortColumn={sortColumn}
+                    sortDir={sortDir}
+                    onSort={toggleSort}
+                  />
                   <SortHeader
                     label="Velocity"
                     column="velocity"
                     sortColumn={sortColumn}
                     sortDir={sortDir}
                     onSort={toggleSort}
+                    headerTitle={velocityHeaderHint}
                   />
                   <SortHeader
                     label="Acceleration"
@@ -1103,6 +1422,7 @@ function TrendDiscoveryInner() {
                     sortColumn={sortColumn}
                     sortDir={sortDir}
                     onSort={toggleSort}
+                    headerTitle={accelerationHeaderHint}
                   />
                   <SortHeader
                     label="Articles"
@@ -1112,11 +1432,14 @@ function TrendDiscoveryInner() {
                     onSort={toggleSort}
                   />
                   <th className="px-3 py-3">Suggestion</th>
-                  <th className="px-3 py-3 text-right">Actions</th>
+                  <th className="w-[120px] px-2 py-3 text-right font-semibold normal-case tracking-normal">
+                    Tools
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800 bg-gray-950">
                 {displayedTopics.map((row) => {
+                  const expanded = !!expandedRows[row.id];
                   const rowBusy =
                     analyzingId === row.id ||
                     approvingId === row.id ||
@@ -1124,87 +1447,105 @@ function TrendDiscoveryInner() {
                     demotingId === row.id ||
                     subdomainSuggestingId === row.id ||
                     subdomainBulkBusy;
+                  const arts = topicArticles[row.id];
+                  const artsLoad = topicArticlesLoadingId === row.id;
                   return (
-                    <tr
-                      key={row.id}
-                      tabIndex={0}
-                      onClick={() => setSelectedTopicId(row.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          setSelectedTopicId(row.id);
-                        }
-                      }}
-                      className={`cursor-pointer border-l-2 transition-colors hover:bg-gray-900/40 ${
-                        selectedTopicId === row.id ? "border-indigo-500 bg-indigo-500/5" : "border-transparent"
-                      }`}
-                    >
-                      <td className="px-3 py-3 align-top">
-                        <DomainPill domain={row.domain} />
-                      </td>
-                      <td className="px-3 py-3 align-top">
-                        <SubdomainCell row={row} busy={rowBusy} onSuggest={suggestSubdomainForRow} />
-                      </td>
-                      <td className="max-w-xs px-3 py-3 align-top">
-                        <p className="font-semibold text-white">{row.name}</p>
-                        {row.signal_rationale?.trim() ? (
-                          <p className="mt-1 line-clamp-2 text-xs italic text-gray-400">{row.signal_rationale}</p>
-                        ) : null}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
-                        {fmtOneDecimal(row.velocity_score)}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
-                        {row.acceleration_score === null || Number.isNaN(row.acceleration_score)
-                          ? "—"
-                          : `${row.acceleration_score.toFixed(1)}x`}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">{row.article_count}</td>
-                      <td className="px-3 py-3 align-top">
-                        <TrendPickBadge action={row.signal_suggested_action} />
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3 align-top text-right" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex flex-wrap items-center justify-end gap-2">
+                    <Fragment key={row.id}>
+                      <tr
+                        className={`border-l-2 transition-colors hover:bg-gray-900/40 ${
+                          selectedTopicId === row.id ? "border-indigo-500 bg-indigo-500/5" : "border-transparent"
+                        }`}
+                      >
+                        <td className="px-2 py-3 align-top">
                           <button
                             type="button"
-                            disabled={rowBusy}
-                            onClick={() => void analyzeTopicTrend(row.id)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/50 bg-indigo-500/15 px-2.5 py-1.5 text-xs font-medium text-indigo-200 hover:bg-indigo-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => toggleTopicExpanded(row.id)}
+                            className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-white"
+                            aria-expanded={expanded}
+                            aria-label={expanded ? "Hide supporting articles" : "Show supporting articles"}
                           >
-                            {analyzingId === row.id ? (
-                              <>
-                                <Spinner className="h-3.5 w-3.5" />
-                                AI…
-                              </>
-                            ) : (
-                              "AI analyze"
-                            )}
+                            <IconChevronDown className="h-4 w-4" expanded={expanded} />
                           </button>
-                          <button
-                            type="button"
-                            disabled={rowBusy}
-                            onClick={() => void approveTopic(row.id)}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {approvingId === row.id ? (
-                              <>
-                                <Spinner className="h-3.5 w-3.5" />
-                                <span>Approving…</span>
-                              </>
-                            ) : (
-                              "Approve"
-                            )}
-                          </button>
-                          <Link
-                            href={`/admin/topics/${row.id}`}
-                            className="inline-flex items-center gap-1 text-xs font-medium text-indigo-400 hover:text-indigo-300"
-                          >
-                            <IconPencil className="h-4 w-4" />
-                            Edit
-                          </Link>
-                        </div>
-                      </td>
-                    </tr>
+                        </td>
+                        <td className="px-3 py-3 align-top">
+                          <TopicClusterCell
+                            row={row}
+                            rowBusy={rowBusy}
+                            onSuggestSubdomain={suggestSubdomainForRow}
+                            onOpenDetail={setSelectedTopicId}
+                          />
+                        </td>
+                        <td
+                          className="whitespace-nowrap px-3 py-3 align-top text-xs text-gray-400"
+                          title="Publication date of the most recent linked article (or ingest date if unknown)"
+                        >
+                          {fmtPublished(row.latest_article_at)}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
+                          <MetricHint title={velocityTooltipText(row, pipelineWindows)}>
+                            {fmtOneDecimal(row.velocity_score)}
+                          </MetricHint>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
+                          {row.acceleration_score === null || Number.isNaN(row.acceleration_score) ? (
+                            <MetricHint title={accelerationTooltipText(row, pipelineWindows)}>—</MetricHint>
+                          ) : (
+                            <MetricHint title={accelerationTooltipText(row, pipelineWindows)}>
+                              {`${row.acceleration_score.toFixed(1)}x`}
+                            </MetricHint>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">{row.article_count}</td>
+                        <td className="px-3 py-3 align-top">
+                          <TrendPickBadge action={row.signal_suggested_action} />
+                        </td>
+                        <td className="px-2 py-3 align-top text-right" onClick={(e) => e.stopPropagation()}>
+                          <div className="inline-flex flex-wrap items-center justify-end gap-0.5">
+                            <button
+                              type="button"
+                              disabled={rowBusy}
+                              title="Re-run Claude Haiku trend pick: fills Suggestion (Watch/Radar/Remove) and italic rationale. Needs ANTHROPIC_API_KEY."
+                              onClick={() => void analyzeTopicTrend(row.id)}
+                              className={`${topicToolbarBtn} border-indigo-500/40 text-indigo-200 hover:border-indigo-400`}
+                            >
+                              {analyzingId === row.id ? <Spinner className="h-3 w-3" /> : "Analyze"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={rowBusy}
+                              title="Approve to radar"
+                              onClick={() => void approveTopic(row.id)}
+                              className={`${topicToolbarBtn} border-emerald-600/50 bg-emerald-900/30 text-emerald-200 hover:bg-emerald-900/45`}
+                            >
+                              {approvingId === row.id ? <Spinner className="h-3 w-3" /> : "Radar"}
+                            </button>
+                            <Link
+                              href={`/admin/topics/${row.id}`}
+                              title="Edit topic"
+                              className={`${topicToolbarBtn} border-gray-600 text-gray-400 hover:text-indigo-300`}
+                            >
+                              <IconPencil className="h-3 w-3" />
+                            </Link>
+                          </div>
+                        </td>
+                      </tr>
+                      {expanded ? (
+                        <tr className="bg-gray-900/40">
+                          <td colSpan={8} className="px-3 pb-4 pt-0">
+                            <div className="ml-6 border-l border-gray-700 pl-4">
+                              {artsLoad ? (
+                                <div className="flex items-center gap-2 py-4 text-xs text-gray-500">
+                                  <Spinner className="h-4 w-4" />
+                                  Loading articles…
+                                </div>
+                              ) : (
+                                <ArticleProofList articles={arts ?? []} />
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -1219,18 +1560,25 @@ function TrendDiscoveryInner() {
         <p className="py-12 text-center text-sm text-gray-500">No topics match the current filters.</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-gray-800">
-          <table className="w-full min-w-[1080px] text-left text-sm">
+          <table className="w-full min-w-[1000px] text-left text-sm">
             <thead className="bg-gray-900 text-xs uppercase tracking-wide text-gray-500">
               <tr>
-                <th className="px-3 py-3">Domain</th>
-                <th className="px-3 py-3">Sub-domain</th>
-                <th className="px-3 py-3">Topic</th>
+                <th className="w-9 px-2 py-3" aria-hidden />
+                <th className="min-w-[220px] px-3 py-3">Domain · Sub-domain · Topic</th>
+                <SortHeader
+                  label="Latest article"
+                  column="latest_article"
+                  sortColumn={sortColumn}
+                  sortDir={sortDir}
+                  onSort={toggleSort}
+                />
                 <SortHeader
                   label="Velocity"
                   column="velocity"
                   sortColumn={sortColumn}
                   sortDir={sortDir}
                   onSort={toggleSort}
+                  headerTitle={velocityHeaderHint}
                 />
                 <SortHeader
                   label="Acceleration"
@@ -1238,6 +1586,7 @@ function TrendDiscoveryInner() {
                   sortColumn={sortColumn}
                   sortDir={sortDir}
                   onSort={toggleSort}
+                  headerTitle={accelerationHeaderHint}
                 />
                 <SortHeader
                   label="Articles"
@@ -1248,11 +1597,14 @@ function TrendDiscoveryInner() {
                 />
                 <th className="px-3 py-3">Suggestion</th>
                 <th className="px-3 py-3">Published</th>
-                <th className="px-3 py-3 text-right">Actions</th>
+                <th className="w-[120px] px-2 py-3 text-right font-semibold normal-case tracking-normal">
+                  Tools
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800 bg-gray-950">
               {displayedTopics.map((row) => {
+                const expanded = !!expandedRows[row.id];
                 const rowBusy =
                   analyzingId === row.id ||
                   approvingId === row.id ||
@@ -1260,99 +1612,116 @@ function TrendDiscoveryInner() {
                   demotingId === row.id ||
                   subdomainSuggestingId === row.id ||
                   subdomainBulkBusy;
+                const arts = topicArticles[row.id];
+                const artsLoad = topicArticlesLoadingId === row.id;
                 return (
-                  <tr
-                    key={row.id}
-                    tabIndex={0}
-                    onClick={() => setSelectedTopicId(row.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        setSelectedTopicId(row.id);
-                      }
-                    }}
-                    className={`cursor-pointer border-l-2 transition-colors hover:bg-gray-900/40 ${
-                      selectedTopicId === row.id ? "border-indigo-500 bg-indigo-500/5" : "border-transparent"
-                    }`}
-                  >
-                    <td className="px-3 py-3 align-top">
-                      <DomainPill domain={row.domain} />
-                    </td>
-                    <td className="px-3 py-3 align-top">
-                      <SubdomainCell row={row} busy={rowBusy} onSuggest={suggestSubdomainForRow} />
-                    </td>
-                    <td className="max-w-md px-3 py-3 align-top">
-                      <p className="font-semibold text-white">{row.name}</p>
-                      {row.signal_rationale?.trim() ? (
-                        <p className="mt-1 line-clamp-2 text-xs italic text-gray-400">{row.signal_rationale}</p>
-                      ) : null}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
-                      {fmtOneDecimal(row.velocity_score)}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
-                      {row.acceleration_score === null || Number.isNaN(row.acceleration_score)
-                        ? "—"
-                        : `${row.acceleration_score.toFixed(1)}x`}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">{row.article_count}</td>
-                    <td className="px-3 py-3 align-top">
-                      <TrendPickBadge action={row.signal_suggested_action} />
-                    </td>
-                    <td className="px-3 py-3 align-top">
-                      {row.is_published ? (
-                        <span className="inline-flex rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400 ring-1 ring-emerald-500/30">
-                          Yes
-                        </span>
-                      ) : (
-                        <span className="inline-flex rounded-full bg-gray-800 px-2 py-0.5 text-xs font-medium text-gray-400 ring-1 ring-gray-700">
-                          No
-                        </span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3 align-top text-right" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex flex-wrap items-center justify-end gap-2">
+                  <Fragment key={row.id}>
+                    <tr
+                      className={`border-l-2 transition-colors hover:bg-gray-900/40 ${
+                        selectedTopicId === row.id ? "border-indigo-500 bg-indigo-500/5" : "border-transparent"
+                      }`}
+                    >
+                      <td className="px-2 py-3 align-top">
                         <button
                           type="button"
-                          disabled={rowBusy}
-                          onClick={() => void analyzeTopicTrend(row.id)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/50 bg-indigo-500/15 px-2.5 py-1.5 text-xs font-medium text-indigo-200 hover:bg-indigo-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+                          onClick={() => toggleTopicExpanded(row.id)}
+                          className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-white"
+                          aria-expanded={expanded}
+                          aria-label={expanded ? "Hide supporting articles" : "Show supporting articles"}
                         >
-                          {analyzingId === row.id ? (
-                            <>
-                              <Spinner className="h-3.5 w-3.5" />
-                              AI…
-                            </>
-                          ) : (
-                            "AI analyze"
-                          )}
+                          <IconChevronDown className="h-4 w-4" expanded={expanded} />
                         </button>
-                        <button
-                          type="button"
-                          disabled={rowBusy}
-                          onClick={() => void demoteTopic(row.id)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/50 bg-rose-500/15 px-2.5 py-1.5 text-xs font-medium text-rose-200 hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-60"
-                          title="Move back to Watching (unpublish)"
-                        >
-                          {demotingId === row.id ? (
-                            <>
-                              <Spinner className="h-3.5 w-3.5" />
-                              …
-                            </>
-                          ) : (
-                            "Demote"
-                          )}
-                        </button>
-                        <Link
-                          href={`/admin/topics/${row.id}`}
-                          className="inline-flex items-center gap-1 text-xs font-medium text-indigo-400 hover:text-indigo-300"
-                        >
-                          <IconPencil className="h-4 w-4" />
-                          Edit
-                        </Link>
-                      </div>
-                    </td>
-                  </tr>
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        <TopicClusterCell
+                          row={row}
+                          rowBusy={rowBusy}
+                          onSuggestSubdomain={suggestSubdomainForRow}
+                          onOpenDetail={setSelectedTopicId}
+                        />
+                      </td>
+                      <td
+                        className="whitespace-nowrap px-3 py-3 align-top text-xs text-gray-400"
+                        title="Publication date of the most recent linked article (or ingest date if unknown)"
+                      >
+                        {fmtPublished(row.latest_article_at)}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
+                        <MetricHint title={velocityTooltipText(row, pipelineWindows)}>
+                          {fmtOneDecimal(row.velocity_score)}
+                        </MetricHint>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">
+                        {row.acceleration_score === null || Number.isNaN(row.acceleration_score) ? (
+                          <MetricHint title={accelerationTooltipText(row, pipelineWindows)}>—</MetricHint>
+                        ) : (
+                          <MetricHint title={accelerationTooltipText(row, pipelineWindows)}>
+                            {`${row.acceleration_score.toFixed(1)}x`}
+                          </MetricHint>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3 align-top text-gray-300">{row.article_count}</td>
+                      <td className="px-3 py-3 align-top">
+                        <TrendPickBadge action={row.signal_suggested_action} />
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        {row.is_published ? (
+                          <span className="inline-flex rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400 ring-1 ring-emerald-500/30">
+                            Yes
+                          </span>
+                        ) : (
+                          <span className="inline-flex rounded-full bg-gray-800 px-2 py-0.5 text-xs font-medium text-gray-400 ring-1 ring-gray-700">
+                            No
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-2 py-3 align-top text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="inline-flex flex-wrap items-center justify-end gap-0.5">
+                          <button
+                            type="button"
+                            disabled={rowBusy}
+                            title="Re-run Claude Haiku trend pick: fills Suggestion (Watch/Radar/Remove) and italic rationale. Needs ANTHROPIC_API_KEY."
+                            onClick={() => void analyzeTopicTrend(row.id)}
+                            className={`${topicToolbarBtn} border-indigo-500/40 text-indigo-200 hover:border-indigo-400`}
+                          >
+                            {analyzingId === row.id ? <Spinner className="h-3 w-3" /> : "Analyze"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={rowBusy}
+                            title="Move back to Watching (unpublish)"
+                            onClick={() => void demoteTopic(row.id)}
+                            className={`${topicToolbarBtn} border-rose-500/40 text-rose-200/90`}
+                          >
+                            {demotingId === row.id ? <Spinner className="h-3 w-3" /> : "Demote"}
+                          </button>
+                          <Link
+                            href={`/admin/topics/${row.id}`}
+                            title="Edit topic"
+                            className={`${topicToolbarBtn} border-gray-600 text-gray-400 hover:text-indigo-300`}
+                          >
+                            <IconPencil className="h-3 w-3" />
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                    {expanded ? (
+                      <tr className="bg-gray-900/40">
+                        <td colSpan={9} className="px-3 pb-4 pt-0">
+                          <div className="ml-6 border-l border-gray-700 pl-4">
+                            {artsLoad ? (
+                              <div className="flex items-center gap-2 py-4 text-xs text-gray-500">
+                                <Spinner className="h-4 w-4" />
+                                Loading articles…
+                              </div>
+                            ) : (
+                              <ArticleProofList articles={arts ?? []} />
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -1410,6 +1779,8 @@ function TrendDiscoveryInner() {
                   <VelocityMini
                     velocity={selectedRow.velocity_score}
                     acceleration={selectedRow.acceleration_score}
+                    velocityTitle={velocityTooltipText(selectedRow, pipelineWindows)}
+                    accelerationTitle={accelerationTooltipText(selectedRow, pipelineWindows)}
                   />
                   <div className="mt-4">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Suggestion</h3>

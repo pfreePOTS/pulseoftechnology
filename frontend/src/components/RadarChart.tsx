@@ -17,7 +17,12 @@ export interface IndustryPosition {
   /** 1–10 regulatory / threat / compliance exposure — higher pulls the star toward the centre */
   risk_level?: number;
   adoption_state: string;
+  /** @deprecated Prefer industry_impact; still merged into public radar rationale */
   rationale?: string;
+  /** Sector-specific impact copy from AI suggest (primary narrative on radar) */
+  industry_impact?: string;
+  scoring_rationale?: string;
+  phase_rationale?: string;
   /** When false, this industry row is hidden on the public radar until approved in Impact workbench */
   impact_approved?: boolean;
 }
@@ -213,6 +218,20 @@ function approxW(text: string, fontSize = 11): number {
   return text.length * fontSize * 0.58;
 }
 
+/** Single narrative for radar detail: matches admin Impact grid text precedence. */
+function industryPositionRationale(pos: IndustryPosition | undefined): string | null {
+  if (!pos) return null;
+  const primary = (pos.industry_impact?.trim() || pos.rationale?.trim()) ?? "";
+  const scoring = pos.scoring_rationale?.trim() ?? "";
+  const phase = pos.phase_rationale?.trim() ?? "";
+  const parts: string[] = [];
+  if (primary) parts.push(primary);
+  if (scoring && scoring !== primary) parts.push(scoring);
+  if (phase && phase !== primary && phase !== scoring) parts.push(phase);
+  if (parts.length === 0) return null;
+  return parts.join(" ");
+}
+
 /**
  * Expand each topic into one PlotPoint per industry (if industry_positions
  * is set), or one fallback PlotPoint using the topic-level values.
@@ -248,7 +267,7 @@ function buildPlotPoints(topics: RadarTopic[]): PlotPoint[] {
           color: industryColor(industry),
           urgency: impact,
           adoptionState: pos.adoption_state ?? topic.adoption_state,
-          rationale: pos.rationale,
+          rationale: industryPositionRationale(pos) ?? undefined,
         });
       }
     } else {
@@ -401,7 +420,7 @@ function IndustryPaletteLegend({ compact }: { compact?: boolean }) {
 export default function RadarChart({
   topics,
   showLabels = false,
-  emptyMessage = "No published topics yet",
+  emptyMessage = "No topics to display yet",
   layout = "default",
 }: {
   topics: RadarTopic[];
@@ -809,6 +828,11 @@ function RadarTooltipPanel({ point: pt }: { point: PlotPointXY }) {
         ? ind.urgency_score
         : pt.urgency;
   const riskShown = ind && typeof ind.risk_level === "number" ? ind.risk_level : null;
+  const fromPosition = industryPositionRationale(ind);
+  const fromPlotRationale = pt.rationale?.trim();
+  const fromSummary = pt.topic.summary?.trim();
+  const narrative = fromPlotRationale || fromPosition || fromSummary || "";
+  const narrativeLabel = narrative ? (fromPlotRationale || fromPosition ? "Rationale" : "Summary") : "";
 
   return (
     <div className="font-sans text-gray-900">
@@ -828,15 +852,10 @@ function RadarTooltipPanel({ point: pt }: { point: PlotPointXY }) {
         <span className="mx-2 text-gray-300">·</span>
         <span className="font-medium">{pt.adoptionState}</span>
       </p>
-      {pt.rationale ? (
+      {narrative ? (
         <div className="mt-4 border-t border-gray-200 pt-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Rationale</p>
-          <p className="mt-2 text-sm leading-relaxed text-gray-600">{pt.rationale}</p>
-        </div>
-      ) : pt.topic.summary ? (
-        <div className="mt-4 border-t border-gray-200 pt-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Summary</p>
-          <p className="mt-2 text-sm leading-relaxed text-gray-600">{pt.topic.summary}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{narrativeLabel}</p>
+          <p className="mt-2 text-sm leading-relaxed text-gray-600">{narrative}</p>
         </div>
       ) : null}
       <button

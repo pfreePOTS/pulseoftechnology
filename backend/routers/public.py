@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 from ..database import get_db
 from ..models.article import Article
 from ..models.role import Role
-from ..models.subscriber import Subscriber
+from ..models.subscriber import Subscriber, validate_industries_and_role_ids
 from ..models.survey_response import SurveyResponse
 from ..models.topic import Topic
 from ..rate_limits import limiter
@@ -52,9 +52,9 @@ class SubscribeRequest(BaseModel):
     email: str
     first_name: str
     last_name: str
-    industry: str | None = None
+    industries: list[str] | None = None
     domains: list[str] | None = None
-    role_id: int | None = None
+    role_ids: list[int] | None = None
 
     @field_validator("email")
     @classmethod
@@ -153,10 +153,7 @@ def subscribe(
     db: Session = Depends(get_db),
 ):
     """Register a new subscriber with their domain and industry preferences."""
-    if payload.role_id is not None:
-        role = db.query(Role).filter(Role.id == payload.role_id).first()
-        if role is None:
-            raise HTTPException(status_code=422, detail="Invalid role_id")
+    inds, rids = validate_industries_and_role_ids(db, payload.industries, payload.role_ids)
 
     existing = db.query(Subscriber).filter(Subscriber.email == payload.email).first()
     if existing:
@@ -166,9 +163,9 @@ def subscribe(
         existing.is_active = True
         existing.first_name = payload.first_name
         existing.last_name = payload.last_name
-        existing.industry = payload.industry
+        existing.industries = inds
         existing.domains = payload.domains
-        existing.role_id = payload.role_id
+        existing.role_ids = rids
         db.commit()
         db.refresh(existing)
         background_tasks.add_task(sync_subscriber_to_hubspot, existing)
@@ -180,9 +177,9 @@ def subscribe(
         email=payload.email,
         first_name=payload.first_name,
         last_name=payload.last_name,
-        industry=payload.industry,
+        industries=inds,
         domains=payload.domains,
-        role_id=payload.role_id,
+        role_ids=rids,
     )
     db.add(subscriber)
     db.commit()

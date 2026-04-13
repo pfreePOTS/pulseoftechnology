@@ -16,10 +16,11 @@ def _sub(**kw) -> SimpleNamespace:
         email="jane@corp.com",
         first_name="Jane",
         last_name="Smith",
-        industry="Technology",
+        industries=["Technology"],
         domains=["AI", "Security"],
         is_active=True,
         role=None,
+        roles=None,
     )
     return SimpleNamespace(**{**defaults, **kw})
 
@@ -73,7 +74,7 @@ class TestBuildProperties:
         assert hubspot_sync._build_properties(_sub())["pulse_role"] == ""
 
     def test_no_industry_gives_empty_string(self):
-        sub = _sub(industry=None)
+        sub = _sub(industries=None)
         props = hubspot_sync._build_properties(sub)
         assert props["industry"] == ""
 

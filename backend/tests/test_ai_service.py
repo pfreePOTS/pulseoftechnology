@@ -91,7 +91,14 @@ class TestEvaluateArticle:
 
 class TestGenerateTopicSummary:
     def _make_topic(self) -> SimpleNamespace:
-        return SimpleNamespace(id=1, name="AI", domain="AI", urgency_score=8.0, summary=None)
+        return SimpleNamespace(
+            id=1,
+            name="AI",
+            domain="AI",
+            urgency_score=8.0,
+            summary=None,
+            newsletter_briefing=None,
+        )
 
     def _make_articles(self, n: int = 2) -> list[SimpleNamespace]:
         return [
@@ -107,6 +114,9 @@ class TestGenerateTopicSummary:
         payload = {
             "summary": "AI adoption accelerated this quarter.",
             "why_it_matters": "CEOs must plan for workforce changes now.",
+            "what_is_it": "Agent tools automate routine decisions.",
+            "what_changed": "Enterprise suites shipped integrations.",
+            "what_to_do": "Start with a bounded pilot.",
         }
         mock_client = MagicMock()
         mock_client.messages.create.return_value = _make_message(json.dumps(payload))
@@ -120,6 +130,8 @@ class TestGenerateTopicSummary:
         assert "AI adoption accelerated" in result
         assert "Why it matters:" in result
         assert topic.summary == result
+        assert topic.newsletter_briefing["what_is_it"] == payload["what_is_it"]
+        assert topic.newsletter_briefing["what_to_do"] == payload["what_to_do"]
 
     def test_empty_articles_returns_empty_string(self):
         topic = self._make_topic()
@@ -139,6 +151,7 @@ class TestGenerateTopicSummary:
 
         assert result == raw_text
         assert topic.summary == raw_text
+        assert topic.newsletter_briefing is None
 
     def test_correct_model_used(self):
         payload = {"summary": "s", "why_it_matters": "w"}

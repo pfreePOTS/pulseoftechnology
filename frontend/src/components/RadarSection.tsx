@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useIsClient } from "@/lib/useIsClient";
 import RadarChart, { type RadarTopic, INDUSTRY_COLORS } from "./RadarChart";
@@ -23,6 +23,15 @@ export default function RadarSection({
   const [selectedIndustry, setSelectedIndustry] = useState<string>("");
   const [selectedDomain, setSelectedDomain] = useState<string>("");
   const [showLabels, setShowLabels] = useState(false);
+
+  useEffect(() => {
+    if (!isClient) return;
+    const params = new URLSearchParams(window.location.search);
+    const d = params.get("domain");
+    if (d && DOMAINS.includes(d)) {
+      setSelectedDomain(d);
+    }
+  }, [isClient]);
 
   const filteredTopics = useMemo(() => {
     let result = topics;

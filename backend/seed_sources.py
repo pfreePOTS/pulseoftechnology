@@ -13,8 +13,28 @@ Run from the project root (inside Docker or with a local .env):
 from .database import SessionLocal
 from .models.source import Source, SourceType
 
+# One-time URL rewrites for feeds that broke or changed (matches existing rows by old URL)
+LEGACY_SOURCE_MIGRATIONS: list[tuple[str, str, str]] = [
+    (
+        "https://www.wired.com/feed/category/tech/latest/rss",
+        "Wired Tech",
+        "https://www.wired.com/feed/rss",
+    ),
+    (
+        "https://feeds.reuters.com/reuters/technologyNews",
+        "The Guardian — Technology",
+        "https://www.theguardian.com/technology/rss",
+    ),
+    (
+        "https://www.govtech.com/rss/top-news",
+        "Nextgov",
+        "https://www.nextgov.com/rss/all/",
+    ),
+]
+
 SOURCES = [
-    {"name": "Wired Tech", "url": "https://www.wired.com/feed/category/tech/latest/rss"},
+    # Main Wired feed (category URL 404s / returns non-XML for automated clients)
+    {"name": "Wired Tech", "url": "https://www.wired.com/feed/rss"},
     {"name": "TechCrunch", "url": "https://techcrunch.com/feed/"},
     {"name": "Krebs on Security", "url": "https://krebsonsecurity.com/feed/"},
     {"name": "Dark Reading", "url": "https://www.darkreading.com/rss.xml"},
@@ -25,14 +45,16 @@ SOURCES = [
     {"name": "Bleeping Computer", "url": "https://www.bleepingcomputer.com/feed/"},
     {"name": "ZDNet", "url": "https://www.zdnet.com/news/rss.xml"},
     # Broader news wires + verticals (beyond pure tech blogs)
-    {"name": "Reuters Technology", "url": "https://feeds.reuters.com/reuters/technologyNews"},
+    # feeds.reuters.com often fails DNS; www Reuters RSS is bot-gated — Guardian tech wire
+    {"name": "The Guardian — Technology", "url": "https://www.theguardian.com/technology/rss"},
     {"name": "BBC Technology", "url": "https://feeds.bbci.co.uk/news/technology/rss.xml"},
     {"name": "MIT Technology Review", "url": "https://www.technologyreview.com/feed/"},
     {"name": "Ars Technica", "url": "https://feeds.arstechnica.com/arstechnica/index"},
     {"name": "The Verge", "url": "https://www.theverge.com/rss/index.xml"},
     {"name": "NPR Technology", "url": "https://feeds.npr.org/1019/rss.xml"},
     {"name": "Healthcare IT News", "url": "https://www.healthcareitnews.com/rss.xml"},
-    {"name": "GovTech", "url": "https://www.govtech.com/rss/top-news"},
+    # GovTech public RSS paths often serve HTML; Nextgov is a stable federal-IT feed
+    {"name": "Nextgov", "url": "https://www.nextgov.com/rss/all/"},
     # Enterprise IT, innovation, business press (URLs verified with feedparser)
     {
         "name": "ComputerWeekly — Enterprise software",
@@ -64,6 +86,12 @@ def seed() -> None:
         added = 0
         updated = 0
         skipped = 0
+        for old_url, new_name, new_url in LEGACY_SOURCE_MIGRATIONS:
+            row = db.query(Source).filter(Source.url == old_url).first()
+            if row:
+                row.name = new_name
+                row.url = new_url
+                updated += 1
         for entry in SOURCES:
             by_url = db.query(Source).filter(Source.url == entry["url"]).first()
             if by_url:

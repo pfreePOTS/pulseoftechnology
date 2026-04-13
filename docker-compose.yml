@@ -36,13 +36,14 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-pulse_user}:${POSTGRES_PASSWORD:-pulse_password}@db:5432/${POSTGRES_DB:-pulse_db}
       ENVIRONMENT: development
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3100}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3100,http://127.0.0.1:3000,http://127.0.0.1:3100}
       ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET:-dev-only-set-ADMIN_JWT_SECRET-in-production}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
       SENDGRID_FROM_EMAIL: ${SENDGRID_FROM_EMAIL:-radar@pulseone.com}
       SENDGRID_FROM_NAME: ${SENDGRID_FROM_NAME:-PulseOne Radar}
       SENDGRID_NEWSLETTER_TEMPLATE_ID: ${SENDGRID_NEWSLETTER_TEMPLATE_ID:-}
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-http://localhost:3100}
       HUBSPOT_API_KEY: ${HUBSPOT_API_KEY:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-pulseadmin}
       # Optional — signal intelligence / vectors (see backend/config.py)

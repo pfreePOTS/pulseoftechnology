@@ -14,13 +14,23 @@ scheduler = BackgroundScheduler()
 
 
 def _ingestion_job() -> None:
-    """Scheduled job: open a DB session and ingest all active sources."""
-    from .services.signal_service import backfill_missing_trend_suggestions
+    """Scheduled job: open a DB session, ingest all active sources, then score signals."""
+    from .services.signal_service import (
+        backfill_missing_trend_suggestions,
+        cleanup_empty_topics,
+        refresh_all_signals,
+        run_signal_scorer,
+    )
 
     db = SessionLocal()
     try:
         run_all_sources(db)
-        # Populate Watch/Radar/Remove suggestions for topics that have none yet (no velocity gate).
+        try:
+            cleanup_empty_topics(db)
+            run_signal_scorer(db)
+            refresh_all_signals(db)
+        except Exception:
+            logger.exception("Signal scorer/refresh after ingestion failed")
         try:
             n = backfill_missing_trend_suggestions(db, limit=20)
             if n:
@@ -60,10 +70,11 @@ def _archive_job() -> None:
 
 
 def _signal_job() -> None:
-    """Scheduled job: cleanup empty topics then run the signal scorer."""
+    """Scheduled job: cleanup, score high-velocity topics, refresh radar, backfill the rest."""
     from .services.signal_service import (
         backfill_missing_trend_suggestions,
         cleanup_empty_topics,
+        refresh_all_signals,
         run_signal_scorer,
     )
 
@@ -71,6 +82,10 @@ def _signal_job() -> None:
     try:
         cleanup_empty_topics(db)
         run_signal_scorer(db)
+        try:
+            refresh_all_signals(db)
+        except Exception:
+            logger.exception("refresh_all_signals failed in signal job")
         try:
             n = backfill_missing_trend_suggestions(db, limit=50)
             if n:

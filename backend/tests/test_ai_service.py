@@ -11,6 +11,15 @@ from ..services import ai_service
 # ---------------------------------------------------------------------------
 
 
+def _patch_prompts():
+    """Use built-in fallbacks so tests do not require prompt_templates rows."""
+    return patch.object(
+        ai_service,
+        "get_active_prompt",
+        side_effect=lambda _db, name: ai_service._FALLBACK_PROMPTS[name],
+    )
+
+
 def _make_message(text: str) -> MagicMock:
     """Return a minimal mock of an anthropic.types.Message."""
     block = MagicMock()
@@ -35,9 +44,10 @@ class TestEvaluateArticle:
         }
         mock_client = MagicMock()
         mock_client.messages.create.return_value = _make_message(json.dumps(payload))
+        mock_db = MagicMock()
 
-        with patch.object(ai_service, "_get_client", return_value=mock_client):
-            result = ai_service.evaluate_article("OpenAI launches GPT-5 for enterprise.")
+        with patch.object(ai_service, "_get_client", return_value=mock_client), _patch_prompts():
+            result = ai_service.evaluate_article("OpenAI launches GPT-5 for enterprise.", mock_db)
 
         assert result is not None
         assert result["relevant"] is True
@@ -54,18 +64,20 @@ class TestEvaluateArticle:
         }
         mock_client = MagicMock()
         mock_client.messages.create.return_value = _make_message(json.dumps(payload))
+        mock_db = MagicMock()
 
-        with patch.object(ai_service, "_get_client", return_value=mock_client):
-            result = ai_service.evaluate_article("Celebrity spotted at coffee shop.")
+        with patch.object(ai_service, "_get_client", return_value=mock_client), _patch_prompts():
+            result = ai_service.evaluate_article("Celebrity spotted at coffee shop.", mock_db)
 
         assert result is None
 
     def test_malformed_json_uses_pipeline_defaults(self):
         mock_client = MagicMock()
         mock_client.messages.create.return_value = _make_message("not json at all")
+        mock_db = MagicMock()
 
-        with patch.object(ai_service, "_get_client", return_value=mock_client):
-            result = ai_service.evaluate_article("Some article text.")
+        with patch.object(ai_service, "_get_client", return_value=mock_client), _patch_prompts():
+            result = ai_service.evaluate_article("Some article text.", mock_db)
 
         assert result is not None
         assert result["domain"] == "Other"
@@ -76,9 +88,10 @@ class TestEvaluateArticle:
         payload = {"relevant": False, "domain": "Other", "urgency_score": 1, "reason": "x"}
         mock_client = MagicMock()
         mock_client.messages.create.return_value = _make_message(json.dumps(payload))
+        mock_db = MagicMock()
 
-        with patch.object(ai_service, "_get_client", return_value=mock_client):
-            ai_service.evaluate_article("text")
+        with patch.object(ai_service, "_get_client", return_value=mock_client), _patch_prompts():
+            ai_service.evaluate_article("text", mock_db)
 
         call_kwargs = mock_client.messages.create.call_args
         assert call_kwargs.kwargs["model"] == ai_service.HAIKU_MODEL
@@ -124,8 +137,10 @@ class TestGenerateTopicSummary:
         topic = self._make_topic()
         articles = self._make_articles()
 
-        with patch.object(ai_service, "_get_client", return_value=mock_client):
-            result = ai_service.generate_topic_summary(topic, articles)
+        mock_db = MagicMock()
+
+        with patch.object(ai_service, "_get_client", return_value=mock_client), _patch_prompts():
+            result = ai_service.generate_topic_summary(topic, articles, mock_db)
 
         assert "AI adoption accelerated" in result
         assert "Why it matters:" in result
@@ -135,22 +150,25 @@ class TestGenerateTopicSummary:
 
     def test_empty_articles_returns_empty_string(self):
         topic = self._make_topic()
-        result = ai_service.generate_topic_summary(topic, [])
+        mock_db = MagicMock()
+        result = ai_service.generate_topic_summary(topic, [], mock_db)
         assert result == ""
 
     def test_malformed_json_falls_back_to_raw_text(self):
         raw_text = "Some summary without JSON structure."
+        fallback = "Summary generation failed. Review needed."
         mock_client = MagicMock()
         mock_client.messages.create.return_value = _make_message(raw_text)
 
         topic = self._make_topic()
         articles = self._make_articles()
+        mock_db = MagicMock()
 
-        with patch.object(ai_service, "_get_client", return_value=mock_client):
-            result = ai_service.generate_topic_summary(topic, articles)
+        with patch.object(ai_service, "_get_client", return_value=mock_client), _patch_prompts():
+            result = ai_service.generate_topic_summary(topic, articles, mock_db)
 
-        assert result == raw_text
-        assert topic.summary == raw_text
+        assert result == fallback
+        assert topic.summary == fallback
         assert topic.newsletter_briefing is None
 
     def test_correct_model_used(self):
@@ -160,9 +178,10 @@ class TestGenerateTopicSummary:
 
         topic = self._make_topic()
         articles = self._make_articles()
+        mock_db = MagicMock()
 
-        with patch.object(ai_service, "_get_client", return_value=mock_client):
-            ai_service.generate_topic_summary(topic, articles)
+        with patch.object(ai_service, "_get_client", return_value=mock_client), _patch_prompts():
+            ai_service.generate_topic_summary(topic, articles, mock_db)
 
         call_kwargs = mock_client.messages.create.call_args
         assert call_kwargs.kwargs["model"] == ai_service.SONNET_MODEL
@@ -174,9 +193,10 @@ class TestGenerateTopicSummary:
 
         topic = self._make_topic()
         articles = self._make_articles(15)
+        mock_db = MagicMock()
 
-        with patch.object(ai_service, "_get_client", return_value=mock_client):
-            ai_service.generate_topic_summary(topic, articles)
+        with patch.object(ai_service, "_get_client", return_value=mock_client), _patch_prompts():
+            ai_service.generate_topic_summary(topic, articles, mock_db)
 
         user_content = mock_client.messages.create.call_args.kwargs["messages"][0]["content"]
         # Only articles 1-10 should appear

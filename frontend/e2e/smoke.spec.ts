@@ -1,23 +1,22 @@
 import { expect, test } from "@playwright/test";
 
-test.describe("Public site", () => {
-  test("home page loads and shows brand", async ({ page }) => {
+/**
+ * Minimal checks for fast feedback (CI and local smoke runs).
+ * Deeper coverage lives in `public-site.spec.ts`, `api.spec.ts`, `admin.spec.ts`.
+ */
+test.describe("Smoke", () => {
+  test("home responds with PulseOne branding", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByText("PulseOne")).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: /Technology Intelligence for C-Suite Leaders/i,
+      }),
+    ).toBeVisible();
   });
 
-  test("admin login page loads", async ({ page }) => {
-    await page.goto("/admin/login");
-    await expect(page.getByRole("heading", { name: /PulseOne Admin/i })).toBeVisible();
-  });
-});
-
-test.describe("Backend health (host ports)", () => {
-  test("API /health returns ok", async ({ request }) => {
-    const api =
-      process.env.PLAYWRIGHT_API_URL ?? "http://localhost:8100";
-    const res = await request.get(`${api}/health`);
+  test("API health is reachable", async ({ request }) => {
+    const api = process.env.PLAYWRIGHT_API_URL ?? "http://localhost:8100";
+    const res = await request.get(`${api.replace(/\/$/, "")}/health`);
     expect(res.ok()).toBeTruthy();
-    await expect(res.json()).resolves.toEqual({ status: "ok" });
   });
 });

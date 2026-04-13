@@ -5,26 +5,14 @@ import { usePathname, useRouter } from "next/navigation";
 import type { DragEvent } from "react";
 import { useEffect, useState } from "react";
 
+import {
+  ADMIN_NAV,
+  canAccessAdminPath,
+  navAllowedForUser,
+  type AdminNavItem,
+  type SessionUser,
+} from "@/lib/admin-nav";
 import { API_BASE } from "@/lib/api";
-
-/** Display labels only — order numbers are computed from list position after drag-and-drop. */
-const NAV = [
-  { label: "Collection", href: "/admin/research" },
-  { label: "Trending", href: "/admin" },
-  { label: "Daily trends", href: "/admin/trending-daily" },
-  { label: "Analysis", href: "/admin/analysis" },
-  { label: "Publishing", href: "/admin/publishing" },
-  { label: "Newsletter", href: "/admin/newsletter" },
-  { label: "Radar Preview", href: "/admin/radar-preview" },
-  { label: "Manage Sources", href: "/admin/sources" },
-  { label: "Subscribers", href: "/admin/subscribers" },
-  { label: "Role Profiles", href: "/admin/roles" },
-  { label: "Content Library", href: "/admin/library" },
-  { label: "System Jobs", href: "/admin/jobs" },
-  { label: "Settings", href: "/admin/settings" },
-] as const;
-
-type NavItem = (typeof NAV)[number];
 
 /** Remove legacy "1. " prefixes so list position is the only numbering (handles stale caches). */
 function navLabelText(label: string): string {
@@ -33,10 +21,10 @@ function navLabelText(label: string): string {
 
 const NAV_ORDER_KEY = "pulseone-admin-nav-order";
 
-function normalizeOrder(savedHrefs: string[] | undefined, defaults: readonly NavItem[]): NavItem[] {
+function normalizeOrder(savedHrefs: string[] | undefined, defaults: readonly AdminNavItem[]): AdminNavItem[] {
   if (!savedHrefs?.length) return [...defaults];
-  const byHref = new Map<string, NavItem>(defaults.map((n) => [n.href, n]));
-  const ordered: NavItem[] = [];
+  const byHref = new Map<string, AdminNavItem>(defaults.map((n) => [n.href, n]));
+  const ordered: AdminNavItem[] = [];
   for (const href of savedHrefs) {
     const item = byHref.get(href);
     if (item) ordered.push(item);
@@ -86,35 +74,60 @@ function DragHandle({
   );
 }
 
+function firstAllowedHref(user: SessionUser): string {
+  if (user.is_superuser) return "/admin";
+  for (const item of ADMIN_NAV) {
+    if (user.page_permissions.includes(item.slug)) return item.href;
+  }
+  return "/admin/login";
+}
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const isLoginPage = pathname === "/admin/login";
+  const isChangePasswordPage = pathname === "/admin/change-password";
   /** null = not checked yet (protected routes only) */
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
-  const [navItems, setNavItems] = useState<NavItem[]>(() => [...NAV]);
+  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
+  const [navItems, setNavItems] = useState<AdminNavItem[]>([]);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   useEffect(() => {
+    if (!sessionUser) return;
+    const allowed = ADMIN_NAV.filter((n) => navAllowedForUser(n, sessionUser));
     try {
       const raw = localStorage.getItem(NAV_ORDER_KEY);
-      if (raw) setNavItems(normalizeOrder(JSON.parse(raw) as string[], NAV));
+      if (raw) {
+        setNavItems(normalizeOrder(JSON.parse(raw) as string[], allowed));
+        return;
+      }
     } catch {
       /* ignore */
     }
-  }, []);
+    setNavItems(allowed);
+  }, [sessionUser]);
 
   useEffect(() => {
     if (isLoginPage) return;
     let cancelled = false;
     fetch(`${API_BASE}/api/admin/session`, { credentials: "include" })
       .then((r) => r.json())
-      .then((data: { authenticated?: boolean }) => {
-        if (cancelled) return;
-        if (!data.authenticated) router.replace("/admin/login");
-        else setAuthenticated(true);
-      })
+      .then(
+        (data: {
+          authenticated?: boolean;
+          user?: SessionUser;
+        }) => {
+          if (cancelled) return;
+          if (!data.authenticated || !data.user) {
+            router.replace("/admin/login");
+            return;
+          }
+          setSessionUser(data.user);
+          setAuthenticated(true);
+        },
+      )
       .catch(() => {
         if (!cancelled) router.replace("/admin/login");
       });
@@ -123,17 +136,47 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     };
   }, [isLoginPage, router]);
 
+  useEffect(() => {
+    if (!sessionUser || isLoginPage || isChangePasswordPage) return;
+    if (sessionUser.must_change_password) {
+      router.replace("/admin/change-password");
+      return;
+    }
+    if (!canAccessAdminPath(pathname, sessionUser)) {
+      router.replace(firstAllowedHref(sessionUser));
+    }
+  }, [sessionUser, pathname, isLoginPage, isChangePasswordPage, router]);
+
   async function handleLogout() {
     await fetch(`${API_BASE}/api/admin/logout`, {
       method: "POST",
       credentials: "include",
     });
     setAuthenticated(null);
+    setSessionUser(null);
     router.replace("/admin/login");
   }
 
   if (isLoginPage) {
     return <>{children}</>;
+  }
+
+  if (isChangePasswordPage) {
+    if (authenticated === null) {
+      return (
+        <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+          <span className="text-sm text-gray-600">Loading…</span>
+        </div>
+      );
+    }
+    if (!sessionUser) {
+      return null;
+    }
+    return (
+      <div className="min-h-screen bg-gray-950 text-white">
+        <div className="mx-auto max-w-md px-4 py-16">{children}</div>
+      </div>
+    );
   }
 
   if (authenticated === null) {
@@ -159,11 +202,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
         {/* Nav — order persisted in localStorage */}
         <nav className="flex-1 space-y-1 px-2 py-4" aria-label="Admin navigation">
-          {navItems.map(({ label, href }, index) => {
+          {navItems.map((item, index) => {
+            const { label, href } = item;
             const isActive =
-              href === "/admin"
-                ? pathname === "/admin"
-                : pathname.startsWith(href);
+              href === "/admin" ? pathname === "/admin" : pathname.startsWith(href);
             return (
               <div
                 key={href}
@@ -233,6 +275,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
         {/* Logout */}
         <div className="border-t border-gray-800 px-3 py-4">
+          {sessionUser && (
+            <p className="mb-2 truncate px-1 text-xs text-gray-500" title={sessionUser.email}>
+              {sessionUser.email}
+            </p>
+          )}
           <button
             type="button"
             onClick={() => void handleLogout()}

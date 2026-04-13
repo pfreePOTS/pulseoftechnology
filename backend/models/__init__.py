@@ -1,5 +1,8 @@
+from .admin_user import AdminUser
+from .agent_run import AgentRun
 from .article import Article, ArticleStatus
 from .content import ContentItem
+from .prompt import PromptProposal, PromptTemplate
 from .role import Role
 from .signal import SignalRecommendation
 from .site_config import SiteConfig
@@ -9,6 +12,7 @@ from .survey_response import SurveyResponse
 from .topic import AdoptionState, Topic, TopicStatus
 
 __all__ = [
+    "AdminUser",
     "Source",
     "SourceType",
     "Article",
@@ -22,4 +26,7 @@ __all__ = [
     "SurveyResponse",
     "SignalRecommendation",
     "SiteConfig",
+    "PromptTemplate",
+    "PromptProposal",
+    "AgentRun",
 ]

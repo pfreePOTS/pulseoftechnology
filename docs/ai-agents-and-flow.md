@@ -13,7 +13,7 @@ This document describes **every distinct LLM “agent”** (separate system prom
 
 ## How many agents?
 
-There are **11** distinct Anthropic-backed agents (different system prompts / roles). **10** are wired into production or admin flows. **1** is implemented but **not called** anywhere in the app today (`evaluate_signal` — adoption-state upgrade prompt).
+There are **12** distinct Anthropic-backed agents (different system prompts / roles). **11** are wired into production or admin flows. **1** is implemented but **not called** anywhere in the app today (`evaluate_signal` — adoption-state upgrade prompt).
 
 | # | Agent (logical name) | Model | Primary function | Triggered by |
 |---|----------------------|-------|------------------|--------------|
@@ -27,9 +27,10 @@ There are **11** distinct Anthropic-backed agents (different system prompts / ro
 | 8 | **Trend pick** | Haiku | `watch` / `radar` / `remove` for Trend Discovery | `signal_service` (`upsert_pending_trend_signal`, `run_signal_scorer` when thresholds pass) |
 | 9 | **Topic executive summary** | Sonnet | Topic-level summary + why it matters | Admin generate-summary endpoint |
 | 10 | **Positioning insights** | Haiku | Per-topic trend label + note (velocity windows) | `trend_service.build_positioning_insights` (API for admin/insights) |
-| 11 | **Signal / adoption upgrade** *(unused)* | Haiku | Whether to change topic adoption state from recent press | `evaluate_signal` in `ai_service.py` — **no router or job calls it** |
+| 11 | **Topic Persona Synthesis** | Haiku | Per-role business impact lines for the topic (`persona_by_role`) | Admin `/suggest-persona-by-role` endpoint (`POST /api/admin/topics/{topic_id}/suggest-persona-by-role`) |
+| 12 | **Signal / adoption upgrade** *(unused)* | Haiku | Whether to change topic adoption state from recent press | `evaluate_signal` in `ai_service.py` — **no router or job calls it** |
 
-Implementation lives mainly in `backend/services/ai_service.py` (`_call`, `_node_*`, `suggest_*`, `evaluate_*`, `generate_topic_summary`) and `backend/services/trend_service.py` (`_call_ai_insights`).
+Implementation lives mainly in `backend/services/ai_service.py` (`_call`, `_node_*`, `suggest_*`, `evaluate_*`, `generate_topic_summary`, `suggest_topic_persona_by_role`) and `backend/services/trend_service.py` (`_call_ai_insights`).
 
 ---
 
@@ -71,6 +72,7 @@ flowchart TB
   ADM[Admin actions] --> IND[7 Industry positioning Haiku]
   ADM --> SUM[9 Topic summary Sonnet]
   ADM --> TRE[10 Positioning insights Haiku]
+  ADM --> PBR[11 Topic Persona Synthesis Haiku]
 
   DB[(PostgreSQL)]
   E5 --> DB
@@ -93,9 +95,11 @@ flowchart TB
   Topics --> A8[Agent 8 Trend pick + signals]
   Topics --> A7[Agent 7 Industry grid admin]
   Topics --> A10[Agent 10 Positioning insights]
+  Topics --> A11[Agent 11 Topic Persona Synthesis]
   A1 --> Vec[Vector embed placeholder → Pinecone optional]
   A8 --> Radar[Radar / Trend Discovery UI]
   A7 --> Analysis[Analysis workbench]
+  A11 --> Analysis
 ```
 
 ---
@@ -108,4 +112,4 @@ flowchart TB
 - `backend/services/ingestion.py` — orchestrates processing + embeddings
 - `backend/services/vector_service.py` — embeddings (not Anthropic today)
 
-If you wire **agent 11** (`evaluate_signal`) into a job or admin action, update this doc and the table above.
+If you wire **agent 12** (`evaluate_signal`) into a job or admin action, update this doc and the table above.

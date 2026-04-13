@@ -128,10 +128,13 @@ make test          # pytest + Vitest (no E2E)
 ```bash
 docker compose up -d --build
 docker compose exec -w /app/backend backend alembic upgrade head
+docker compose restart backend
 cd frontend && npm run test:e2e:install && npm run test:e2e
 ```
 
-Environment variables for Playwright: `PLAYWRIGHT_BASE_URL` (default `http://localhost:3100`), `PLAYWRIGHT_API_URL` (default `http://localhost:8100` for API checks in `e2e/smoke.spec.ts`).
+The backend restart ensures the first admin account is bootstrapped after `admin_users` exists (same ordering CI uses).
+
+Environment variables for Playwright: `PLAYWRIGHT_BASE_URL` (default `http://localhost:3100`), `PLAYWRIGHT_API_URL` (default `http://localhost:8100`), and optional `E2E_ADMIN_EMAIL` / `E2E_ADMIN_PASSWORD` for `e2e/admin.spec.ts` (defaults match Compose: `pulseoneadmin@pulseone.local` / `pulseadmin`). Specs live under `frontend/e2e/` (`smoke`, `public-site`, `api`, `admin`).
 
 **CI:** `.github/workflows/ci.yml` runs backend Ruff, pytest with coverage, frontend ESLint + Vitest, then Docker Compose + Playwright E2E.
 
@@ -177,7 +180,8 @@ pulseoftechnology/
 | `POSTGRES_DB`          | `pulse_db`         | DB name                                  |
 | `DATABASE_URL`         | auto-constructed   | Full connection string (set by Compose)  |
 | `ANTHROPIC_API_KEY`    | —                  | **Required** for AI ingestion pipeline   |
-| `ADMIN_PASSWORD`       | `pulseadmin`       | Admin dashboard login password           |
+| `ADMIN_PASSWORD`       | `pulseadmin`       | Password for the **bootstrap** superuser when `admin_users` is empty (with `FIRST_ADMIN_EMAIL`) |
+| `FIRST_ADMIN_EMAIL`    | `pulseoneadmin@pulseone.local` | Login email for that bootstrap account (short name `pulseoneadmin` also works) |
 | `ADMIN_JWT_SECRET`     | (see `.env.example`) | HS256 signing key for admin JWT sessions |
 | `CORS_ORIGINS`         | `http://localhost:3000,http://localhost:3100` | Allowed browser origins (comma-separated) |
 | `SENDGRID_API_KEY`     | —                  | Email delivery (optional for dev)        |
@@ -196,14 +200,14 @@ Background jobs (RSS ingestion, signal scorer, newsletter) run **inside the Fast
 
 ### Admin authentication
 
-Successful login returns a **short-lived JWT** and sets an **httpOnly cookie** for the browser admin UI. API clients and scripts can use `Authorization: Bearer <access_token>` from the login JSON response. The raw admin password is never used as a long-lived credential.
+Admin users live in the **`admin_users`** table. On first startup, if the table is empty, the API creates one **superuser** from **`FIRST_ADMIN_EMAIL`** and **`ADMIN_PASSWORD`**. Login is **email + password** (`POST /api/admin/login`); the response sets an **httpOnly** cookie. Superusers can invite additional users with **page-level access** and optional **SendGrid** invitation email. API scripts may use `Authorization: Bearer <access_token>` from the login JSON.
 
 ### Security hardening (audit-aligned)
 
 | Area | Implementation |
 |------|----------------|
-| **Admin password** | Optional **`ADMIN_PASSWORD_HASH`** (bcrypt) in production; otherwise **`ADMIN_PASSWORD`** verified with **timing-safe** comparison. |
-| **Client storage** | No admin tokens in `localStorage`; session uses **httpOnly** cookie + **`verify_admin_password`** on login. |
+| **Admin passwords** | Stored as **bcrypt** hashes; optional legacy **`ADMIN_PASSWORD_HASH`** for non-DB flows is unused by console login (see `dependencies.py`). |
+| **Client storage** | No admin tokens in `localStorage`; session uses **httpOnly** cookie. |
 | **LLM / RSS** | Untrusted article text is wrapped in **XML CDATA** (`<article>`, `<context>`) and system prompts instruct the model to **ignore instructions** inside those blocks. |
 | **Rate limits** | **SlowAPI**: `POST /api/admin/login` **10/minute**, `POST /api/subscribe` **30/minute** per client IP (tune in `routers/`). |
 | **Vector bucketing** | Placeholder embeddings use **SHA-256** for shingle buckets (not MD5). |

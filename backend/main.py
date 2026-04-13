@@ -9,6 +9,7 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy.exc import SQLAlchemyError
 
 from .config import settings
+from .dependencies import bootstrap_first_admin_if_empty
 from .rate_limits import limiter
 from .routers.admin import router as admin_router
 from .routers.public import router as public_router
@@ -35,6 +36,7 @@ logging.basicConfig(level=logging.INFO)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    bootstrap_first_admin_if_empty()
     start_scheduler()
     yield
     stop_scheduler()

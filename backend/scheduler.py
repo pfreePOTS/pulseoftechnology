@@ -56,29 +56,20 @@ def _archive_job() -> None:
         db.close()
 
 
+def _prompt_optimizer_job() -> None:
+    """Daily prompt optimizer (02:00 UTC) — only if no pending PromptProposal rows."""
+    from .services.optimizer_service import run_daily_prompt_optimizer_job
+
+    run_daily_prompt_optimizer_job()
+
+
 def _signal_job() -> None:
     """Scheduled job: cleanup, score high-velocity topics, refresh radar, backfill the rest."""
-    from .services.signal_service import (
-        backfill_missing_trend_suggestions,
-        cleanup_empty_topics,
-        refresh_all_signals,
-        run_signal_scorer,
-    )
+    from .services.signal_service import execute_full_signal_flow
 
     db = SessionLocal()
     try:
-        cleanup_empty_topics(db)
-        run_signal_scorer(db)
-        try:
-            refresh_all_signals(db)
-        except Exception:
-            logger.exception("refresh_all_signals failed in signal job")
-        try:
-            n = backfill_missing_trend_suggestions(db, limit=50)
-            if n:
-                logger.info("After signal scorer: trend suggestion backfill for %d topic(s)", n)
-        except Exception:
-            logger.exception("Trend suggestion backfill after signal job failed")
+        execute_full_signal_flow(db)
     except Exception:
         logger.exception("Unhandled error in signal scorer job")
     finally:
@@ -133,10 +124,17 @@ def start_scheduler() -> None:
         id="signal_scorer",
         replace_existing=True,
     )
+    scheduler.add_job(
+        _prompt_optimizer_job,
+        trigger=CronTrigger(hour=2, minute=0, timezone="UTC"),
+        id="prompt_optimizer",
+        replace_existing=True,
+    )
     schedule_newsletter_job()
     scheduler.start()
     logger.info(
-        "Scheduler started — ingestion hourly · archive 05:00 UTC · signals 06:00 UTC · newsletter from settings"
+        "Scheduler started — ingestion hourly · archive 05:00 UTC · prompt optimizer 02:00 UTC · "
+        "signals 06:00 UTC · newsletter from settings"
     )
 
 

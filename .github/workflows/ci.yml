@@ -86,6 +86,18 @@ jobs:
           exit 1
       - name: Run DB migrations
         run: docker compose exec -T -w /app/backend backend alembic upgrade head
+      # Bootstrap runs at API startup; after first migrate the admin_users table exists empty.
+      - name: Restart backend (first admin bootstrap after migrations)
+        run: docker compose restart backend
+      - name: Wait for API after restart
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8100/health && exit 0
+            sleep 2
+          done
+          echo "Backend not ready after restart"
+          docker compose logs backend
+          exit 1
       - uses: actions/setup-node@v4
         with:
           node-version: "22"

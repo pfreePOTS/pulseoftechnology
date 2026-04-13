@@ -424,3 +424,32 @@ def cleanup_empty_topics(db: Session) -> int:
         db.commit()
         logger.info("Deleted %d empty pending topics", count)
     return count
+
+
+def execute_full_signal_flow(db: Session, *, backfill_limit: int = 50) -> None:
+    """
+    Run the full signal pipeline in a fixed order:
+
+    1. ``cleanup_empty_topics`` — remove orphaned pending topics with no articles
+    2. ``run_signal_scorer`` — create recommendations for high-velocity topics
+    3. ``refresh_all_signals`` — refresh watched/selected and stale pending signals
+    4. ``backfill_missing_trend_suggestions`` — fill trend suggestions for topics still missing them
+
+    Used by the scheduled signal job and the admin ``/jobs/signals`` trigger.
+    Steps 3–4 log and continue on failure so a single bad topic does not abort the run.
+    """
+    cleanup_empty_topics(db)
+    run_signal_scorer(db)
+    try:
+        refresh_all_signals(db)
+    except Exception:
+        logger.exception("refresh_all_signals failed in execute_full_signal_flow")
+    try:
+        n = backfill_missing_trend_suggestions(db, limit=backfill_limit)
+        if n:
+            logger.info(
+                "execute_full_signal_flow: trend suggestion backfill for %d topic(s)",
+                n,
+            )
+    except Exception:
+        logger.exception("backfill_missing_trend_suggestions failed in execute_full_signal_flow")

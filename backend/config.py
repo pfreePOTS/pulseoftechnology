@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     # Admin — use ADMIN_PASSWORD_HASH (bcrypt) in production; else ADMIN_PASSWORD (plain) for dev only
     admin_password: str = "pulseadmin"
     admin_password_hash: str = ""
+    # Bootstrap superuser when admin_users is empty (docker / first deploy). Also used as login email.
+    first_admin_email: str = "pulseoneadmin@pulseone.local"
 
     # Trend analysis (SQL windows + positioning insights)
     trend_window_days: int = Field(default=7, ge=1, le=120)

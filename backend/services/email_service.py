@@ -14,6 +14,7 @@ import logging
 import re
 import time
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from urllib.parse import quote
 
 import sendgrid
@@ -23,6 +24,7 @@ from sendgrid.helpers.mail import (
     Email,
     Mail,
     Personalization,
+    Subject,
     To,
 )
 from sqlalchemy import or_
@@ -36,7 +38,7 @@ from ..models.subscriber import Subscriber
 from ..models.topic import Topic, TopicStatus
 from .newsletter_selection import select_articles_for_newsletter_topic
 from .pipeline_settings import merge_pipeline_settings, set_last_newsletter_sent_at
-from .trend_service import newsletter_topic_velocity_trend
+from .trend_service import build_hot_of_day, newsletter_topic_velocity_trend
 
 logger = logging.getLogger(__name__)
 
@@ -116,8 +118,92 @@ def _format_date_long(d: datetime) -> str:
     return d.strftime("%B ") + str(d.day) + d.strftime(", %Y")
 
 
+def _format_dt_for_email_hot(value: datetime | str | None) -> str:
+    """Short line for newsletter hot-article ingest time (matches admin-style readability)."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        try:
+            d = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return value
+    else:
+        d = value
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=UTC)
+    else:
+        d = d.astimezone(UTC)
+    return d.strftime("%m/%d/%Y, %I:%M:%S %p")
+
+
 def _short_month_day(d: datetime) -> str:
     return d.strftime("%b ") + str(d.day)
+
+
+def _truncate_email_subject(text: str, max_len: int = 140) -> str:
+    text = (text or "").strip()
+    if len(text) <= max_len:
+        return text
+    if max_len <= 1:
+        return "…"
+    return text[: max_len - 1].rstrip() + "…"
+
+
+def _newsletter_logo_url() -> str:
+    base = (settings.public_site_url or "http://localhost:3100").rstrip("/")
+    return f"{base}/pulseone_logo_main.webp"
+
+
+def _newsletter_subject_and_headline(
+    topics: list[Topic],
+    roles: list[Role],
+    hot_data: dict[str, Any] | None,
+) -> tuple[str, str | None]:
+    """
+    Email subject uses the hot-topic article title when this subscriber's briefing includes it;
+    otherwise a Pulse of Technology Daily digest line. Returns (subject, headline_for_body or None).
+    """
+    ht, ha, _ = _resolve_hot_topic_lead_for_subscriber(topics, hot_data)
+    role_bit = ""
+    if roles:
+        names = ", ".join((r.name or "").strip() for r in roles if (r.name or "").strip())
+        if names:
+            role_bit = f" · {names}"
+    headline: str | None = None
+    if isinstance(ha, dict):
+        raw = (ha.get("title") or "").strip()
+        if raw:
+            headline = raw
+            sub = _truncate_email_subject(f"{raw} — Pulse of Technology Daily", 140)
+            return sub, headline
+    sub = (
+        f"Pulse of Technology Daily{role_bit}: {len(topics)} signal{'s' if len(topics) != 1 else ''} "
+        f"this week — {_short_month_day(datetime.now(UTC))}"
+    )
+    return sub, None
+
+
+def _build_newsletter_header_banner_html(*, headline_article_title: str | None) -> str:
+    """Dark header with PulseOne logo (hosted on public site) and optional main headline."""
+    logo_url = html.escape(_newsletter_logo_url())
+    headline_block = ""
+    if headline_article_title and headline_article_title.strip():
+        t = html.escape(headline_article_title.strip())
+        headline_block = f"""
+    <p style="margin:18px 0 0;font-size:19px;font-weight:700;line-height:1.35;color:#FFFFFF;font-family:{_FF};">
+      {t}
+    </p>"""
+    return f"""
+<tr>
+  <td style="background:#111827;padding:28px 32px 24px;text-align:center;">
+    <img src="{logo_url}" alt="PulseOne" width="200" height="40"
+         style="display:block;margin:0 auto 14px;max-width:220px;width:100%;height:auto;border:0;" />
+    <p style="margin:0;font-size:11px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;
+              color:#9CA3AF;font-family:{_FF};">Pulse of Technology Daily</p>
+    {headline_block}
+  </td>
+</tr>
+"""
 
 
 def _first_sentences(text: str | None, max_sentences: int = 3) -> str:
@@ -409,15 +495,8 @@ _EMAIL_TEMPLATE = """\
           </td>
         </tr>
 
-        <!-- 2 Brand banner -->
-        <tr>
-          <td style="padding:28px 32px 8px;text-align:center;">
-            <p style="margin:0 0 8px;font-size:22px;font-weight:800;letter-spacing:0.04em;color:#111827;
-                      font-family:{ff};">PULSE<span style="color:#E91D24;">ONE</span></p>
-            <p style="margin:0;font-size:10px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;
-                      color:#4A5F6D;font-family:{ff};">TECHNOLOGY RADAR BRIEFING</p>
-          </td>
-        </tr>
+        <!-- 2 Header: PulseOne logo + Pulse of Technology Daily + optional hot-article title -->
+        {header_banner_html}
 
         <!-- 3 Greeting -->
         <tr>
@@ -436,6 +515,8 @@ _EMAIL_TEMPLATE = """\
             </p>
           </td>
         </tr>
+
+        {hot_lead_html}
 
         <!-- 4 Top stories -->
         <tr>
@@ -472,7 +553,7 @@ _EMAIL_TEMPLATE = """\
               <a href="https://x.com/pulseone" style="color:#019E7C;text-decoration:none;">X</a>
             </p>
             <p style="margin:0 0 12px;font-size:11px;color:#6B7280;line-height:1.6;font-family:{ff};">
-              You&rsquo;re receiving this because you subscribed to PulseOne Radar.<br>
+              You&rsquo;re receiving this because you subscribed to Pulse of Technology Daily.<br>
               Domains: {domains_label} &middot; Industry: {industry_label} &middot; Role: {role_label}
             </p>
             <p style="margin:0 0 12px;font-size:11px;font-family:{ff};">
@@ -491,6 +572,33 @@ _EMAIL_TEMPLATE = """\
 </body>
 </html>
 """
+
+
+def _resolve_hot_topic_lead_for_subscriber(
+    topics: list[Topic],
+    hot_data: dict[str, Any] | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, int | None]:
+    """If today's global hot topic is in this subscriber's briefing, return it and the hot article."""
+    if not hot_data:
+        return None, None, None
+    ht = hot_data.get("hot_topic")
+    ha = hot_data.get("hot_article")
+    matched_ids = {t.id for t in topics}
+    if isinstance(ht, dict) and isinstance(ha, dict) and ht.get("id") in matched_ids:
+        return ht, ha, int(ht["id"])
+    return None, None, None
+
+
+def _sendgrid_hot_topic_lead_fields(ht: dict[str, Any], ha: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "topic_name": ht.get("name"),
+        "topic_domain": ht.get("domain"),
+        "topic_subdomain": ht.get("subdomain"),
+        "article_title": ha.get("title"),
+        "article_url": ha.get("url"),
+        "source_name": ha.get("source_name"),
+        "ingested_at_display": _format_dt_for_email_hot(ha.get("ingested_at")),
+    }
 
 
 def _build_top_stories_block(
@@ -537,6 +645,55 @@ def _build_top_stories_block(
             f'<p style="margin:0;font-size:13px;color:#4A5F6D;font-family:{_FF};">No top stories this issue.</p>'
         )
     )
+
+
+def _build_hot_topic_lead_html(hot_topic: dict, hot_article: dict) -> str:
+    """
+    Lead block for subscribers whose newsletter includes today's global hot topic
+    (same selection as admin Daily trends: ``build_hot_of_day``).
+    """
+    dom = html.escape((hot_topic.get("domain") or "").strip())
+    sub = html.escape((hot_topic.get("subdomain") or "").strip())
+    dom_line = dom
+    if sub:
+        dom_line = f"{dom} &middot; {sub}" if dom else sub
+    domain_row = ""
+    if dom_line:
+        domain_row = (
+            f'<p style="margin:0 0 6px;font-size:11px;font-weight:600;color:#4A5F6D;font-family:{_FF};">'
+            f"{dom_line}</p>"
+        )
+    title = html.escape(hot_article.get("title") or "Read article")
+    url = html.escape(hot_article.get("url") or "#")
+    src = html.escape((hot_article.get("source_name") or "").strip() or "Source")
+    ing = hot_article.get("ingested_at")
+    ing_part = ""
+    if ing:
+        ing_part = f" &middot; Ingested {_format_dt_for_email_hot(ing)}"
+    meta = f"{src}{ing_part}"
+    tname = html.escape(hot_topic.get("name") or "Hot topic")
+    return f"""
+<tr>
+  <td style="padding:0 32px 8px;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#F4F8FA;border-radius:8px;border:1px solid #E5E7EB;overflow:hidden;">
+      <tr>
+        <td style="padding:18px 20px;border-left:4px solid #019E7C;">
+          <p style="margin:0 0 8px;font-size:10px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;
+                    color:#019E7C;font-family:{_FF};">Hot on your radar &mdash; today</p>
+          {domain_row}
+          <p style="margin:0 0 10px;font-size:18px;font-weight:700;line-height:1.3;font-family:{_FF};">
+            <a href="{url}" style="color:#019E7C;text-decoration:none;">{title}</a>
+          </p>
+          <p style="margin:0 0 4px;font-size:12px;color:#6B7280;font-family:{_FF};">{meta}</p>
+          <p style="margin:8px 0 0;font-size:12px;font-weight:600;font-family:{_FF};">
+            <span style="color:#4A5F6D;">Topic: </span><span style="color:#111827;">{tname}</span>
+          </p>
+        </td>
+      </tr>
+    </table>
+  </td>
+</tr>
+"""
 
 
 def _build_deep_dive_section(
@@ -798,6 +955,8 @@ def _build_html(
     db: Session | None = None,
     promoted_content: list[ContentItem] | None = None,
     article_ingested_after: datetime | None = None,
+    *,
+    hot_of_day: dict[str, Any] | None = None,
 ) -> str:
     role_objs = _resolve_subscriber_roles(subscriber, db)
     role_footer = ", ".join(
@@ -809,9 +968,37 @@ def _build_html(
     public_site = (settings.public_site_url or "http://localhost:3100").rstrip("/")
 
     sorted_topics = sorted(topics, key=lambda t: t.urgency_score, reverse=True)
-    top_stories = sorted_topics[:3]
-    deep_dives = sorted_topics[3:7]
-    quick_hits = sorted_topics[7:]
+    hot_data: dict[str, Any] | None = None
+    if db is not None:
+        if hot_of_day is not None:
+            hot_data = hot_of_day
+        else:
+            try:
+                hot_data = build_hot_of_day(db)
+            except Exception:
+                logger.debug("build_hot_of_day failed for newsletter HTML", exc_info=True)
+                hot_data = {"hot_topic": None, "hot_article": None}
+
+    ht, ha, hot_topic_id_for_sections = _resolve_hot_topic_lead_for_subscriber(topics, hot_data)
+    hot_lead_html = _build_hot_topic_lead_html(ht, ha) if ht and ha else ""
+
+    headline_for_header: str | None = None
+    if isinstance(ha, dict):
+        raw_h = (ha.get("title") or "").strip()
+        if raw_h:
+            headline_for_header = raw_h
+    header_banner_html = _build_newsletter_header_banner_html(
+        headline_article_title=headline_for_header,
+    )
+
+    if hot_topic_id_for_sections is not None:
+        rest_topics = [t for t in sorted_topics if t.id != hot_topic_id_for_sections]
+    else:
+        rest_topics = list(sorted_topics)
+
+    top_stories = rest_topics[:3]
+    deep_dives = rest_topics[3:7]
+    quick_hits = rest_topics[7:]
 
     top_stories_html = _build_top_stories_block(
         top_stories,
@@ -888,6 +1075,8 @@ def _build_html(
         read_online_url=read_online,
         first_name=html.escape(subscriber.first_name or "there"),
         industry_line=html.escape(industry_line) if industry_line else "",
+        header_banner_html=header_banner_html,
+        hot_lead_html=hot_lead_html,
         top_stories_html=top_stories_html,
         deep_dives_html=deep_dives_html,
         promo_html=promo_html,
@@ -911,6 +1100,8 @@ def send_daily_newsletter(
     db: Session | None = None,
     promoted_content: list[ContentItem] | None = None,
     article_ingested_after: datetime | None = None,
+    *,
+    hot_of_day: dict[str, Any] | None = None,
 ) -> bool:
     """
     Send a personalized newsletter to one subscriber.
@@ -927,18 +1118,22 @@ def send_daily_newsletter(
         email=settings.sendgrid_from_email,
         name=settings.sendgrid_from_name,
     )
-    role_bit = ""
-    if roles:
-        names = ", ".join((r.name or "").strip() for r in roles if (r.name or "").strip())
-        if names:
-            role_bit = f" · {names}"
-    subject = (
-        f"PulseOne Radar{role_bit}: {len(topics)} signal{'s' if len(topics) != 1 else ''} "
-        f"this week — {_short_month_day(datetime.now(UTC))}"
-    )
+
+    hot_data: dict[str, Any] | None = None
+    if db is not None:
+        if hot_of_day is not None:
+            hot_data = hot_of_day
+        else:
+            try:
+                hot_data = build_hot_of_day(db)
+            except Exception:
+                logger.debug("build_hot_of_day failed for newsletter send", exc_info=True)
+                hot_data = {"hot_topic": None, "hot_article": None}
+
+    subject, newsletter_headline = _newsletter_subject_and_headline(topics, roles, hot_data)
 
     if settings.sendgrid_newsletter_template_id:
-        message = Mail(from_email=from_email)
+        message = Mail(from_email=from_email, subject=Subject(subject))
         message.template_id = settings.sendgrid_newsletter_template_id
         p = Personalization()
         p.add_to(To(email=subscriber.email))
@@ -952,6 +1147,8 @@ def send_daily_newsletter(
                     merged_tags.append(s)
         industry_str = ", ".join(subscriber.industries or []) if subscriber.industries else ""
         role_names_list = [r.name for r in roles if r.name]
+        ht_sg, ha_sg, _ = _resolve_hot_topic_lead_for_subscriber(topics, hot_data)
+        hot_topic_lead = _sendgrid_hot_topic_lead_fields(ht_sg, ha_sg) if ht_sg and ha_sg else None
         p.dynamic_template_data = DynamicTemplateData(
             {
                 "first_name": subscriber.first_name,
@@ -961,6 +1158,11 @@ def send_daily_newsletter(
                 "role_name": ", ".join(role_names_list) or "",
                 "role_names": role_names_list,
                 "role_tags": merged_tags,
+                "email_subject": subject,
+                "newsletter_product_name": "Pulse of Technology Daily",
+                "newsletter_logo_url": _newsletter_logo_url(),
+                "newsletter_headline": newsletter_headline or "",
+                "hot_topic_lead": hot_topic_lead,
                 "topics": [
                     {
                         "name": t.name,
@@ -981,11 +1183,12 @@ def send_daily_newsletter(
             db=db,
             promoted_content=promoted_content,
             article_ingested_after=article_ingested_after,
+            hot_of_day=hot_data,
         )
         message = Mail(
             from_email=from_email,
             to_emails=To(email=subscriber.email),
-            subject=subject,
+            subject=Subject(subject),
             html_content=Content("text/html", html_body),
         )
 
@@ -1238,6 +1441,12 @@ def run_daily_newsletter(db: Session) -> None:
         article_cutoff.isoformat(),
     )
 
+    try:
+        batch_hot = build_hot_of_day(db)
+    except Exception:
+        logger.debug("build_hot_of_day failed for daily newsletter batch", exc_info=True)
+        batch_hot = {"hot_topic": None, "hot_article": None}
+
     sent = 0
     delay_s = settings.newsletter_subscriber_delay_seconds
     for i, subscriber in enumerate(subscribers):
@@ -1250,6 +1459,7 @@ def run_daily_newsletter(db: Session) -> None:
                 db=db,
                 promoted_content=promoted,
                 article_ingested_after=article_cutoff,
+                hot_of_day=batch_hot,
             ):
                 sent += 1
         if delay_s > 0 and i < len(subscribers) - 1:
@@ -1319,3 +1529,54 @@ def send_test_newsletter(db: Session, to_email: str) -> tuple[bool, str]:
     if ok:
         return True, f"Test newsletter sent to {raw} ({len(matched)} topic(s))."
     return False, "SendGrid did not accept the message — check server logs."
+
+
+def send_admin_invite_email(to_email: str, temporary_password: str, login_url: str) -> bool:
+    """
+    Email an invited admin user their temporary password.
+    Returns False if SendGrid is not configured or the send fails.
+    """
+    if not settings.sendgrid_api_key:
+        logger.warning("SENDGRID_API_KEY not set; admin invite email not sent to %s", to_email)
+        return False
+    sg = _get_sg_client()
+    from_email = Email(
+        email=settings.sendgrid_from_email,
+        name=settings.sendgrid_from_name,
+    )
+    safe_pw = html.escape(temporary_password, quote=True)
+    safe_url = html.escape(login_url, quote=True)
+    safe_em = html.escape(to_email, quote=True)
+    plain = (
+        f"You have been invited to the PulseOne admin console.\n\n"
+        f"Sign in: {login_url}\n"
+        f"Email: {to_email}\n"
+        f"Temporary password: {temporary_password}\n\n"
+        "You will be asked to choose a new password after signing in."
+    )
+    html_body = (
+        f"<p>You have been invited to the PulseOne admin console.</p>"
+        f'<p><a href="{safe_url}">Sign in</a></p>'
+        f"<p>Email: {safe_em}</p>"
+        f"<p>Temporary password: <code>{safe_pw}</code></p>"
+        "<p>You will be asked to choose a new password after signing in.</p>"
+    )
+    message = Mail(
+        from_email=from_email,
+        to_emails=To(email=to_email),
+        subject="PulseOne admin access",
+        plain_text_content=Content("text/plain", plain),
+        html_content=Content("text/html", html_body),
+    )
+    try:
+        response = sg.send(message)
+        if response.status_code != 202:
+            logger.warning(
+                "Unexpected SendGrid status %d for admin invite to %s",
+                response.status_code,
+                to_email,
+            )
+        return response.status_code == 202
+    except Exception:
+        logger.exception("SendGrid error sending admin invite to %s", to_email)
+        return False

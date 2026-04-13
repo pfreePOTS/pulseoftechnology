@@ -1,10 +1,10 @@
 import logging
 import re
+import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-import jwt
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -18,21 +18,27 @@ from fastapi import (
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator, model_validator
-from sqlalchemy import func
+from sqlalchemy import and_, case, func
 from sqlalchemy.orm import Session, joinedload
 
+from ..admin_permissions import INVITABLE_PAGE_SLUGS, normalize_login_email
 from ..config import settings as app_settings
 from ..database import SessionLocal, get_db
 from ..dependencies import (
     ADMIN_COOKIE_NAME,
     create_admin_access_token,
-    decode_admin_token,
+    get_admin_user_from_token,
     get_token_from_request,
+    hash_password,
     require_admin,
-    verify_admin_password,
+    require_superuser,
+    verify_password,
 )
+from ..models.admin_user import AdminUser
+from ..models.agent_run import AgentRun
 from ..models.article import Article
 from ..models.content import ContentItem
+from ..models.prompt import PromptProposal, PromptTemplate
 from ..models.role import Role
 from ..models.signal import SignalRecommendation
 from ..models.source import Source, SourceType
@@ -42,6 +48,7 @@ from ..models.topic import AdoptionState, Topic, TopicStatus
 from ..rate_limits import limiter
 from ..services.ai_service import (
     INDUSTRY_GRID_LABELS,
+    clear_prompt_template_cache,
     ensure_topic_industry_grid_complete,
     suggest_industry_positions,
     suggest_subdomain_for_topic,
@@ -50,6 +57,7 @@ from ..services.ai_service import (
 from ..services.email_service import (
     generate_newsletter_preview,
     run_daily_newsletter,
+    send_admin_invite_email,
     send_test_newsletter,
 )
 from ..services.hubspot_sync import sync_subscriber_to_hubspot
@@ -75,22 +83,19 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
 class LoginRequest(BaseModel):
+    email: str
     password: str
 
 
-@router.post("/login")
-@limiter.limit("10/minute")
-def login(request: Request, payload: LoginRequest) -> JSONResponse:
-    """Issue a JWT and set an httpOnly cookie for browser clients."""
-    if not verify_admin_password(payload.password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid password",
-        )
-    token = create_admin_access_token()
+def _issue_admin_cookie_response(user: AdminUser) -> JSONResponse:
+    token = create_admin_access_token(user)
     secure = app_settings.environment in ("production", "staging")
     response = JSONResponse(
-        {"access_token": token, "token_type": "bearer"},
+        {
+            "access_token": token,
+            "token_type": "bearer",
+            "must_change_password": user.must_change_password,
+        },
     )
     response.set_cookie(
         key=ADMIN_COOKIE_NAME,
@@ -104,6 +109,25 @@ def login(request: Request, payload: LoginRequest) -> JSONResponse:
     return response
 
 
+@router.post("/login")
+@limiter.limit("10/minute")
+def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)) -> JSONResponse:
+    """Issue a JWT and set an httpOnly cookie for browser clients."""
+    email = normalize_login_email(payload.email)
+    user = db.query(AdminUser).filter(AdminUser.email == email).first()
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+        )
+    if not verify_password(payload.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+        )
+    return _issue_admin_cookie_response(user)
+
+
 @router.post("/logout")
 def logout() -> JSONResponse:
     """Clear admin session cookie."""
@@ -115,22 +139,205 @@ def logout() -> JSONResponse:
 @router.get("/session")
 def admin_session(
     request: Request,
+    db: Session = Depends(get_db),
     credentials: HTTPAuthorizationCredentials | None = Security(_bearer_optional),
 ) -> dict:
-    """Return whether a valid JWT is present (cookie or Bearer)."""
+    """Return session and current user when a valid JWT is present (cookie or Bearer)."""
     token = get_token_from_request(request, credentials)
     if not token:
         return {"authenticated": False}
     try:
-        decode_admin_token(token)
-        return {"authenticated": True}
-    except jwt.PyJWTError:
+        user = get_admin_user_from_token(token, db)
+    except HTTPException:
         return {"authenticated": False}
+    return {
+        "authenticated": True,
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "is_superuser": user.is_superuser,
+            "must_change_password": user.must_change_password,
+            "page_permissions": user.page_permissions or [],
+        },
+    }
 
 
-# ---------------------------------------------------------------------------
-# Articles (raw firehose)
-# ---------------------------------------------------------------------------
+class ChangePasswordBody(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=8, max_length=256)
+
+
+@router.post("/me/password")
+def change_own_password(
+    payload: ChangePasswordBody,
+    user: AdminUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Change password for the authenticated user (required after invite)."""
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect"
+        )
+    user.password_hash = hash_password(payload.new_password)
+    user.must_change_password = False
+    db.add(user)
+    db.commit()
+    return {"ok": True}
+
+
+class AdminUserOut(BaseModel):
+    id: int
+    email: str
+    is_superuser: bool
+    is_active: bool
+    must_change_password: bool
+    page_permissions: list[str]
+
+    model_config = {"from_attributes": True}
+
+
+@router.get("/me", response_model=AdminUserOut)
+def admin_me(user: AdminUser = Depends(require_admin)) -> AdminUser:
+    return user
+
+
+class InviteUserBody(BaseModel):
+    email: str
+    page_permissions: list[str] = Field(default_factory=list)
+    send_email: bool = True
+
+
+class PatchAdminUserBody(BaseModel):
+    page_permissions: list[str] | None = None
+    is_active: bool | None = None
+
+
+def _validate_invite_permissions(slugs: list[str]) -> None:
+    bad = sorted([s for s in slugs if s not in INVITABLE_PAGE_SLUGS])
+    if bad:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid page permissions: {bad}",
+        )
+
+
+@router.get("/users", response_model=list[AdminUserOut])
+def list_admin_users(
+    db: Session = Depends(get_db),
+    _: AdminUser = Depends(require_superuser),
+) -> list[AdminUser]:
+    return db.query(AdminUser).order_by(AdminUser.email).all()
+
+
+@router.post("/users/invite")
+def invite_admin_user(
+    payload: InviteUserBody,
+    db: Session = Depends(get_db),
+    _: AdminUser = Depends(require_superuser),
+) -> dict:
+    _validate_invite_permissions(payload.page_permissions)
+    if not payload.page_permissions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Select at least one page this user can access",
+        )
+    email = normalize_login_email(payload.email)
+    if "@" not in email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="A valid email address is required"
+        )
+    if db.query(AdminUser).filter(AdminUser.email == email).first():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User already exists")
+    temp = secrets.token_urlsafe(14)
+    user = AdminUser(
+        email=email,
+        password_hash=hash_password(temp),
+        is_superuser=False,
+        is_active=True,
+        must_change_password=True,
+        page_permissions=list(payload.page_permissions),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    login_url = f"{app_settings.public_site_url.rstrip('/')}/admin/login"
+    emailed = False
+    if payload.send_email:
+        emailed = send_admin_invite_email(email, temp, login_url)
+    return {
+        "id": user.id,
+        "email": user.email,
+        "temporary_password": temp,
+        "email_sent": emailed,
+    }
+
+
+@router.patch("/users/{user_id}", response_model=AdminUserOut)
+def patch_admin_user(
+    user_id: int,
+    payload: PatchAdminUserBody,
+    db: Session = Depends(get_db),
+    actor: AdminUser = Depends(require_superuser),
+) -> AdminUser:
+    u = db.get(AdminUser, user_id)
+    if u is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if u.is_superuser and (payload.is_active is False or payload.page_permissions is not None):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot modify superuser access"
+        )
+    if payload.page_permissions is not None:
+        _validate_invite_permissions(payload.page_permissions)
+        u.page_permissions = list(payload.page_permissions)
+    if payload.is_active is not None:
+        if actor.id == user_id and not payload.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot deactivate yourself"
+            )
+        u.is_active = payload.is_active
+    db.add(u)
+    db.commit()
+    db.refresh(u)
+    return u
+
+
+@router.delete("/users/{user_id}")
+def delete_admin_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    actor: AdminUser = Depends(require_superuser),
+) -> dict:
+    if actor.id == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete your own account"
+        )
+    u = db.get(AdminUser, user_id)
+    if u is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if u.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete a superuser account"
+        )
+    db.delete(u)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/users/{user_id}/reset-password")
+def reset_admin_user_password(
+    user_id: int,
+    db: Session = Depends(get_db),
+    _: AdminUser = Depends(require_superuser),
+) -> dict:
+    u = db.get(AdminUser, user_id)
+    if u is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    temp = secrets.token_urlsafe(14)
+    u.password_hash = hash_password(temp)
+    u.must_change_password = True
+    db.add(u)
+    db.commit()
+    return {"temporary_password": temp}
 
 
 class ArticleListItem(BaseModel):
@@ -164,7 +371,7 @@ class PipelineProgressOut(BaseModel):
 @router.get("/articles/stats", response_model=ArticleStatsOut)
 def article_collection_stats(
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     active = db.query(func.count(Article.id)).filter(Article.archived_at.is_(None)).scalar() or 0
     archived = (
@@ -176,14 +383,10 @@ def article_collection_stats(
 @router.get("/articles/pipeline-progress", response_model=PipelineProgressOut)
 def article_pipeline_progress(
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     """Lightweight counts by article status for the live progress ticker."""
-    rows = (
-        db.query(Article.status, func.count(Article.id))
-        .group_by(Article.status)
-        .all()
-    )
+    rows = db.query(Article.status, func.count(Article.id)).group_by(Article.status).all()
     counts = {str(status.value): cnt for status, cnt in rows}
     raw = counts.get("raw", 0)
     processed = counts.get("processed", 0)
@@ -195,7 +398,7 @@ def article_pipeline_progress(
 @router.get("/articles", response_model=list[ArticleListItem])
 def list_articles(
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
     article_status: str | None = Query(default=None, alias="status"),
     archive: str = Query(
         default="active",
@@ -255,7 +458,7 @@ class PipelineSettingsUpdate(BaseModel):
 @router.get("/settings")
 def get_pipeline_settings(
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ) -> dict[str, Any]:
     merged = merge_pipeline_settings(db)
     return merged_settings_public_dict(merged)
@@ -265,7 +468,7 @@ def get_pipeline_settings(
 def put_pipeline_settings(
     payload: PipelineSettingsUpdate,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ) -> dict[str, Any]:
     from ..scheduler import schedule_newsletter_job
 
@@ -406,7 +609,7 @@ class TopicUpdate(BaseModel):
 @router.get("/topics", response_model=list[TopicOut])
 def list_topics(
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
     topic_status: TopicStatus | None = Query(default=None, alias="status"),
     is_published: bool | None = Query(default=None),
     radar_pipeline: bool = Query(
@@ -496,7 +699,7 @@ def list_topics(
 @router.get("/topics/positioning-insights", response_model=list[TopicPositioningInsight])
 def topic_positioning_insights(
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     """Article velocity (primary vs prior window, coverage time) plus optional Haiku synthesis."""
     from ..services.trend_service import build_positioning_insights
@@ -507,7 +710,7 @@ def topic_positioning_insights(
 @router.get("/trending/hot-of-day", response_model=HotOfDayOut)
 def trending_hot_of_day(
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     """On-radar topic with the most articles in the primary trend window + latest ingested article in that window."""
     from ..services.trend_service import build_hot_of_day
@@ -519,7 +722,7 @@ def trending_hot_of_day(
 def get_topic(
     topic_id: int,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     topic = (
         db.query(Topic)
@@ -537,7 +740,7 @@ def update_topic(
     topic_id: int,
     payload: TopicUpdate,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     topic = db.query(Topic).filter(Topic.id == topic_id).first()
     if topic is None:
@@ -569,7 +772,7 @@ def update_topic(
 def suggest_positions(
     topic_id: int,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     """Ask Claude to suggest per-industry impact, risk, adoption state, and rationales."""
     try:
@@ -583,7 +786,7 @@ def suggest_positions(
 def ensure_industry_grid(
     topic_id: int,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     """
     Add any missing Analysis / radar columns for this topic (same 20 industries as the grid).
@@ -602,7 +805,7 @@ def ensure_industry_grid(
 def suggest_persona_by_role(
     topic_id: int,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     """Ask Claude to synthesize topic-level persona lines per Role (Analysis Persona tab)."""
     try:
@@ -619,7 +822,7 @@ class BulkSubdomainBody(BaseModel):
 def suggest_subdomain(
     topic_id: int,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     """AI label for subdomain theme — groups trends as domain × subdomain × topic name."""
     try:
@@ -636,7 +839,7 @@ def suggest_subdomain(
 def bulk_suggest_subdomains(
     payload: BulkSubdomainBody,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     """Run subdomain labelling for many topics (sequential; max 50 ids per request)."""
     ids = payload.topic_ids[:50]
@@ -656,7 +859,7 @@ def bulk_suggest_subdomains(
 def run_topic_trend_analysis(
     topic_id: int,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     """
     Run the Claude Haiku trend agent for this topic: fills pending SignalRecommendation
@@ -693,7 +896,7 @@ def run_topic_trend_analysis(
 def watch_topic(
     topic_id: int,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     """Promote a pending topic to 'watched' (tracking for research)."""
     topic = db.query(Topic).filter(Topic.id == topic_id).first()
@@ -711,7 +914,7 @@ def watch_topic(
 def select_topic(
     topic_id: int,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     """Select a watched topic for the radar pipeline."""
     topic = db.query(Topic).filter(Topic.id == topic_id).first()
@@ -737,7 +940,7 @@ def select_topic(
 def deselect_topic(
     topic_id: int,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     """Move a selected topic back to watched."""
     topic = db.query(Topic).filter(Topic.id == topic_id).first()
@@ -756,7 +959,7 @@ def deselect_topic(
 def approve_topic(
     topic_id: int,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     """Approve a pending/watched topic (→ selected) and accept the latest pending signal if any."""
     topic = db.query(Topic).filter(Topic.id == topic_id).first()
@@ -802,7 +1005,7 @@ def approve_topic(
 def publish_topic(
     topic_id: int,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     topic = db.query(Topic).filter(Topic.id == topic_id).first()
     if topic is None:
@@ -819,7 +1022,7 @@ def publish_topic(
 def unpublish_topic(
     topic_id: int,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     topic = db.query(Topic).filter(Topic.id == topic_id).first()
     if topic is None:
@@ -839,7 +1042,7 @@ def unpublish_topic(
 def generate_topic_summary_endpoint(
     topic_id: int,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     from ..services.ai_service import generate_topic_summary  # avoid circular at module level
 
@@ -848,7 +1051,7 @@ def generate_topic_summary_endpoint(
         raise HTTPException(status_code=404, detail="Topic not found")
 
     articles = topic.articles
-    generate_topic_summary(topic, list(articles))
+    generate_topic_summary(topic, list(articles), db)
     db.commit()
     db.refresh(topic)
     return topic
@@ -868,7 +1071,7 @@ class TopicMergeRequest(BaseModel):
 def merge_topics(
     payload: TopicMergeRequest,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     """
     Merge one or more source topics into a target topic.
@@ -931,7 +1134,7 @@ class SignalOut(BaseModel):
 @router.get("/signals", response_model=list[SignalOut])
 def list_signals(
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
     status: str = Query(default="pending"),
 ):
     rows = (
@@ -966,7 +1169,7 @@ def list_signals(
 def approve_signal(
     signal_id: int,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     signal = db.query(SignalRecommendation).filter(SignalRecommendation.id == signal_id).first()
     if signal is None:
@@ -995,7 +1198,7 @@ def approve_signal(
 def reject_signal(
     signal_id: int,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     signal = db.query(SignalRecommendation).filter(SignalRecommendation.id == signal_id).first()
     if signal is None:
@@ -1003,6 +1206,329 @@ def reject_signal(
     signal.status = "rejected"
     db.commit()
     return {"status": "rejected"}
+
+
+# ---------------------------------------------------------------------------
+# Prompt proposals (optimizer)
+# ---------------------------------------------------------------------------
+
+
+def _next_prompt_version_after_approval(base_version: str) -> str:
+    """Bump minor segment (e.g. 1.0.0 → 1.1.0); handles ``fallback`` and simple semver."""
+    s = (base_version or "").strip()
+    if s == "fallback":
+        return "1.1.0"
+    parts = s.split(".")
+    if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+        return f"{int(parts[0])}.{int(parts[1]) + 1}.0"
+    if len(parts) >= 1 and parts[0].isdigit():
+        return f"{int(parts[0])}.1.0"
+    return "1.1.0"
+
+
+class PromptProposalOut(BaseModel):
+    id: int
+    agent_name: str
+    base_version: str
+    proposed_system_prompt: str
+    rationale: str
+    test_improvement_score: float | None
+    status: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PromptTemplateOut(BaseModel):
+    id: int
+    agent_name: str
+    version: str
+    is_active: bool
+    created_at: datetime
+    system_prompt: str
+
+    model_config = {"from_attributes": True}
+
+
+@router.get("/prompt-proposals", response_model=list[PromptProposalOut])
+def list_prompt_proposals(
+    db: Session = Depends(get_db),
+    _: AdminUser = Depends(require_admin),
+    status: str = Query(
+        default="pending",
+        description="Filter: pending | approved | rejected | all",
+    ),
+):
+    q = db.query(PromptProposal).order_by(PromptProposal.created_at.desc())
+    s = (status or "pending").strip().lower()
+    if s != "all":
+        q = q.filter(PromptProposal.status == s)
+    return q.all()
+
+
+@router.post("/prompt-proposals/{proposal_id}/approve")
+def approve_prompt_proposal(
+    proposal_id: int,
+    db: Session = Depends(get_db),
+    _: AdminUser = Depends(require_admin),
+):
+    proposal = db.query(PromptProposal).filter(PromptProposal.id == proposal_id).first()
+    if proposal is None:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    if proposal.status != "pending":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Proposal is not pending (status={proposal.status!r})",
+        )
+
+    agent_name = proposal.agent_name
+    db.query(PromptTemplate).filter(PromptTemplate.agent_name == agent_name).update(
+        {PromptTemplate.is_active: False},
+        synchronize_session=False,
+    )
+    new_version = _next_prompt_version_after_approval(proposal.base_version)
+    db.add(
+        PromptTemplate(
+            agent_name=agent_name,
+            version=new_version,
+            system_prompt=proposal.proposed_system_prompt,
+            is_active=True,
+        )
+    )
+    proposal.status = "approved"
+    db.commit()
+    clear_prompt_template_cache()
+    return {
+        "message": f"Prompt {new_version} is now active for {agent_name}.",
+        "new_version": new_version,
+    }
+
+
+@router.post("/prompt-proposals/{proposal_id}/reject")
+def reject_prompt_proposal(
+    proposal_id: int,
+    db: Session = Depends(get_db),
+    _: AdminUser = Depends(require_admin),
+):
+    proposal = db.query(PromptProposal).filter(PromptProposal.id == proposal_id).first()
+    if proposal is None:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    if proposal.status != "pending":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Proposal is not pending (status={proposal.status!r})",
+        )
+    proposal.status = "rejected"
+    db.commit()
+    return {"message": "Proposal rejected."}
+
+
+@router.get("/prompt-templates", response_model=list[PromptTemplateOut])
+def list_prompt_templates(
+    db: Session = Depends(get_db),
+    _: AdminUser = Depends(require_admin),
+    agent: str = Query(default="all", description='Agent name or "all"'),
+):
+    q = db.query(PromptTemplate).order_by(PromptTemplate.created_at.desc())
+    a = (agent or "all").strip().lower()
+    if a != "all":
+        q = q.filter(PromptTemplate.agent_name == agent)
+    return q.all()
+
+
+# ---------------------------------------------------------------------------
+# AI agent runs (telemetry)
+# ---------------------------------------------------------------------------
+
+
+def _agent_run_status(ar: AgentRun) -> str:
+    if ar.fallback_used:
+        return "fallback"
+    if ar.is_success:
+        return "success"
+    return "failed"
+
+
+def _apply_agent_run_status_filter(q, status: str | None):
+    if not status or status == "all":
+        return q
+    s = status.lower()
+    if s == "success":
+        return q.filter(AgentRun.is_success.is_(True), AgentRun.fallback_used.is_(False))
+    if s == "fallback":
+        return q.filter(AgentRun.fallback_used.is_(True))
+    if s == "failed":
+        return q.filter(AgentRun.is_success.is_(False), AgentRun.fallback_used.is_(False))
+    return q
+
+
+class AgentRunSummaryOut(BaseModel):
+    total_runs: int
+    success_rate: float
+    avg_latency_ms: float | None
+    total_tokens: int
+
+
+@router.get("/agent-runs/summary", response_model=AgentRunSummaryOut)
+def agent_runs_summary(
+    db: Session = Depends(get_db),
+    _: AdminUser = Depends(require_admin),
+):
+    cutoff = datetime.now(UTC) - timedelta(hours=24)
+    base = db.query(AgentRun).filter(AgentRun.created_at >= cutoff)
+    total_runs = base.count()
+    success_n = (
+        db.query(AgentRun)
+        .filter(
+            AgentRun.created_at >= cutoff,
+            AgentRun.is_success.is_(True),
+            AgentRun.fallback_used.is_(False),
+        )
+        .count()
+    )
+    success_rate = (100.0 * success_n / total_runs) if total_runs else 0.0
+    avg_lat = db.query(func.avg(AgentRun.latency_ms)).filter(AgentRun.created_at >= cutoff).scalar()
+    total_tokens_row = (
+        db.query(func.coalesce(func.sum(AgentRun.tokens), 0))
+        .filter(AgentRun.created_at >= cutoff)
+        .scalar()
+    )
+    total_tokens = int(total_tokens_row or 0)
+    return AgentRunSummaryOut(
+        total_runs=total_runs,
+        success_rate=round(success_rate, 2),
+        avg_latency_ms=float(avg_lat) if avg_lat is not None else None,
+        total_tokens=total_tokens,
+    )
+
+
+class AgentRunByAgentRow(BaseModel):
+    agent_name: str
+    total_runs: int
+    success_rate: float
+    fallback_count: int
+    avg_latency_ms: float | None
+    avg_tokens: float | None
+
+
+@router.get("/agent-runs/by-agent", response_model=list[AgentRunByAgentRow])
+def agent_runs_by_agent(
+    db: Session = Depends(get_db),
+    _: AdminUser = Depends(require_admin),
+    days: int = Query(default=7, ge=1, le=90),
+):
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+    success_sum = func.sum(
+        case(
+            (and_(AgentRun.is_success.is_(True), AgentRun.fallback_used.is_(False)), 1),
+            else_=0,
+        )
+    ).label("success_n")
+    fb_sum = func.sum(case((AgentRun.fallback_used.is_(True), 1), else_=0)).label("fb_n")
+
+    rows = (
+        db.query(
+            AgentRun.agent_name,
+            func.count(AgentRun.id).label("total"),
+            success_sum,
+            fb_sum,
+            func.avg(AgentRun.latency_ms).label("avg_lat"),
+            func.avg(AgentRun.tokens).label("avg_tok"),
+        )
+        .filter(AgentRun.created_at >= cutoff)
+        .group_by(AgentRun.agent_name)
+        .order_by(func.count(AgentRun.id).desc())
+        .all()
+    )
+    out: list[AgentRunByAgentRow] = []
+    for name, total, sn, fn, avg_lat, avg_tok in rows:
+        total = int(total or 0)
+        sn_i = int(sn or 0)
+        fn_i = int(fn or 0)
+        sr = (100.0 * sn_i / total) if total else 0.0
+        out.append(
+            AgentRunByAgentRow(
+                agent_name=name,
+                total_runs=total,
+                success_rate=round(sr, 2),
+                fallback_count=fn_i,
+                avg_latency_ms=float(avg_lat) if avg_lat is not None else None,
+                avg_tokens=float(avg_tok) if avg_tok is not None else None,
+            )
+        )
+    return out
+
+
+class AgentRunListItemOut(BaseModel):
+    id: int
+    agent_name: str
+    created_at: datetime
+    article_id: int | None
+    article_title: str | None
+    status: str
+    latency_ms: int | None
+    tokens: int | None
+    model: str | None
+
+    model_config = {"from_attributes": True}
+
+
+class AgentRunListResponse(BaseModel):
+    items: list[AgentRunListItemOut]
+    total: int
+    limit: int
+    offset: int
+
+
+def _agent_runs_filtered_query(
+    db: Session,
+    agent: str | None,
+    status: str | None,
+):
+    q = db.query(AgentRun, Article.title).outerjoin(Article, AgentRun.article_id == Article.id)
+    if agent:
+        q = q.filter(AgentRun.agent_name == agent)
+    q = _apply_agent_run_status_filter(q, status)
+    return q
+
+
+@router.get("/agent-runs", response_model=AgentRunListResponse)
+def list_agent_runs(
+    db: Session = Depends(get_db),
+    _: AdminUser = Depends(require_admin),
+    agent: str | None = Query(default=None, description="Filter by agent_name"),
+    status: str | None = Query(
+        default=None,
+        description="success | fallback | failed | all",
+    ),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+):
+    total = _agent_runs_filtered_query(db, agent, status).count()
+    page_rows = (
+        _agent_runs_filtered_query(db, agent, status)
+        .order_by(AgentRun.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    items: list[AgentRunListItemOut] = []
+    for ar, title in page_rows:
+        items.append(
+            AgentRunListItemOut(
+                id=ar.id,
+                agent_name=ar.agent_name,
+                created_at=ar.created_at,
+                article_id=ar.article_id,
+                article_title=title,
+                status=_agent_run_status(ar),
+                latency_ms=ar.latency_ms,
+                tokens=ar.tokens,
+                model=ar.model,
+            )
+        )
+    return AgentRunListResponse(items=items, total=total, limit=limit, offset=offset)
 
 
 # ---------------------------------------------------------------------------
@@ -1035,7 +1561,7 @@ class SourceUpdate(BaseModel):
 @router.get("/sources", response_model=list[SourceOut])
 def list_sources(
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     return db.query(Source).order_by(Source.name).all()
 
@@ -1044,7 +1570,7 @@ def list_sources(
 def create_source(
     payload: SourceCreate,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     if db.query(Source).filter(Source.url == payload.url).first():
         raise HTTPException(status_code=409, detail="A source with this URL already exists")
@@ -1064,7 +1590,7 @@ def update_source(
     source_id: int,
     payload: SourceUpdate,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     source = db.query(Source).filter(Source.id == source_id).first()
     if source is None:
@@ -1082,7 +1608,7 @@ def update_source(
 def delete_source(
     source_id: int,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     source = db.query(Source).filter(Source.id == source_id).first()
     if source is None:
@@ -1143,7 +1669,7 @@ def create_subscriber(
     payload: SubscriberCreate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     """Create a subscriber manually (same data model as the public subscribe form)."""
     if db.query(Subscriber).filter(Subscriber.email == payload.email).first():
@@ -1172,7 +1698,7 @@ def create_subscriber(
 @router.get("/subscribers", response_model=list[SubscriberOut])
 def list_subscribers(
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     return db.query(Subscriber).order_by(Subscriber.created_at.desc()).all()
 
@@ -1183,7 +1709,7 @@ def replace_subscriber(
     payload: SubscriberCreate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     """Replace subscriber fields (same payload as create). Syncs to HubSpot after save."""
     subscriber = db.query(Subscriber).filter(Subscriber.id == subscriber_id).first()
@@ -1218,7 +1744,7 @@ def replace_subscriber(
 def delete_subscriber(
     subscriber_id: int,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     subscriber = db.query(Subscriber).filter(Subscriber.id == subscriber_id).first()
     if subscriber is None:
@@ -1238,7 +1764,7 @@ def update_subscriber_role(
     payload: SubscriberRoleUpdate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     subscriber = db.query(Subscriber).filter(Subscriber.id == subscriber_id).first()
     if subscriber is None:
@@ -1277,7 +1803,7 @@ class RoleUpdate(BaseModel):
 @router.get("/roles", response_model=list[RoleOut])
 def list_roles(
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     return db.query(Role).order_by(Role.name).all()
 
@@ -1286,7 +1812,7 @@ def list_roles(
 def create_role(
     payload: RoleCreate,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     if db.query(Role).filter(Role.name == payload.name).first():
         raise HTTPException(status_code=409, detail="A role with this name already exists")
@@ -1302,7 +1828,7 @@ def update_role(
     role_id: int,
     payload: RoleUpdate,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     role = db.query(Role).filter(Role.id == role_id).first()
     if role is None:
@@ -1320,7 +1846,7 @@ def update_role(
 def delete_role(
     role_id: int,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     role = db.query(Role).filter(Role.id == role_id).first()
     if role is None:
@@ -1372,7 +1898,7 @@ class ContentItemUpdate(BaseModel):
 @router.get("/content", response_model=list[ContentItemOut])
 def list_content(
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     return db.query(ContentItem).order_by(ContentItem.created_at.desc()).all()
 
@@ -1381,7 +1907,7 @@ def list_content(
 def create_content(
     payload: ContentItemCreate,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     if payload.type not in CONTENT_TYPES:
         raise HTTPException(status_code=422, detail=f"type must be one of {sorted(CONTENT_TYPES)}")
@@ -1404,7 +1930,7 @@ def update_content(
     item_id: uuid.UUID,
     payload: ContentItemUpdate,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     item = db.query(ContentItem).filter(ContentItem.id == item_id).first()
     if item is None:
@@ -1436,7 +1962,7 @@ def update_content(
 def delete_content(
     item_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     item = db.query(ContentItem).filter(ContentItem.id == item_id).first()
     if item is None:
@@ -1453,7 +1979,7 @@ def delete_content(
 @router.get("/newsletter/preview-filters")
 def newsletter_preview_filters(
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     """
     Canonical industry grid (same as Analysis / AI) plus distinct topic.domain values.
@@ -1476,7 +2002,7 @@ def newsletter_preview_filters(
 @router.get("/newsletter/preview", response_class=HTMLResponse)
 def newsletter_preview(
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
     industries: list[str] = Query(default=[]),
     domains: list[str] = Query(default=[]),
     role_ids: list[int] = Query(default=[]),
@@ -1495,7 +2021,7 @@ def newsletter_preview(
 @router.get("/newsletter/survey-stats")
 def get_survey_stats(
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     """Counts newsletter feedback responses in the last 7 days."""
     cutoff = datetime.now(UTC) - timedelta(days=7)
@@ -1533,7 +2059,7 @@ class NewsletterTestSendRequest(BaseModel):
 def newsletter_test_send(
     body: NewsletterTestSendRequest,
     db: Session = Depends(get_db),
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     """Send one newsletter to the given address using current watched/selected topics (admin QA)."""
     ok, msg = send_test_newsletter(db, body.to_email)
@@ -1601,7 +2127,7 @@ def _run_newsletter() -> None:
 @router.post("/jobs/ingest")
 def trigger_ingest(
     background_tasks: BackgroundTasks,
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     background_tasks.add_task(_run_ingest)
     return {"message": "RSS ingestion started in the background."}
@@ -1610,7 +2136,7 @@ def trigger_ingest(
 @router.post("/jobs/process")
 def trigger_process_raw(
     background_tasks: BackgroundTasks,
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     """Run AI classification + embeddings on existing raw articles (no RSS fetch)."""
     background_tasks.add_task(_run_process_raw)
@@ -1620,24 +2146,20 @@ def trigger_process_raw(
 @router.post("/jobs/newsletter")
 def trigger_newsletter(
     background_tasks: BackgroundTasks,
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     background_tasks.add_task(_run_newsletter)
     return {"message": "Newsletter dispatch started in the background."}
 
 
 def _run_signals() -> None:
-    from ..services.signal_service import (
-        cleanup_empty_topics,
-        refresh_all_signals,
-        run_signal_scorer,
-    )
+    from ..services.signal_service import execute_full_signal_flow
 
     db = SessionLocal()
     try:
-        cleanup_empty_topics(db)
-        run_signal_scorer(db)
-        refresh_all_signals(db)
+        execute_full_signal_flow(db)
+    except Exception:
+        logger.exception("Unhandled error in admin-triggered signal flow")
     finally:
         db.close()
 
@@ -1645,7 +2167,7 @@ def _run_signals() -> None:
 @router.post("/jobs/signals")
 def trigger_signals(
     background_tasks: BackgroundTasks,
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     background_tasks.add_task(_run_signals)
     return {"message": "Signal scoring started in the background."}
@@ -1662,9 +2184,7 @@ def _run_trend_analysis_all() -> None:
         queue = (
             db.query(Topic)
             .filter(
-                Topic.status.in_(
-                    [TopicStatus.pending, TopicStatus.watched, TopicStatus.selected]
-                )
+                Topic.status.in_([TopicStatus.pending, TopicStatus.watched, TopicStatus.selected])
             )
             .all()
         )
@@ -1683,7 +2203,7 @@ def _run_trend_analysis_all() -> None:
 @router.post("/jobs/trend-analysis")
 def trigger_trend_analysis(
     background_tasks: BackgroundTasks,
-    _: None = Depends(require_admin),
+    _: AdminUser = Depends(require_admin),
 ):
     """Run the AI trend-pick agent for every pending, watched, and selected topic (background)."""
     background_tasks.add_task(_run_trend_analysis_all)

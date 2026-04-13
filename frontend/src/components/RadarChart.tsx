@@ -38,6 +38,32 @@ export interface RadarTopic {
   summary: string | null;
 }
 
+/**
+ * Finite 1–10 scores from API JSON: numbers, numeric strings, and legacy fields.
+ * Rejects NaN/Infinity (`typeof NaN === "number"` would otherwise poison the UI).
+ */
+function finiteScore1to10(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = parseFloat(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+/**
+ * Impact for one industry row: impact_score → urgency_score → topic-level urgency.
+ * Matches star placement in `buildPlotPoints` / `radiusFromIndustryImpact`.
+ */
+function resolveRowImpact(pos: IndustryPosition, topicUrgency: number): number {
+  const a = finiteScore1to10(pos.impact_score);
+  if (a !== null) return a;
+  const b = finiteScore1to10(pos.urgency_score);
+  if (b !== null) return b;
+  const t = finiteScore1to10(topicUrgency);
+  return t !== null ? t : 1;
+}
+
 // ── Chart geometry ─────────────────────────────────────────────────────────────
 /** Base 1.5 × 1.25 = 25% larger radar than previous shipped size */
 const SCALE = 1.875;
@@ -190,12 +216,7 @@ export function impactScoreToRadius(impact: number): number {
 const IMPACT_RING_GUIDE_FRACS = [0.84, 0.67, 0.5, 0.33, 0.16] as const;
 
 function radiusFromIndustryImpact(pos: IndustryPosition, topicFallbackUrgency: number): number {
-  const impact =
-    typeof pos.impact_score === "number"
-      ? pos.impact_score
-      : typeof pos.urgency_score === "number"
-        ? pos.urgency_score
-        : topicFallbackUrgency;
+  const impact = resolveRowImpact(pos, topicFallbackUrgency);
   return impactScoreToRadius(impact);
 }
 
@@ -249,18 +270,13 @@ function buildPlotPoints(topics: RadarTopic[]): PlotPoint[] {
           topic,
           industry: null,
           color: DOMAIN_COLORS[topic.domain] ?? DEFAULT_COLOR,
-          urgency: topic.urgency_score,
+          urgency: finiteScore1to10(topic.urgency_score) ?? 1,
           adoptionState: topic.adoption_state,
         });
         continue;
       }
       for (const [industry, pos] of visible) {
-        const impact =
-          typeof pos.impact_score === "number"
-            ? pos.impact_score
-            : typeof pos.urgency_score === "number"
-              ? pos.urgency_score
-              : topic.urgency_score;
+        const impact = resolveRowImpact(pos, topic.urgency_score);
         points.push({
           key: `${topic.id}-${industry}`,
           topic,
@@ -277,7 +293,7 @@ function buildPlotPoints(topics: RadarTopic[]): PlotPoint[] {
         topic,
         industry: null,
         color: DOMAIN_COLORS[topic.domain] ?? DEFAULT_COLOR,
-        urgency: topic.urgency_score,
+        urgency: finiteScore1to10(topic.urgency_score) ?? 1,
         adoptionState: topic.adoption_state,
       });
     }
@@ -322,24 +338,20 @@ function computePositions(topics: RadarTopic[]): PlotPointXY[] {
  */
 export function topicRankScore(topic: RadarTopic): number {
   const pos = topic.industry_positions;
+  const topicU = finiteScore1to10(topic.urgency_score) ?? 1;
   if (!pos || Object.keys(pos).length === 0) {
-    return topic.urgency_score;
+    return topicU;
   }
   let max = 0;
   let anyApproved = false;
   for (const row of Object.values(pos)) {
     if (!row || row.impact_approved === false) continue;
     anyApproved = true;
-    const imp =
-      typeof row.impact_score === "number"
-        ? row.impact_score
-        : typeof row.urgency_score === "number"
-          ? row.urgency_score
-          : 0;
+    const imp = resolveRowImpact(row as IndustryPosition, topic.urgency_score);
     max = Math.max(max, imp);
   }
-  if (!anyApproved) return topic.urgency_score;
-  return max > 0 ? max : topic.urgency_score;
+  if (!anyApproved) return topicU;
+  return max > 0 ? max : topicU;
 }
 
 function topTopicsForSidebar(topics: RadarTopic[], n: number): RadarTopic[] {
@@ -356,11 +368,7 @@ function topicApprovedIndustries(topic: RadarTopic): { name: string; color: stri
   const rows: { name: string; color: string; impact: number }[] = [];
   for (const [industry, row] of Object.entries(pos)) {
     if (!row || row.impact_approved === false) continue;
-    const imp = typeof row.impact_score === "number"
-      ? row.impact_score
-      : typeof row.urgency_score === "number"
-        ? row.urgency_score
-        : 0;
+    const imp = resolveRowImpact(row as IndustryPosition, topic.urgency_score);
     rows.push({ name: industry, color: industryColor(industry), impact: imp });
   }
   rows.sort((a, b) => b.impact - a.impact);
@@ -822,13 +830,12 @@ function RadarTooltipPanel({ point: pt }: { point: PlotPointXY }) {
     pt.industry && pt.topic.industry_positions
       ? pt.topic.industry_positions[pt.industry]
       : undefined;
-  const impactShown =
-    ind && typeof ind.impact_score === "number"
-      ? ind.impact_score
-      : typeof ind?.urgency_score === "number"
-        ? ind.urgency_score
-        : pt.urgency;
-  const riskShown = ind && typeof ind.risk_level === "number" ? ind.risk_level : null;
+  /** Same resolution as `buildPlotPoints` + `resolveRowImpact` so the panel never disagrees with the star. */
+  const impactShown = ind
+    ? resolveRowImpact(ind, pt.topic.urgency_score)
+    : finiteScore1to10(pt.urgency) ?? finiteScore1to10(pt.topic.urgency_score) ?? 1;
+  const riskShown =
+    ind != null ? finiteScore1to10(ind.risk_level) : null;
   const fromPosition = industryPositionRationale(ind);
   const fromPlotRationale = pt.rationale?.trim();
   const fromSummary = pt.topic.summary?.trim();

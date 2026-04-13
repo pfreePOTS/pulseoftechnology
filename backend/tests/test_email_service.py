@@ -1,5 +1,6 @@
 """Unit tests for backend/services/email_service.py."""
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -132,6 +133,7 @@ class TestSendDailyNewsletter:
 
         mail_obj = mock_sg.send.call_args.args[0]
         mail_dict = mail_obj.get()
+        assert "Pulse of Technology Daily" in str(mail_dict)
         assert "2 signals" in str(mail_dict)
 
     def test_uses_dynamic_template_when_configured(self, monkeypatch):
@@ -245,6 +247,7 @@ class TestRunDailyNewsletter:
 
         with (
             patch.object(email_service.settings, "sendgrid_api_key", "test-key-for-ci"),
+            patch.object(email_service, "build_hot_of_day", return_value={"hot_topic": None}),
             patch.object(email_service, "send_daily_newsletter") as mock_send,
             patch.object(email_service, "set_last_newsletter_sent_at"),
         ):
@@ -260,6 +263,7 @@ class TestRunDailyNewsletter:
 
         with (
             patch.object(email_service.settings, "sendgrid_api_key", "test-key-for-ci"),
+            patch.object(email_service, "build_hot_of_day", return_value={"hot_topic": None}),
             patch.object(email_service, "send_daily_newsletter", return_value=True) as mock_send,
             patch.object(email_service, "set_last_newsletter_sent_at"),
         ):
@@ -271,6 +275,7 @@ class TestRunDailyNewsletter:
         assert call[0][1] == [topic]
         assert call.kwargs["db"] is mock_db
         assert "promoted_content" in call.kwargs
+        assert call.kwargs.get("hot_of_day") == {"hot_topic": None}
 
     def test_skips_subscriber_with_no_matching_domains(self):
         sub = _sub(domains=["Finance"])
@@ -280,6 +285,7 @@ class TestRunDailyNewsletter:
 
         with (
             patch.object(email_service.settings, "sendgrid_api_key", "test-key-for-ci"),
+            patch.object(email_service, "build_hot_of_day", return_value={"hot_topic": None}),
             patch.object(email_service, "send_daily_newsletter") as mock_send,
             patch.object(email_service, "set_last_newsletter_sent_at"),
         ):
@@ -359,3 +365,79 @@ def test_deep_dive_section_has_structured_briefing_and_trending():
     assert "Trending" in html
     assert "&#8593;" in html
     assert "Enterprises are wiring agents" in html
+
+
+def test_build_html_hot_topic_lead_when_subscriber_includes_hot_topic():
+    hot = {
+        "hot_topic": {
+            "id": 1,
+            "name": "Enterprise AI",
+            "domain": "AI",
+            "subdomain": "Agents",
+        },
+        "hot_article": {
+            "title": "Microsoft agent story",
+            "url": "https://example.com/x",
+            "source_name": "TechCrunch",
+            "ingested_at": datetime(2026, 4, 13, 12, 13, 7, tzinfo=UTC),
+        },
+    }
+    topics = [
+        SimpleNamespace(id=1, name="Enterprise AI", domain="AI", urgency_score=9.0, summary="A."),
+        SimpleNamespace(id=2, name="Second story", domain="AI", urgency_score=8.0, summary="B."),
+    ]
+    sub = _sub()
+    html = email_service._build_html(
+        sub,
+        topics,
+        db=MagicMock(),
+        hot_of_day=hot,
+    )
+    assert "Microsoft agent story" in html
+    assert "Pulse of Technology Daily" in html
+    assert "pulseone_logo_main.webp" in html
+    assert "Hot on your radar" in html
+    assert "Second story" in html
+
+
+def test_build_html_no_hot_lead_when_hot_topic_not_in_subscriber_topics():
+    hot = {
+        "hot_topic": {"id": 99, "name": "Other", "domain": "AI", "subdomain": ""},
+        "hot_article": {
+            "title": "Should not appear",
+            "url": "https://example.com/y",
+            "source_name": "X",
+            "ingested_at": datetime(2026, 4, 13, tzinfo=UTC),
+        },
+    }
+    topics = [
+        SimpleNamespace(id=1, name="Mine", domain="AI", urgency_score=9.0, summary="A."),
+    ]
+    sub = _sub()
+    html = email_service._build_html(
+        sub,
+        topics,
+        db=MagicMock(),
+        hot_of_day=hot,
+    )
+    assert "Should not appear" not in html
+    assert "Hot on your radar" not in html
+    assert "Pulse of Technology Daily" in html
+    assert "pulseone_logo_main.webp" in html
+
+
+def test_newsletter_subject_uses_hot_article_title():
+    hot = {
+        "hot_topic": {"id": 1, "name": "T", "domain": "AI", "subdomain": ""},
+        "hot_article": {
+            "title": "SpaceX bleeds billions to fund xAI",
+            "url": "https://example.com/",
+            "source_name": "Example",
+            "ingested_at": datetime(2026, 4, 13, tzinfo=UTC),
+        },
+    }
+    topics = [SimpleNamespace(id=1, name="T", domain="AI", urgency_score=9.0, summary=".")]
+    subj, headline = email_service._newsletter_subject_and_headline(topics, [], hot)
+    assert "SpaceX bleeds billions" in subj
+    assert "Pulse of Technology Daily" in subj
+    assert headline == "SpaceX bleeds billions to fund xAI"

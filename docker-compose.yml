@@ -46,6 +46,7 @@ services:
       PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-http://localhost:3100}
       HUBSPOT_API_KEY: ${HUBSPOT_API_KEY:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-pulseadmin}
+      FIRST_ADMIN_EMAIL: ${FIRST_ADMIN_EMAIL:-pulseoneadmin@pulseone.local}
       # Optional — signal intelligence / vectors (see backend/config.py)
       PINECONE_API_KEY: ${PINECONE_API_KEY:-}
       PINECONE_ENVIRONMENT: ${PINECONE_ENVIRONMENT:-}

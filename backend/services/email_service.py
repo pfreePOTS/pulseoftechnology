@@ -1,8 +1,10 @@
 """
 SendGrid email delivery service.
 
+Newsletters are always the built-in full HTML briefing (not SendGrid dynamic templates).
+
 Public surface:
-  send_daily_newsletter(subscriber, topics) -> bool
+  send_daily_newsletter(subscriber, topics) -> tuple[bool, str | None]
   run_daily_newsletter(db)               -> None   (called by scheduler)
   send_test_newsletter(db, to_email)     -> (bool, str)  (admin one-off QA)
 """
@@ -10,6 +12,7 @@ Public surface:
 from __future__ import annotations
 
 import html
+import json
 import logging
 import re
 import time
@@ -18,29 +21,51 @@ from typing import Any
 from urllib.parse import quote
 
 import sendgrid
-from sendgrid.helpers.mail import (
-    Content,
-    DynamicTemplateData,
-    Email,
-    Mail,
-    Personalization,
-    Subject,
-    To,
-)
-from sqlalchemy import or_
+from sendgrid.helpers.mail import Content, Email, Mail, Subject, To
 from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..models.article import Article
 from ..models.content import ContentItem
+from ..models.newsletter_issue import NewsletterIssue
 from ..models.role import Role
 from ..models.subscriber import Subscriber
 from ..models.topic import Topic, TopicStatus
 from .newsletter_selection import select_articles_for_newsletter_topic
 from .pipeline_settings import merge_pipeline_settings, set_last_newsletter_sent_at
+from .subscriber_tokens import create_subscriber_preferences_token
 from .trend_service import build_hot_of_day, newsletter_topic_velocity_trend
 
 logger = logging.getLogger(__name__)
+
+
+def _format_sendgrid_error(exc: BaseException) -> str:
+    """Pull a short, human-readable message from python_http_client / SendGrid errors."""
+    body = getattr(exc, "body", None)
+    if body is None:
+        return (str(exc) or type(exc).__name__)[:800]
+    if isinstance(body, bytes):
+        body = body.decode("utf-8", errors="replace")
+    if isinstance(body, str) and body.strip():
+        try:
+            data = json.loads(body)
+            errs = data.get("errors")
+            if isinstance(errs, list) and errs:
+                parts: list[str] = []
+                for e in errs:
+                    if isinstance(e, dict):
+                        m = e.get("message") or e.get("field")
+                        if m:
+                            parts.append(str(m))
+                    else:
+                        parts.append(str(e))
+                if parts:
+                    return "; ".join(parts)[:800]
+        except (json.JSONDecodeError, TypeError):
+            pass
+        return body.strip()[:800]
+    return (str(exc) or type(exc).__name__)[:800]
+
 
 # ---------------------------------------------------------------------------
 # Internal client factory (allows easy mocking in tests)
@@ -81,6 +106,34 @@ _DOMAIN_HERO_IMAGES: dict[str, str] = {
 def _hero_image_url_for_domain(domain: str | None) -> str:
     dom = domain or "Other"
     return _DOMAIN_HERO_IMAGES.get(dom, _DOMAIN_HERO_IMAGES["Other"])
+
+
+def _newsletter_image_url_for_article(article: Article | None, domain: str | None) -> str:
+    """Prefer RSS/source image on the article; fall back to domain stock hero."""
+    if article is not None:
+        u = getattr(article, "image_url", None)
+        if isinstance(u, str) and u.strip():
+            return u.strip()
+    return _hero_image_url_for_domain(domain)
+
+
+def _newsletter_social_urls(briefing_page_url: str) -> dict[str, str]:
+    """Share / forward targets for the public radar page (not the API host)."""
+    page = briefing_page_url.rstrip("/") + "/"
+    enc_page = quote(page, safe="")
+    subj = quote("Pulse of Technology Daily", safe="")
+    body = quote(
+        f"I thought you might find this Pulse of Technology briefing useful:\n{page}\n",
+        safe="",
+    )
+    return {
+        "forward_mailto": f"mailto:?subject={subj}&body={body}",
+        "share_x": (
+            "https://twitter.com/intent/tweet?"
+            f"url={enc_page}&text={quote('Pulse of Technology Daily — executive tech briefing', safe='')}"
+        ),
+        "share_linkedin": f"https://www.linkedin.com/sharing/share-offsite/?url={enc_page}",
+    }
 
 
 def _posture_badge_colors(topic: Topic) -> tuple[str, str]:
@@ -150,8 +203,17 @@ def _truncate_email_subject(text: str, max_len: int = 140) -> str:
 
 
 def _newsletter_logo_url() -> str:
+    """Absolute logo URL for SendGrid dynamic templates. Prefer NEWSLETTER_LOGO_URL when set."""
+    o = (settings.newsletter_logo_url or "").strip()
+    if o:
+        return o
     base = (settings.public_site_url or "http://localhost:3100").rstrip("/")
-    return f"{base}/pulseone_logo_main.webp"
+    return f"{base}/pots_logo_new.png"
+
+
+def _newsletter_issue_url(token: str) -> str:
+    base = (settings.api_base_url or "http://localhost:8000").rstrip("/")
+    return f"{base}/api/newsletter/issues/{quote(token, safe='')}"
 
 
 def _newsletter_subject_and_headline(
@@ -184,22 +246,28 @@ def _newsletter_subject_and_headline(
 
 
 def _build_newsletter_header_banner_html(*, headline_article_title: str | None) -> str:
-    """Dark header with PulseOne logo (hosted on public site) and optional main headline."""
-    logo_url = html.escape(_newsletter_logo_url())
+    """
+    Light surface header (DESIGN.md). Renders the official hosted logo image with text fallback.
+    """
+    logo_src = html.escape(_newsletter_logo_url())
+    img_block = f"""
+    <p style="margin:0 0 14px;">
+      <img src="{logo_src}" alt="PulseOne | People | Technology | Progress" width="386" height="83"
+           style="display:block;margin:0 auto;max-width:260px;width:100%;height:auto;border:0;" />
+    </p>"""
     headline_block = ""
     if headline_article_title and headline_article_title.strip():
         t = html.escape(headline_article_title.strip())
         headline_block = f"""
-    <p style="margin:18px 0 0;font-size:19px;font-weight:700;line-height:1.35;color:#FFFFFF;font-family:{_FF};">
+    <p style="margin:18px 0 0;font-size:19px;font-weight:700;line-height:1.35;color:#111827;font-family:{_FF};">
       {t}
     </p>"""
     return f"""
 <tr>
-  <td style="background:#111827;padding:28px 32px 24px;text-align:center;">
-    <img src="{logo_url}" alt="PulseOne" width="200" height="40"
-         style="display:block;margin:0 auto 14px;max-width:220px;width:100%;height:auto;border:0;" />
+  <td style="background:#F4F8FA;padding:28px 32px 24px;text-align:center;border-bottom:1px solid #E5E7EB;">
+    {img_block}
     <p style="margin:0;font-size:11px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;
-              color:#9CA3AF;font-family:{_FF};">Pulse of Technology Daily</p>
+              color:#4A5F6D;font-family:{_FF};">Pulse of Technology Daily</p>
     {headline_block}
   </td>
 </tr>
@@ -508,10 +576,13 @@ _EMAIL_TEMPLATE = """\
               Here are the top technology signals your team needs to know about{industry_line},
               curated by AI and reviewed by PulseOne analysts.
             </p>
-            <p style="margin:0;font-size:13px;font-family:{ff};">
-              <a href="{read_online_url}" style="color:#019E7C;text-decoration:none;font-weight:600;">Share this briefing</a>
+            <p style="margin:0;font-size:13px;font-family:{ff};line-height:1.65;">
+              <span style="color:#4A5F6D;">Share:</span>
+              <a href="{share_x_url}" style="color:#019E7C;text-decoration:none;font-weight:600;">X</a>
               <span style="color:#9CA3AF;"> &middot; </span>
-              <a href="{read_online_url}" style="color:#019E7C;text-decoration:none;font-weight:600;">Forward to a colleague</a>
+              <a href="{share_linkedin_url}" style="color:#019E7C;text-decoration:none;font-weight:600;">LinkedIn</a>
+              <span style="color:#9CA3AF;"> &middot; </span>
+              <a href="{forward_mailto_url}" style="color:#019E7C;text-decoration:none;font-weight:600;">Forward by email</a>
             </p>
           </td>
         </tr>
@@ -557,9 +628,9 @@ _EMAIL_TEMPLATE = """\
               Domains: {domains_label} &middot; Industry: {industry_label} &middot; Role: {role_label}
             </p>
             <p style="margin:0 0 12px;font-size:11px;font-family:{ff};">
-              <a href="{read_online_url}" style="color:#019E7C;text-decoration:none;">Manage preferences</a>
+              <a href="{manage_preferences_url}" style="color:#019E7C;text-decoration:none;">Manage preferences</a>
               <span style="color:#9CA3AF;"> &middot; </span>
-              <a href="{read_online_url}" style="color:#019E7C;text-decoration:none;">Unsubscribe</a>
+              <a href="{unsubscribe_url}" style="color:#019E7C;text-decoration:none;">Unsubscribe</a>
             </p>
             <p style="margin:0;font-size:11px;color:#6B7280;font-family:{ff};">&copy; 2026 PulseOne &middot; pulseone.com</p>
           </td>
@@ -589,18 +660,6 @@ def _resolve_hot_topic_lead_for_subscriber(
     return None, None, None
 
 
-def _sendgrid_hot_topic_lead_fields(ht: dict[str, Any], ha: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "topic_name": ht.get("name"),
-        "topic_domain": ht.get("domain"),
-        "topic_subdomain": ht.get("subdomain"),
-        "article_title": ha.get("title"),
-        "article_url": ha.get("url"),
-        "source_name": ha.get("source_name"),
-        "ingested_at_display": _format_dt_for_email_hot(ha.get("ingested_at")),
-    }
-
-
 def _build_top_stories_block(
     topics: list[Topic],
     *,
@@ -614,9 +673,9 @@ def _build_top_stories_block(
         names = [(getattr(r, "name", None) or "").strip() for r in role_objs]
         role_names = [n for n in names if n] or None
     rows = []
-    for t in topics:
-        summ = _first_sentences(t.summary, 3).strip()
-        if not summ and db is not None:
+    for idx, t in enumerate(topics):
+        first_art: Article | None = None
+        if db is not None:
             for cutoff in (article_ingested_after, None):
                 arts = select_articles_for_newsletter_topic(
                     t,
@@ -626,17 +685,39 @@ def _build_top_stories_block(
                     limit=1,
                 )
                 if arts:
-                    summ = _article_teaser_for_email(arts[0])
+                    first_art = arts[0]
                     break
+        summ = _first_sentences(t.summary, 3).strip()
+        if not summ and first_art is not None:
+            summ = _article_teaser_for_email(first_art)
         if not summ:
             summ = _subscriber_industry_teaser(t, subscriber)
         if not summ:
             summ = "This theme is on your radar — open the full briefing below for linked sources and context."
+        read_more = ""
+        if first_art and (first_art.url or "").strip():
+            u = html.escape(first_art.url.strip())
+            read_more = (
+                f'<br><a href="{u}" style="color:#019E7C;font-weight:600;text-decoration:none;font-size:13px;">'
+                f"Read more</a>"
+            )
+        lead_img = ""
+        if idx == 0 and first_art is not None:
+            src = _newsletter_image_url_for_article(first_art, t.domain)
+            lead_img = (
+                f'<table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 12px;border-radius:8px;overflow:hidden;">'
+                f'<tr><td style="padding:0;line-height:0;background:#E5E7EB;">'
+                f'<a href="{html.escape(first_art.url or "#")}" style="text-decoration:none;">'
+                f'<img src="{html.escape(src)}" width="536" alt="" '
+                f'style="display:block;width:100%;max-width:536px;height:auto;border:0;" />'
+                f"</a></td></tr></table>"
+            )
         rows.append(
-            f'<p style="margin:0 0 12px;font-family:{_FF};">'
+            f'<div style="margin:0 0 18px;font-family:{_FF};">'
+            f"{lead_img}"
             f'<span style="font-size:15px;font-weight:700;color:#111827;">{html.escape(t.name)}</span><br>'
-            f'<span style="font-size:13px;color:#4A5F6D;line-height:1.6;">{html.escape(summ)}</span>'
-            f"</p>"
+            f'<span style="font-size:13px;color:#4A5F6D;line-height:1.6;">{html.escape(summ)}{read_more}</span>'
+            f"</div>"
         )
     return (
         "\n".join(rows)
@@ -672,17 +753,29 @@ def _build_hot_topic_lead_html(hot_topic: dict, hot_article: dict) -> str:
         ing_part = f" &middot; Ingested {_format_dt_for_email_hot(ing)}"
     meta = f"{src}{ing_part}"
     tname = html.escape(hot_topic.get("name") or "Hot topic")
+    img_raw = (hot_article.get("image_url") or "").strip() or _hero_image_url_for_domain(
+        hot_topic.get("domain")
+    )
+    img_block = f"""
+          <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 14px;border-radius:6px;overflow:hidden;">
+            <tr><td style="padding:0;line-height:0;background:#E5E7EB;">
+              <a href="{url}" style="text-decoration:none;">
+                <img src="{html.escape(img_raw)}" width="520" alt="" style="display:block;width:100%;max-width:100%;height:auto;border:0;" />
+              </a>
+            </td></tr>
+          </table>"""
     return f"""
 <tr>
   <td style="padding:0 32px 8px;">
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#F4F8FA;border-radius:8px;border:1px solid #E5E7EB;overflow:hidden;">
       <tr>
-        <td style="padding:18px 20px;border-left:4px solid #019E7C;">
+        <td style="padding:18px 20px;border-left:4px solid #E91D24;">
+          {img_block}
           <p style="margin:0 0 8px;font-size:10px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;
-                    color:#019E7C;font-family:{_FF};">Hot on your radar &mdash; today</p>
+                    color:#E91D24;font-family:{_FF};">Hot on your radar &mdash; today</p>
           {domain_row}
           <p style="margin:0 0 10px;font-size:18px;font-weight:700;line-height:1.3;font-family:{_FF};">
-            <a href="{url}" style="color:#019E7C;text-decoration:none;">{title}</a>
+            <a href="{url}" style="color:#E91D24;text-decoration:none;">{title}</a>
           </p>
           <p style="margin:0 0 4px;font-size:12px;color:#6B7280;font-family:{_FF};">{meta}</p>
           <p style="margin:8px 0 0;font-size:12px;font-weight:600;font-family:{_FF};">
@@ -711,7 +804,8 @@ def _build_deep_dive_section(
     posture_label = _adoption_label(topic)
     posture = html.escape(posture_label)
     badge_bg, badge_fg = _posture_badge_colors(topic)
-    hero_src = html.escape(_hero_image_url_for_domain(dom))
+    first_article = articles[0] if articles else None
+    hero_src = html.escape(_newsletter_image_url_for_article(first_article, dom))
     explore_href = html.escape(_radar_explore_url(public_site_url, dom))
 
     persona = _persona_text_for_topic(topic, articles, role_objs)
@@ -957,6 +1051,7 @@ def _build_html(
     article_ingested_after: datetime | None = None,
     *,
     hot_of_day: dict[str, Any] | None = None,
+    read_online_url_override: str | None = None,
 ) -> str:
     role_objs = _resolve_subscriber_roles(subscriber, db)
     role_footer = ", ".join(
@@ -1057,9 +1152,14 @@ def _build_html(
 
     now = datetime.now(UTC)
     newsletter_date = now.strftime("%Y-%m-%d")
-    base_url = (settings.api_base_url or "http://localhost:8000").rstrip("/")
-    read_online = base_url + "/"
-    survey_html = _build_survey_block(base_url, subscriber.email, newsletter_date)
+    api_base = (settings.api_base_url or "http://localhost:8000").rstrip("/")
+    survey_html = _build_survey_block(api_base, subscriber.email, newsletter_date)
+    briefing_page = f"{public_site}/"
+    read_online_url = read_online_url_override or briefing_page
+    social = _newsletter_social_urls(briefing_page)
+    preferences_token = create_subscriber_preferences_token(subscriber)
+    preferences_page = f"{public_site}/preferences?token={quote(preferences_token, safe='')}"
+    unsubscribe_page = f"{preferences_page}&unsubscribe=1"
 
     inds = getattr(subscriber, "industries", None) or []
     if len(inds) == 1:
@@ -1072,7 +1172,12 @@ def _build_html(
     return _EMAIL_TEMPLATE.format(
         ff=_FF,
         date=html.escape(_format_date_long(now)),
-        read_online_url=read_online,
+        read_online_url=html.escape(read_online_url),
+        share_x_url=html.escape(social["share_x"]),
+        share_linkedin_url=html.escape(social["share_linkedin"]),
+        forward_mailto_url=html.escape(social["forward_mailto"]),
+        manage_preferences_url=html.escape(preferences_page),
+        unsubscribe_url=html.escape(unsubscribe_page),
         first_name=html.escape(subscriber.first_name or "there"),
         industry_line=html.escape(industry_line) if industry_line else "",
         header_banner_html=header_banner_html,
@@ -1102,14 +1207,14 @@ def send_daily_newsletter(
     article_ingested_after: datetime | None = None,
     *,
     hot_of_day: dict[str, Any] | None = None,
-) -> bool:
+) -> tuple[bool, str | None]:
     """
     Send a personalized newsletter to one subscriber.
 
-    Uses a SendGrid dynamic template if SENDGRID_NEWSLETTER_TEMPLATE_ID is set,
-    otherwise falls back to the built-in HTML template.
+    Always uses the built-in full HTML briefing (hot lead, top stories, deep dives,
+    quick hits, tip, survey). SendGrid receives ``html_content`` only — no dynamic template.
 
-    Returns True if accepted by SendGrid (HTTP 202), False otherwise.
+    Returns (True, None) if accepted by SendGrid (HTTP 202), or (False, reason) on failure.
     """
     sg = _get_sg_client()
     roles = _resolve_subscriber_roles(subscriber, db)
@@ -1130,83 +1235,54 @@ def send_daily_newsletter(
                 logger.debug("build_hot_of_day failed for newsletter send", exc_info=True)
                 hot_data = {"hot_topic": None, "hot_article": None}
 
-    subject, newsletter_headline = _newsletter_subject_and_headline(topics, roles, hot_data)
+    subject, _ = _newsletter_subject_and_headline(topics, roles, hot_data)
+    issue = NewsletterIssue(
+        subscriber_email=subscriber.email,
+        subject=subject,
+        html="pending",
+    )
+    read_online_url: str | None = None
+    if db is not None:
+        db.add(issue)
+        db.flush()
+        read_online_url = _newsletter_issue_url(issue.token)
 
-    if settings.sendgrid_newsletter_template_id:
-        message = Mail(from_email=from_email, subject=Subject(subject))
-        message.template_id = settings.sendgrid_newsletter_template_id
-        p = Personalization()
-        p.add_to(To(email=subscriber.email))
-        merged_tags: list[str] = []
-        seen_tag: set[str] = set()
-        for r in roles:
-            for t in r.tags or []:
-                s = str(t).strip()
-                if s and s.lower() not in seen_tag:
-                    seen_tag.add(s.lower())
-                    merged_tags.append(s)
-        industry_str = ", ".join(subscriber.industries or []) if subscriber.industries else ""
-        role_names_list = [r.name for r in roles if r.name]
-        ht_sg, ha_sg, _ = _resolve_hot_topic_lead_for_subscriber(topics, hot_data)
-        hot_topic_lead = _sendgrid_hot_topic_lead_fields(ht_sg, ha_sg) if ht_sg and ha_sg else None
-        p.dynamic_template_data = DynamicTemplateData(
-            {
-                "first_name": subscriber.first_name,
-                "last_name": subscriber.last_name,
-                "industry": industry_str,
-                "domains": subscriber.domains or [],
-                "role_name": ", ".join(role_names_list) or "",
-                "role_names": role_names_list,
-                "role_tags": merged_tags,
-                "email_subject": subject,
-                "newsletter_product_name": "Pulse of Technology Daily",
-                "newsletter_logo_url": _newsletter_logo_url(),
-                "newsletter_headline": newsletter_headline or "",
-                "hot_topic_lead": hot_topic_lead,
-                "topics": [
-                    {
-                        "name": t.name,
-                        "domain": t.domain,
-                        "urgency_score": t.urgency_score,
-                        "summary": t.summary or "",
-                        "newsletter_briefing": getattr(t, "newsletter_briefing", None) or {},
-                    }
-                    for t in topics
-                ],
-            }
-        )
-        message.add_personalization(p)
-    else:
-        html_body = _build_html(
-            subscriber,
-            topics,
-            db=db,
-            promoted_content=promoted_content,
-            article_ingested_after=article_ingested_after,
-            hot_of_day=hot_data,
-        )
-        message = Mail(
-            from_email=from_email,
-            to_emails=To(email=subscriber.email),
-            subject=Subject(subject),
-            html_content=Content("text/html", html_body),
-        )
+    html_body = _build_html(
+        subscriber,
+        topics,
+        db=db,
+        promoted_content=promoted_content,
+        article_ingested_after=article_ingested_after,
+        hot_of_day=hot_data,
+        read_online_url_override=read_online_url,
+    )
+    if db is not None:
+        issue.html = html_body
+        db.commit()
+    message = Mail(
+        from_email=from_email,
+        to_emails=To(email=subscriber.email),
+        subject=Subject(subject),
+        html_content=Content("text/html", html_body),
+    )
 
     try:
         response = sg.send(message)
         accepted = response.status_code == 202
         if accepted:
             logger.info("Newsletter sent to %s (%d topics)", subscriber.email, len(topics))
-        else:
-            logger.warning(
-                "Unexpected SendGrid status %d for %s",
-                response.status_code,
-                subscriber.email,
-            )
-        return accepted
-    except Exception:
-        logger.exception("SendGrid error for subscriber %s", subscriber.email)
-        return False
+            return True, None
+        detail = f"SendGrid returned HTTP {response.status_code} (expected 202)."
+        logger.warning("Unexpected SendGrid status for %s: %s", subscriber.email, detail)
+        return False, detail
+    except Exception as exc:
+        detail = _format_sendgrid_error(exc)
+        logger.exception(
+            "SendGrid error for subscriber %s: %s",
+            subscriber.email,
+            detail,
+        )
+        return False, detail or "SendGrid request failed."
 
 
 def _resolve_subscriber_roles(subscriber: Subscriber, db: Session | None) -> list[Role]:
@@ -1298,7 +1374,7 @@ def assemble_newsletter_topics(
     Filter approved topics to the subscriber's domain interests.
 
     - If the subscriber chose specific domains in the wizard, only those topic domains
-      are included (exact match on ``topic.domain``).
+      are included (case-insensitive match on ``topic.domain``).
     - If they left domains empty but have a job title (Role) with ``tags``, those tags
       are treated as domain filters (case-insensitive match to ``topic.domain``).
     - If neither applies, all approved topics are returned.
@@ -1319,7 +1395,13 @@ def assemble_newsletter_topics(
         return sorted(all_approved, key=lambda t: t.urgency_score, reverse=True)
 
     if getattr(subscriber, "domains", None):
-        matched = [t for t in all_approved if t.domain in allow]
+        # Case-insensitive match so wizard/sandbox chips align with DB casing (e.g. "finance" vs "Finance").
+        allow_l = {x.lower() for x in allow}
+        matched = [
+            t
+            for t in all_approved
+            if (t.domain or "").strip() and (t.domain or "").strip().lower() in allow_l
+        ]
     else:
         allow_l = {x.lower() for x in allow}
         matched = [t for t in all_approved if (t.domain or "").lower() in allow_l]
@@ -1336,9 +1418,8 @@ def generate_newsletter_preview(
     """
     Build and return a rendered HTML newsletter for a simulated subscriber.
 
-    Uses up to 20 topics from the **on-radar pipeline** (watched/selected) **or** topics
-    **published** to the live Radar, so the preview matches content that exists in the
-    product even when pipeline status has not been advanced.
+    Uses up to 20 topics from the **same cohort as the scheduled newsletter**: watched or
+    selected pipeline topics only (not ``is_published``-only rows).
 
     When **no domain filters** are passed, topic filtering by domain / role tags is skipped
     so the preview shows the full eligible pool (roles still drive persona lines in deep dives).
@@ -1367,12 +1448,7 @@ def generate_newsletter_preview(
 
     eligible: list[Topic] = (
         db.query(Topic)
-        .filter(
-            or_(
-                Topic.status.in_([TopicStatus.watched, TopicStatus.selected]),
-                Topic.is_published == True,  # noqa: E712
-            )
-        )
+        .filter(Topic.status.in_([TopicStatus.watched, TopicStatus.selected]))
         .order_by(Topic.urgency_score.desc())
         .all()
     )
@@ -1453,15 +1529,22 @@ def run_daily_newsletter(db: Session) -> None:
         matched = assemble_newsletter_topics(subscriber, eligible_topics, db)
         if matched:
             promoted = assemble_promoted_content(subscriber, db)
-            if send_daily_newsletter(
+            ok, sg_err = send_daily_newsletter(
                 subscriber,
                 matched,
                 db=db,
                 promoted_content=promoted,
                 article_ingested_after=article_cutoff,
                 hot_of_day=batch_hot,
-            ):
+            )
+            if ok:
                 sent += 1
+            elif sg_err:
+                logger.warning(
+                    "Newsletter send failed for subscriber %s: %s",
+                    subscriber.email,
+                    sg_err,
+                )
         if delay_s > 0 and i < len(subscribers) - 1:
             time.sleep(delay_s)
 
@@ -1519,7 +1602,7 @@ def send_test_newsletter(db: Session, to_email: str) -> tuple[bool, str]:
         return False, "No topics matched for this send (unexpected)."
 
     promoted = assemble_promoted_content(dummy, db)
-    ok = send_daily_newsletter(
+    ok, sg_err = send_daily_newsletter(
         dummy,
         matched,
         db=db,
@@ -1528,6 +1611,13 @@ def send_test_newsletter(db: Session, to_email: str) -> tuple[bool, str]:
     )
     if ok:
         return True, f"Test newsletter sent to {raw} ({len(matched)} topic(s))."
+    if sg_err:
+        return (
+            False,
+            "SendGrid rejected the message. "
+            + sg_err
+            + " — verify SENDGRID_API_KEY and sender verification (From address).",
+        )
     return False, "SendGrid did not accept the message — check server logs."
 
 

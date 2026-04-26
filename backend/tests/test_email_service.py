@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from ..models.content import ContentItem
+from ..models.newsletter_issue import NewsletterIssue
 from ..models.site_config import SiteConfig
 from ..models.subscriber import Subscriber
 from ..models.topic import Topic
@@ -87,7 +88,7 @@ class TestSendDailyNewsletter:
         with patch.object(email_service, "_get_sg_client", return_value=mock_sg):
             result = email_service.send_daily_newsletter(_sub(), [_topic()])
 
-        assert result is True
+        assert result == (True, None)
         mock_sg.send.assert_called_once()
 
     def test_returns_false_on_non_202(self):
@@ -97,7 +98,7 @@ class TestSendDailyNewsletter:
         with patch.object(email_service, "_get_sg_client", return_value=mock_sg):
             result = email_service.send_daily_newsletter(_sub(), [_topic()])
 
-        assert result is False
+        assert result == (False, "SendGrid returned HTTP 400 (expected 202).")
 
     def test_returns_false_on_exception(self):
         mock_sg = MagicMock()
@@ -106,7 +107,7 @@ class TestSendDailyNewsletter:
         with patch.object(email_service, "_get_sg_client", return_value=mock_sg):
             result = email_service.send_daily_newsletter(_sub(), [_topic()])
 
-        assert result is False
+        assert result == (False, "Network error")
 
     def test_email_sent_to_correct_address(self):
         mock_sg = MagicMock()
@@ -136,7 +137,8 @@ class TestSendDailyNewsletter:
         assert "Pulse of Technology Daily" in str(mail_dict)
         assert "2 signals" in str(mail_dict)
 
-    def test_uses_dynamic_template_when_configured(self, monkeypatch):
+    def test_ignores_sendgrid_template_id_uses_full_html(self, monkeypatch):
+        """SENDGRID_NEWSLETTER_TEMPLATE_ID must not switch to dynamic template — full HTML only."""
         monkeypatch.setattr(email_service.settings, "sendgrid_newsletter_template_id", "d-abc123")
         mock_sg = MagicMock()
         mock_sg.send.return_value = self._mock_response(202)
@@ -145,8 +147,9 @@ class TestSendDailyNewsletter:
             email_service.send_daily_newsletter(_sub(), [_topic()])
 
         mail_obj = mock_sg.send.call_args.args[0]
-        # TemplateId is a wrapper object; access its .get() value
-        assert mail_obj.template_id.get() == "d-abc123"
+        mail_dict = mail_obj.get()
+        assert mail_obj.template_id is None
+        assert any(c.get("type") == "text/html" for c in mail_dict.get("content") or [])
 
 
 # ---------------------------------------------------------------------------
@@ -167,6 +170,17 @@ class TestAssembleNewsletterTopics:
         assert "A" in names
         assert "C" in names
         assert "B" not in names
+
+    def test_explicit_domains_match_topic_domain_case_insensitively(self):
+        sub = _sub(domains=["ai", "cloud"])
+        topics = [
+            _topic("AI", 9.0, "A"),
+            _topic("Security", 8.5, "B"),
+            _topic("Cloud", 7.0, "C"),
+        ]
+        result = email_service.assemble_newsletter_topics(sub, topics)
+        names = {t.name for t in result}
+        assert names == {"A", "C"}
 
     def test_returns_all_when_no_domain_preference(self):
         sub = _sub(domains=None)
@@ -230,9 +244,7 @@ class TestAssembleNewsletterTopics:
         topics = [_topic("AI", 9.0, "A"), _topic("Security", 8.0, "B")]
         narrow = email_service.assemble_newsletter_topics(sub, topics)
         assert len(narrow) == 0
-        full = email_service.assemble_newsletter_topics(
-            sub, topics, skip_domain_filter=True
-        )
+        full = email_service.assemble_newsletter_topics(sub, topics, skip_domain_filter=True)
         assert len(full) == 2
 
 
@@ -264,7 +276,9 @@ class TestRunDailyNewsletter:
         with (
             patch.object(email_service.settings, "sendgrid_api_key", "test-key-for-ci"),
             patch.object(email_service, "build_hot_of_day", return_value={"hot_topic": None}),
-            patch.object(email_service, "send_daily_newsletter", return_value=True) as mock_send,
+            patch.object(
+                email_service, "send_daily_newsletter", return_value=(True, None)
+            ) as mock_send,
             patch.object(email_service, "set_last_newsletter_sent_at"),
         ):
             email_service.run_daily_newsletter(mock_db)
@@ -322,7 +336,9 @@ def test_send_test_newsletter_dispatches():
     with (
         patch.object(email_service.settings, "sendgrid_api_key", "k"),
         patch.object(email_service, "merge_pipeline_settings", return_value=merged),
-        patch.object(email_service, "send_daily_newsletter", return_value=True) as mock_send,
+        patch.object(
+            email_service, "send_daily_newsletter", return_value=(True, None)
+        ) as mock_send,
     ):
         ok, msg = email_service.send_test_newsletter(mock_db, "Curator@Example.com")
     assert ok is True
@@ -395,7 +411,9 @@ def test_build_html_hot_topic_lead_when_subscriber_includes_hot_topic():
     )
     assert "Microsoft agent story" in html
     assert "Pulse of Technology Daily" in html
-    assert "pulseone_logo_main.webp" in html
+    assert "pots_logo_new.png" in html
+    assert "twitter.com/intent/tweet" in html
+    assert "mailto:?" in html
     assert "Hot on your radar" in html
     assert "Second story" in html
 
@@ -423,7 +441,7 @@ def test_build_html_no_hot_lead_when_hot_topic_not_in_subscriber_topics():
     assert "Should not appear" not in html
     assert "Hot on your radar" not in html
     assert "Pulse of Technology Daily" in html
-    assert "pulseone_logo_main.webp" in html
+    assert "pots_logo_new.png" in html
 
 
 def test_newsletter_subject_uses_hot_article_title():
@@ -441,3 +459,56 @@ def test_newsletter_subject_uses_hot_article_title():
     assert "SpaceX bleeds billions" in subj
     assert "Pulse of Technology Daily" in subj
     assert headline == "SpaceX bleeds billions to fund xAI"
+
+
+def test_hot_topic_lead_uses_domain_image_fallback():
+    html = email_service._build_hot_topic_lead_html(
+        {"name": "AI Agents", "domain": "AI", "subdomain": "Deployment"},
+        {
+            "title": "Agent story",
+            "url": "https://example.com/agent",
+            "source_name": "Example",
+            "ingested_at": None,
+            "image_url": None,
+        },
+    )
+
+    assert "<img" in html
+    assert "images.unsplash.com" in html
+
+
+def test_newsletter_footer_has_signed_preferences_links():
+    sub = _sub(email="reader@example.com")
+    html = email_service._build_html(sub, [_topic()], db=None)
+
+    assert "/preferences?token=" in html
+    assert "unsubscribe=1" in html
+    assert "reader@example.com" not in html
+
+
+def test_send_daily_newsletter_persists_read_online_issue(db_session, monkeypatch):
+    monkeypatch.setattr(email_service.settings, "sendgrid_api_key", "test-key")
+    monkeypatch.setattr(email_service.settings, "api_base_url", "http://localhost:8100")
+    sub = Subscriber(
+        email="reader@example.com",
+        first_name="Reader",
+        last_name="One",
+        industries=["Technology"],
+        domains=None,
+        role_ids=None,
+        is_active=True,
+    )
+    db_session.add(sub)
+    db_session.commit()
+    mock_sg = MagicMock()
+    mock_sg.send.return_value = MagicMock(status_code=202)
+
+    with patch.object(email_service, "_get_sg_client", return_value=mock_sg):
+        ok, err = email_service.send_daily_newsletter(sub, [_topic()], db=db_session)
+
+    assert ok is True
+    assert err is None
+    issue = db_session.query(NewsletterIssue).one()
+    assert issue.subscriber_email == "reader@example.com"
+    assert issue.subject
+    assert f"http://localhost:8100/api/newsletter/issues/{issue.token}" in issue.html

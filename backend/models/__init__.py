@@ -2,6 +2,7 @@ from .admin_user import AdminUser
 from .agent_run import AgentRun
 from .article import Article, ArticleStatus
 from .content import ContentItem
+from .newsletter_issue import NewsletterIssue
 from .prompt import PromptProposal, PromptTemplate
 from .role import Role
 from .signal import SignalRecommendation
@@ -23,6 +24,7 @@ __all__ = [
     "Subscriber",
     "Role",
     "ContentItem",
+    "NewsletterIssue",
     "SurveyResponse",
     "SignalRecommendation",
     "SiteConfig",

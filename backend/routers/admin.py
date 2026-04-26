@@ -2041,6 +2041,38 @@ def get_survey_stats(
     }
 
 
+@router.get("/newsletter/feedback")
+def get_newsletter_feedback(
+    db: Session = Depends(get_db),
+    limit: int = Query(default=50, ge=1, le=200),
+    _: AdminUser = Depends(require_admin),
+):
+    """Rating System / Feedback campaign view for Pulse of Technology Daily."""
+    rows = db.query(SurveyResponse).order_by(SurveyResponse.created_at.desc()).limit(limit).all()
+    counts = db.query(SurveyResponse.score, func.count()).group_by(SurveyResponse.score).all()
+    total = sum(r[1] for r in counts)
+    score_sum = sum(int(score) * int(count) for score, count in counts)
+    breakdown = {r[0]: r[1] for r in counts}
+    return {
+        "campaign": "Pulse of Technology Daily",
+        "total": total,
+        "average_score": round(score_sum / total, 2) if total else None,
+        "highly_relevant": breakdown.get(3, 0),
+        "somewhat_relevant": breakdown.get(2, 0),
+        "not_relevant": breakdown.get(1, 0),
+        "responses": [
+            {
+                "id": str(row.id),
+                "subscriber_email": row.subscriber_email,
+                "score": row.score,
+                "newsletter_date": row.newsletter_date,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            }
+            for row in rows
+        ],
+    }
+
+
 class NewsletterTestSendRequest(BaseModel):
     """Avoid pydantic EmailStr — it requires optional `email-validator` not in the API image."""
 

@@ -2,6 +2,7 @@ import logging
 import re
 from datetime import datetime
 
+import jwt
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, field_validator
@@ -9,12 +10,14 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
 from ..models.article import Article
+from ..models.newsletter_issue import NewsletterIssue
 from ..models.role import Role
 from ..models.subscriber import Subscriber, validate_industries_and_role_ids
 from ..models.survey_response import SurveyResponse
 from ..models.topic import Topic
 from ..rate_limits import limiter
 from ..services.hubspot_sync import sync_subscriber_to_hubspot
+from ..services.subscriber_tokens import decode_subscriber_preferences_token
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +80,34 @@ class SubscribeResponse(BaseModel):
     id: int
     email: str
     message: str
+
+
+class SubscriberPreferencesOut(BaseModel):
+    email: str
+    first_name: str
+    last_name: str
+    industries: list[str] | None = None
+    domains: list[str] | None = None
+    role_ids: list[int] | None = None
+    is_active: bool
+
+    model_config = {"from_attributes": True}
+
+
+class SubscriberPreferencesUpdate(BaseModel):
+    first_name: str
+    last_name: str
+    industries: list[str] | None = None
+    domains: list[str] | None = None
+    role_ids: list[int] | None = None
+
+    @field_validator("first_name", "last_name")
+    @classmethod
+    def not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Field cannot be blank")
+        return v
 
 
 class ArticleTrackedPublic(BaseModel):
@@ -142,6 +173,75 @@ def list_tracked_articles_public(
         )
         for a in rows
     ]
+
+
+def _subscriber_from_preferences_token(token: str, db: Session) -> Subscriber:
+    try:
+        subscriber_id, email = decode_subscriber_preferences_token(token)
+    except (jwt.PyJWTError, KeyError, TypeError, ValueError):
+        raise HTTPException(status_code=401, detail="Invalid or expired preferences link") from None
+    subscriber = db.query(Subscriber).filter(Subscriber.id == subscriber_id).first()
+    if subscriber is None or subscriber.email.strip().lower() != email:
+        raise HTTPException(status_code=401, detail="Invalid or expired preferences link")
+    return subscriber
+
+
+@router.get("/subscriber/preferences", response_model=SubscriberPreferencesOut)
+def get_subscriber_preferences(
+    token: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Load preferences from a signed newsletter magic link."""
+    return _subscriber_from_preferences_token(token, db)
+
+
+@router.get("/newsletter/issues/{token}", response_class=HTMLResponse)
+def read_newsletter_issue(
+    token: str,
+    db: Session = Depends(get_db),
+):
+    """Render the exact HTML newsletter issue linked from the email's Read online action."""
+    issue = db.query(NewsletterIssue).filter(NewsletterIssue.token == token).first()
+    if issue is None:
+        raise HTTPException(status_code=404, detail="Newsletter issue not found")
+    return HTMLResponse(content=issue.html)
+
+
+@router.put("/subscriber/preferences", response_model=SubscriberPreferencesOut)
+def update_subscriber_preferences(
+    payload: SubscriberPreferencesUpdate,
+    background_tasks: BackgroundTasks,
+    token: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Update subscriber preferences from a signed newsletter magic link."""
+    subscriber = _subscriber_from_preferences_token(token, db)
+    inds, rids = validate_industries_and_role_ids(db, payload.industries, payload.role_ids)
+    subscriber.first_name = payload.first_name
+    subscriber.last_name = payload.last_name
+    subscriber.industries = inds
+    subscriber.domains = payload.domains
+    subscriber.role_ids = rids
+    subscriber.is_active = True
+    db.commit()
+    db.refresh(subscriber)
+    background_tasks.add_task(sync_subscriber_to_hubspot, subscriber)
+    return subscriber
+
+
+@router.post("/subscriber/unsubscribe", response_model=SubscriberPreferencesOut)
+def unsubscribe_subscriber(
+    background_tasks: BackgroundTasks,
+    token: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Deactivate a subscriber from a signed newsletter magic link."""
+    subscriber = _subscriber_from_preferences_token(token, db)
+    subscriber.is_active = False
+    db.commit()
+    db.refresh(subscriber)
+    background_tasks.add_task(sync_subscriber_to_hubspot, subscriber)
+    return subscriber
 
 
 @router.post("/subscribe", response_model=SubscribeResponse, status_code=201)

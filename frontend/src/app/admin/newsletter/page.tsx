@@ -9,10 +9,19 @@ import NewsletterTestSendPanel from "@/components/admin/NewsletterTestSendPanel"
 import { adminFetch, API_BASE } from "@/lib/api";
 
 interface SurveyStats {
+  campaign?: string;
   total: number;
+  average_score?: number | null;
   highly_relevant: number;
   somewhat_relevant: number;
   not_relevant: number;
+  responses?: {
+    id: string;
+    subscriber_email: string;
+    score: number;
+    newsletter_date: string;
+    created_at: string | null;
+  }[];
 }
 
 export default function NewsletterPage() {
@@ -22,7 +31,7 @@ export default function NewsletterPage() {
   const loadSurveyStats = useCallback(async () => {
     setSurveyLoading(true);
     try {
-      const res = await adminFetch(`${API_BASE}/api/admin/newsletter/survey-stats`);
+      const res = await adminFetch(`${API_BASE}/api/admin/newsletter/feedback`);
       if (res.ok) setSurveyStats((await res.json()) as SurveyStats);
       else setSurveyStats(null);
     } catch {
@@ -71,8 +80,8 @@ export default function NewsletterPage() {
           Newsletter Preview
         </h2>
         <p className="mb-4 text-sm text-gray-500">
-          HTML-only simulation with industry/domain/role filters. Can include topics from the live pipeline or published
-          radar for preview purposes — unlike the test email above, which uses watched/selected pipeline topics only.
+          HTML-only simulation with industry/domain/role filters. Uses the same watched/selected pipeline cohort as the
+          scheduled send (domains narrow topics the same way as subscriber preferences).
         </p>
         <NewsletterSandboxPanel embedded />
       </section>
@@ -82,16 +91,26 @@ export default function NewsletterPage() {
           id="feedback-heading"
           className="mb-4 text-lg font-semibold text-white"
         >
-          Feedback Summary
+          Rating System / Feedback
         </h2>
         <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6">
           {surveyLoading ? (
             <p className="text-sm text-gray-500">Loading survey stats…</p>
           ) : surveyStats && surveyStats.total > 0 ? (
             <>
-              <p className="text-sm text-gray-300">
-                Total responses (last 7 days):{" "}
+              <p className="text-sm font-semibold text-gray-200">
+                Campaign: {surveyStats.campaign ?? "Pulse of Technology Daily"}
+              </p>
+              <p className="mt-2 text-sm text-gray-300">
+                Total responses:{" "}
                 <span className="font-semibold text-white">{surveyStats.total}</span>
+                {surveyStats.average_score ? (
+                  <>
+                    {" "}
+                    · Average rating:{" "}
+                    <span className="font-semibold text-white">{surveyStats.average_score}/3</span>
+                  </>
+                ) : null}
               </p>
               <ul className="mt-3 space-y-2 text-sm text-gray-400">
                 <li>
@@ -125,10 +144,42 @@ export default function NewsletterPage() {
                   ({surveyStats.not_relevant})
                 </li>
               </ul>
+              {surveyStats.responses && surveyStats.responses.length > 0 ? (
+                <div className="mt-6 overflow-hidden rounded-lg border border-gray-800">
+                  <table className="min-w-full divide-y divide-gray-800 text-sm">
+                    <thead className="bg-gray-950/60 text-xs uppercase tracking-wide text-gray-500">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold">Subscriber</th>
+                        <th className="px-4 py-3 text-left font-semibold">Rating</th>
+                        <th className="px-4 py-3 text-left font-semibold">Issue date</th>
+                        <th className="px-4 py-3 text-left font-semibold">Submitted</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-800 text-gray-300">
+                      {surveyStats.responses.slice(0, 25).map((row) => (
+                        <tr key={row.id}>
+                          <td className="px-4 py-3">{row.subscriber_email}</td>
+                          <td className="px-4 py-3">
+                            {row.score === 3
+                              ? "Highly relevant"
+                              : row.score === 2
+                                ? "Somewhat relevant"
+                                : "Not relevant"}
+                          </td>
+                          <td className="px-4 py-3">{row.newsletter_date}</td>
+                          <td className="px-4 py-3">
+                            {row.created_at ? new Date(row.created_at).toLocaleString() : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
             </>
           ) : (
             <p className="text-sm text-gray-500">
-              No survey responses in the last 7 days.
+              No survey responses yet.
             </p>
           )}
         </div>

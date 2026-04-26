@@ -1,4 +1,4 @@
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -15,11 +15,14 @@ class Settings(BaseSettings):
     sendgrid_api_key: str = ""
     sendgrid_from_email: str = "radar@pulseone.com"
     sendgrid_from_name: str = "PulseOne Radar"
-    sendgrid_newsletter_template_id: str = ""  # optional dynamic template
+    sendgrid_newsletter_template_id: str = ""  # legacy; newsletter always sends built-in full HTML
     # Public API base URL for newsletter links (survey, read online); no trailing slash
     api_base_url: str = "http://localhost:8000"
     # Public Next.js site (radar home) for “dig deeper” links; no trailing slash
     public_site_url: str = "http://localhost:3100"
+    # Full URL to logo image for email (<img src>). If empty, built-in HTML uses a text wordmark only.
+    # Use a public HTTPS URL in production — localhost images do not load in most email clients.
+    newsletter_logo_url: str = ""
     # HubSpot
     hubspot_api_key: str = ""  # private app access token
     # Pinecone vector database (optional — signal scorer degrades gracefully without it)
@@ -47,6 +50,17 @@ class Settings(BaseSettings):
     newsletter_enabled: bool = True
     # Pause between SendGrid sends in run_daily_newsletter (0 = no delay)
     newsletter_subscriber_delay_seconds: float = Field(default=0.1, ge=0.0, le=60.0)
+
+    @field_validator("sendgrid_newsletter_template_id", mode="before")
+    @classmethod
+    def empty_sendgrid_template_if_comment_like(cls, v: object) -> str:
+        """Some .env loaders pass inline '# ...' as the value; treat as no template (built-in HTML)."""
+        if v is None:
+            return ""
+        s = str(v).strip()
+        if not s or s.startswith("#"):
+            return ""
+        return s
 
     model_config = {"env_file": ".env"}
 

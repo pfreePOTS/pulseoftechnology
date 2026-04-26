@@ -1,6 +1,5 @@
 "use client";
 
-import { diffLines, type Change } from "diff";
 import { useCallback, useEffect, useState } from "react";
 
 import { adminFetch, API_BASE } from "@/lib/api";
@@ -11,6 +10,7 @@ interface Proposal {
   id: number;
   agent_name: string;
   base_version: string;
+  model: string | null;
   proposed_system_prompt: string;
   rationale: string;
   test_improvement_score: number | null;
@@ -22,6 +22,7 @@ interface PromptTemplateRow {
   id: number;
   agent_name: string;
   version: string;
+  model: string | null;
   is_active: boolean;
   created_at: string;
   system_prompt: string;
@@ -33,7 +34,72 @@ interface Toast {
   message: string;
 }
 
+interface PromptModel {
+  id: string;
+  name: string;
+}
+
+interface ProposalDraft {
+  proposed_system_prompt: string;
+  model: string;
+  rationale: string;
+}
+
 let toastSeq = 0;
+
+/** Line-level diff chunks (subset of `diff` package `Change`). */
+interface LineChange {
+  value: string;
+  added?: boolean;
+  removed?: boolean;
+}
+
+/**
+ * Line diff without the `diff` npm package (avoids missing-module issues when
+ * node_modules is stale, e.g. Docker named volume for /app/node_modules).
+ */
+function diffLines(oldText: string, newText: string): LineChange[] {
+  const a = oldText.split("\n");
+  const b = newText.split("\n");
+  const n = a.length;
+  const m = b.length;
+  const dp: number[][] = Array.from({ length: n + 1 }, () =>
+    Array.from({ length: m + 1 }, () => 0),
+  );
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] =
+        a[i] === b[j]
+          ? 1 + dp[i + 1][j + 1]
+          : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const out: LineChange[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) {
+      out.push({ value: `${a[i]}\n` });
+      i++;
+      j++;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      out.push({ value: `${a[i]}\n`, removed: true });
+      i++;
+    } else {
+      out.push({ value: `${b[j]}\n`, added: true });
+      j++;
+    }
+  }
+  while (i < n) {
+    out.push({ value: `${a[i]}\n`, removed: true });
+    i++;
+  }
+  while (j < m) {
+    out.push({ value: `${b[j]}\n`, added: true });
+    j++;
+  }
+  return out;
+}
 
 const AGENT_RING_PALETTE = [
   "bg-violet-500/20 text-violet-400 ring-violet-500/30",
@@ -73,6 +139,10 @@ function pickActivePrompt(rows: PromptTemplateRow[], agent: string): string | nu
   )[0]?.system_prompt ?? null;
 }
 
+function defaultModel(models: PromptModel[]): string {
+  return models[0]?.id ?? "claude-haiku-4-5-20251001";
+}
+
 /** Mirrors backend `_next_prompt_version_after_approval` for display (v_base → v_new). */
 function nextPromptVersionAfterApproval(baseVersion: string): string {
   const s = baseVersion.trim();
@@ -107,10 +177,10 @@ function IconChevronDown({ expanded }: { expanded: boolean }) {
 }
 
 function PromptDiffView({ oldText, newText }: { oldText: string; newText: string }) {
-  const parts: Change[] = diffLines(oldText || "", newText || "");
+  const parts: LineChange[] = diffLines(oldText || "", newText || "");
   return (
     <div className="space-y-0 rounded-lg border border-gray-800 font-mono text-xs leading-relaxed">
-      {parts.map((part: Change, i: number) => {
+      {parts.map((part: LineChange, i: number) => {
         const raw = part.value.endsWith("\n") ? part.value.slice(0, -1) : part.value;
         const lines = raw.length ? raw.split("\n") : [""];
         return (
@@ -143,10 +213,19 @@ export default function PromptLabPage() {
   const [proposalsLoading, setProposalsLoading] = useState(true);
   const [templates, setTemplates] = useState<PromptTemplateRow[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [models, setModels] = useState<PromptModel[]>([]);
   const [expandedView, setExpandedView] = useState<Record<number, boolean>>({});
   const [baselineCache, setBaselineCache] = useState<Record<string, string | null>>({});
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [expandedRegistryId, setExpandedRegistryId] = useState<number | null>(null);
+  const [proposalDrafts, setProposalDrafts] = useState<Record<number, ProposalDraft>>({});
+  const [creatingFromTemplateId, setCreatingFromTemplateId] = useState<number | null>(null);
+  const [labSourceId, setLabSourceId] = useState<number | null>(null);
+  const [labModel, setLabModel] = useState("claude-haiku-4-5-20251001");
+  const [labPrompt, setLabPrompt] = useState("");
+  const [labRequest, setLabRequest] = useState("");
+  const [labOutput, setLabOutput] = useState("");
+  const [labRunning, setLabRunning] = useState(false);
 
   function addToast(type: "success" | "error", message: string) {
     const id = ++toastSeq;
@@ -166,12 +245,23 @@ export default function PromptLabPage() {
       }
       const data = (await res.json()) as Proposal[];
       setProposals(data);
+      setProposalDrafts((prev) => {
+        const next = { ...prev };
+        for (const p of data) {
+          next[p.id] ??= {
+            proposed_system_prompt: p.proposed_system_prompt,
+            model: p.model || defaultModel(models),
+            rationale: p.rationale || "",
+          };
+        }
+        return next;
+      });
     } catch {
       setProposals([]);
     } finally {
       setProposalsLoading(false);
     }
-  }, []);
+  }, [models]);
 
   const fetchTemplates = useCallback(async () => {
     setTemplatesLoading(true);
@@ -190,15 +280,117 @@ export default function PromptLabPage() {
     }
   }, []);
 
+  const fetchModels = useCallback(async () => {
+    try {
+      const res = await adminFetch(`${API_BASE}/api/admin/prompt-models`);
+      if (!res.ok) return;
+      const data = (await res.json()) as PromptModel[];
+      setModels(data);
+      setLabModel((m) => m || defaultModel(data));
+    } catch {
+      // Model list is convenience-only; backend also has a fallback.
+    }
+  }, []);
+
   useEffect(() => {
     void fetchProposals();
   }, [fetchProposals]);
 
   useEffect(() => {
-    if (tab === "registry") {
-      void fetchTemplates();
+    void fetchTemplates();
+    void fetchModels();
+  }, [fetchTemplates, fetchModels]);
+
+  function loadTemplateIntoLab(row: PromptTemplateRow) {
+    setLabSourceId(row.id);
+    setLabPrompt(row.system_prompt);
+    setLabModel(row.model || defaultModel(models));
+    setLabOutput("");
+    addToast("success", `Loaded ${row.agent_name} v${row.version} into the lab`);
+  }
+
+  async function createProposalFromTemplate(row: PromptTemplateRow) {
+    setCreatingFromTemplateId(row.id);
+    try {
+      const res = await adminFetch(`${API_BASE}/api/admin/prompt-proposals`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          template_id: row.id,
+          proposed_system_prompt: row.system_prompt,
+          model: row.model || defaultModel(models),
+          rationale: "Manual proposal from Prompt Lab registry",
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const proposal = (await res.json()) as Proposal;
+      setProposals((prev) => [proposal, ...prev]);
+      setProposalDrafts((prev) => ({
+        ...prev,
+        [proposal.id]: {
+          proposed_system_prompt: proposal.proposed_system_prompt,
+          model: proposal.model || defaultModel(models),
+          rationale: proposal.rationale || "",
+        },
+      }));
+      setTab("proposals");
+      addToast("success", `Created pending proposal for ${row.agent_name}`);
+    } catch (e) {
+      addToast("error", e instanceof Error ? e.message : "Create proposal failed");
+    } finally {
+      setCreatingFromTemplateId(null);
     }
-  }, [tab, fetchTemplates]);
+  }
+
+  async function saveProposalDraft(id: number) {
+    const draft = proposalDrafts[id];
+    if (!draft) return;
+    try {
+      const res = await adminFetch(`${API_BASE}/api/admin/prompt-proposals/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(draft),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const updated = (await res.json()) as Proposal;
+      setProposals((prev) => prev.map((p) => (p.id === id ? updated : p)));
+      setProposalDrafts((prev) => ({
+        ...prev,
+        [id]: {
+          proposed_system_prompt: updated.proposed_system_prompt,
+          model: updated.model || defaultModel(models),
+          rationale: updated.rationale || "",
+        },
+      }));
+      addToast("success", "Proposal saved");
+    } catch (e) {
+      addToast("error", e instanceof Error ? e.message : "Save failed");
+    }
+  }
+
+  async function runLabTest() {
+    setLabRunning(true);
+    setLabOutput("");
+    try {
+      const res = await adminFetch(`${API_BASE}/api/admin/prompt-lab/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          system_prompt: labPrompt,
+          user_message: labRequest,
+          model: labModel || defaultModel(models),
+          max_tokens: 2048,
+        }),
+      });
+      const data = (await res.json()) as { output?: string; detail?: string };
+      if (!res.ok) throw new Error(data.detail || "Prompt test failed");
+      setLabOutput(data.output || "");
+    } catch (e) {
+      setLabOutput(e instanceof Error ? e.message : "Prompt test failed");
+    } finally {
+      setLabRunning(false);
+    }
+  }
 
   async function ensureBaseline(agent: string) {
     if (baselineCache[agent] !== undefined) return;
@@ -300,6 +492,91 @@ export default function PromptLabPage() {
           </button>
         </div>
 
+        <section className="mb-8 rounded-xl border border-gray-800 bg-gray-900/60 p-5">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold uppercase tracking-widest text-gray-400">
+                Lab Test Bench
+              </h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Load a registered prompt, choose a model, send a request, and inspect the raw model output.
+              </p>
+            </div>
+            <select
+              value={labSourceId ?? ""}
+              onChange={(e) => {
+                const id = Number(e.target.value);
+                const row = templates.find((t) => t.id === id);
+                if (row) loadTemplateIntoLab(row);
+              }}
+              className="min-w-64 rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-200"
+            >
+              <option value="">Load registered prompt…</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.agent_name} v{t.version}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="grid gap-4">
+            <label className="block text-sm">
+              <span className="text-gray-400">Model</span>
+              <select
+                value={labModel}
+                onChange={(e) => setLabModel(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-gray-200"
+              >
+                {models.length === 0 ? (
+                  <option value={labModel || "claude-haiku-4-5-20251001"}>
+                    {labModel || "claude-haiku-4-5-20251001"}
+                  </option>
+                ) : null}
+                {models.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name} ({m.id})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="text-gray-400">System prompt</span>
+              <textarea
+                value={labPrompt}
+                onChange={(e) => setLabPrompt(e.target.value)}
+                rows={8}
+                className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 font-mono text-xs text-gray-200"
+                placeholder="Load a registered prompt or paste a prompt to test…"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="text-gray-400">Request</span>
+              <textarea
+                value={labRequest}
+                onChange={(e) => setLabRequest(e.target.value)}
+                rows={5}
+                className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-gray-200"
+                placeholder="Enter the user message / sample input for this prompt…"
+              />
+            </label>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                disabled={labRunning || !labPrompt.trim() || !labRequest.trim() || !labModel}
+                onClick={() => void runLabTest()}
+                className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-500 disabled:opacity-50"
+              >
+                {labRunning ? "Running…" : "Run test"}
+              </button>
+            </div>
+            {labOutput ? (
+              <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-lg border border-gray-800 bg-gray-950 p-4 text-xs text-gray-300">
+                {labOutput}
+              </pre>
+            ) : null}
+          </div>
+        </section>
+
         {tab === "proposals" && (
           <>
             {proposalsLoading ? (
@@ -320,6 +597,11 @@ export default function PromptLabPage() {
               <div className="space-y-6">
                 {proposals.map((p) => {
                   const proposedVersion = nextPromptVersionAfterApproval(p.base_version);
+                  const draft = proposalDrafts[p.id] ?? {
+                    proposed_system_prompt: p.proposed_system_prompt,
+                    model: p.model || defaultModel(models),
+                    rationale: p.rationale || "",
+                  };
                   return (
                     <div
                       key={p.id}
@@ -351,17 +633,70 @@ export default function PromptLabPage() {
                               : "—"}
                           </span>
                         </p>
+                        <p className="text-sm text-gray-400">
+                          <span className="font-medium text-gray-300">Model: </span>
+                          <span className="font-mono text-xs text-white">{draft.model}</span>
+                        </p>
                       </div>
 
-                      <div className="mt-6">
-                        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                          Rationale
-                        </h3>
-                        <div className="rounded-lg bg-gray-950 p-4 text-sm text-gray-300">
-                          {p.rationale?.trim() ? p.rationale : (
-                            <span className="text-gray-600">No rationale provided.</span>
-                          )}
-                        </div>
+                      <div className="mt-6 grid gap-4">
+                        <label className="block text-sm">
+                          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                            Model
+                          </span>
+                          <select
+                            value={draft.model}
+                            onChange={(e) =>
+                              setProposalDrafts((prev) => ({
+                                ...prev,
+                                [p.id]: { ...draft, model: e.target.value },
+                              }))
+                            }
+                            className="w-full rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-gray-200"
+                          >
+                            {models.length === 0 ? (
+                              <option value={draft.model}>{draft.model}</option>
+                            ) : null}
+                            {models.map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.name} ({m.id})
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="block text-sm">
+                          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                            Rationale
+                          </span>
+                          <textarea
+                            value={draft.rationale}
+                            onChange={(e) =>
+                              setProposalDrafts((prev) => ({
+                                ...prev,
+                                [p.id]: { ...draft, rationale: e.target.value },
+                              }))
+                            }
+                            rows={3}
+                            className="w-full rounded-lg border border-gray-800 bg-gray-950 p-3 text-sm text-gray-300"
+                            placeholder="Why this prompt/model change is being proposed…"
+                          />
+                        </label>
+                        <label className="block text-sm">
+                          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                            Proposed system prompt
+                          </span>
+                          <textarea
+                            value={draft.proposed_system_prompt}
+                            onChange={(e) =>
+                              setProposalDrafts((prev) => ({
+                                ...prev,
+                                [p.id]: { ...draft, proposed_system_prompt: e.target.value },
+                              }))
+                            }
+                            rows={10}
+                            className="w-full rounded-lg border border-gray-800 bg-gray-950 p-3 font-mono text-xs text-gray-300"
+                          />
+                        </label>
                       </div>
 
                       <div className="mt-6">
@@ -381,14 +716,33 @@ export default function PromptLabPage() {
                             ) : (
                               <PromptDiffView
                                 oldText={baselineCache[p.agent_name] ?? ""}
-                                newText={p.proposed_system_prompt}
+                                newText={draft.proposed_system_prompt}
                               />
                             )}
                           </div>
                         ) : null}
                       </div>
 
-                      <div className="mt-6 flex justify-end gap-2 border-t border-gray-800 pt-6">
+                      <div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-gray-800 pt-6">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLabPrompt(draft.proposed_system_prompt);
+                            setLabModel(draft.model);
+                            setLabOutput("");
+                            addToast("success", `Loaded proposal ${p.id} into the lab`);
+                          }}
+                          className="rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-gray-700"
+                        >
+                          Load to Lab
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void saveProposalDraft(p.id)}
+                          className="rounded-lg border border-teal-700/70 bg-teal-900/30 px-4 py-2 text-sm font-semibold text-teal-200 transition-colors hover:bg-teal-900/50"
+                        >
+                          Save edits
+                        </button>
                         <button
                           type="button"
                           onClick={() => void approve(p.id, p.agent_name)}
@@ -431,6 +785,7 @@ export default function PromptLabPage() {
                     <tr>
                       <th className="px-4 py-3 font-medium text-gray-300">Agent</th>
                       <th className="px-4 py-3 font-medium text-gray-300">Version</th>
+                      <th className="px-4 py-3 font-medium text-gray-300">Model</th>
                       <th className="px-4 py-3 font-medium text-gray-300">Status</th>
                       <th className="px-4 py-3 font-medium text-gray-300">Created</th>
                       <th className="px-4 py-3 font-medium text-gray-300">Actions</th>
@@ -445,6 +800,9 @@ export default function PromptLabPage() {
                         onToggle={() =>
                           setExpandedRegistryId((id) => (id === row.id ? null : row.id))
                         }
+                        onLoadLab={() => loadTemplateIntoLab(row)}
+                        onCreateProposal={() => void createProposalFromTemplate(row)}
+                        creatingProposal={creatingFromTemplateId === row.id}
                       />
                     ))}
                   </tbody>
@@ -477,10 +835,16 @@ function FragmentRow({
   row,
   expanded,
   onToggle,
+  onLoadLab,
+  onCreateProposal,
+  creatingProposal,
 }: {
   row: PromptTemplateRow;
   expanded: boolean;
   onToggle: () => void;
+  onLoadLab: () => void;
+  onCreateProposal: () => void;
+  creatingProposal: boolean;
 }) {
   return (
     <>
@@ -489,6 +853,7 @@ function FragmentRow({
           <AgentPill name={row.agent_name} />
         </td>
         <td className="px-4 py-3 font-mono text-xs text-gray-300">{row.version}</td>
+        <td className="px-4 py-3 font-mono text-xs text-gray-400">{row.model ?? "—"}</td>
         <td className="px-4 py-3">
           {row.is_active ? (
             <span className="inline-flex rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-medium text-emerald-400">
@@ -504,18 +869,35 @@ function FragmentRow({
           {new Date(row.created_at).toLocaleString()}
         </td>
         <td className="px-4 py-3">
-          <button
-            type="button"
-            onClick={onToggle}
-            className="text-sm font-medium text-indigo-400 hover:text-indigo-300"
-          >
-            {expanded ? "Hide" : "View"}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={onLoadLab}
+              className="text-sm font-medium text-teal-300 hover:text-teal-200"
+            >
+              Load to Lab
+            </button>
+            <button
+              type="button"
+              disabled={creatingProposal}
+              onClick={onCreateProposal}
+              className="text-sm font-medium text-amber-300 hover:text-amber-200 disabled:opacity-50"
+            >
+              {creatingProposal ? "Creating…" : "Create Proposal"}
+            </button>
+            <button
+              type="button"
+              onClick={onToggle}
+              className="text-sm font-medium text-indigo-400 hover:text-indigo-300"
+            >
+              {expanded ? "Hide" : "View"}
+            </button>
+          </div>
         </td>
       </tr>
       {expanded ? (
         <tr className="bg-gray-900/50">
-          <td colSpan={5} className="px-4 pb-4 pt-0">
+          <td colSpan={6} className="px-4 pb-4 pt-0">
             <pre className="max-h-[min(480px,70vh)] overflow-x-auto overflow-y-auto whitespace-pre-wrap rounded-lg bg-gray-950 p-4 text-xs text-gray-300">
               {row.system_prompt}
             </pre>

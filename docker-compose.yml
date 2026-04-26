@@ -34,6 +34,8 @@ services:
     container_name: pulse_backend
     restart: unless-stopped
     environment:
+      # Required so `import backend` resolves (code lives under /app/backend)
+      PYTHONPATH: /app
       DATABASE_URL: postgresql://${POSTGRES_USER:-pulse_user}:${POSTGRES_PASSWORD:-pulse_password}@db:5432/${POSTGRES_DB:-pulse_db}
       ENVIRONMENT: development
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3100,http://127.0.0.1:3000,http://127.0.0.1:3100}

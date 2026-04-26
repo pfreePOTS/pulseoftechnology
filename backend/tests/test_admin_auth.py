@@ -43,6 +43,33 @@ def test_session_reflects_cookie(client):
     assert data["user"]["is_superuser"] is True
 
 
+def test_invite_can_create_superuser_without_page_permissions(client):
+    client.post(
+        "/api/admin/login",
+        json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
+    )
+
+    r = client.post(
+        "/api/admin/users/invite",
+        json={
+            "email": "new-admin@example.com",
+            "page_permissions": [],
+            "is_superuser": True,
+            "send_email": False,
+        },
+    )
+
+    assert r.status_code == 200
+    data = r.json()
+    assert data["email"] == "new-admin@example.com"
+    assert data["is_superuser"] is True
+
+    users = client.get("/api/admin/users").json()
+    row = next(u for u in users if u["email"] == "new-admin@example.com")
+    assert row["is_superuser"] is True
+    assert row["page_permissions"] == []
+
+
 def test_bearer_token_grants_access(client):
     r = client.post(
         "/api/admin/login",
@@ -137,3 +164,26 @@ def test_newsletter_test_send_requires_auth(client):
         json={"to_email": "curator@example.com"},
     )
     assert r.status_code == 401
+
+
+def test_analysis_industry_suggest_all_background_requires_auth(client):
+    r = client.post("/api/admin/topics/analysis/industry-suggest-all-background")
+    assert r.status_code == 401
+
+
+def test_analysis_persona_suggest_all_background_requires_auth(client):
+    r = client.post("/api/admin/topics/analysis/persona-suggest-all-background")
+    assert r.status_code == 401
+
+
+def test_analysis_background_jobs_queue_when_authed(client):
+    client.post(
+        "/api/admin/login",
+        json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
+    )
+    r_ind = client.post("/api/admin/topics/analysis/industry-suggest-all-background")
+    assert r_ind.status_code == 200
+    assert r_ind.json().get("status") == "queued"
+    r_per = client.post("/api/admin/topics/analysis/persona-suggest-all-background")
+    assert r_per.status_code == 200
+    assert r_per.json().get("status") == "queued"

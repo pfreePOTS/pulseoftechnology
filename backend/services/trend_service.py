@@ -334,6 +334,7 @@ def build_hot_of_day(db: Session) -> dict[str, Any]:
 
     hot_article_out: dict[str, Any] | None = None
     if hot_art is not None:
+        img_u = (getattr(hot_art, "image_url", None) or "").strip()
         hot_article_out = {
             "id": hot_art.id,
             "title": hot_art.title,
@@ -341,6 +342,7 @@ def build_hot_of_day(db: Session) -> dict[str, Any]:
             "published_at": hot_art.published_at,
             "ingested_at": hot_art.ingested_at,
             "source_name": hot_art.source.name if hot_art.source else None,
+            "image_url": img_u or None,
         }
 
     return {

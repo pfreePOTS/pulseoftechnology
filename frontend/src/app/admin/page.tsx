@@ -33,6 +33,10 @@ export interface TopicRow {
   signal_id: number | null;
   /** ISO datetime: newest linked article (published_at, else ingested_at). */
   latest_article_at?: string | null;
+  /** When the topic was promoted to on-radar (selected); drives `days_on_radar`. */
+  selected_at?: string | null;
+  /** Whole days since `selected_at` (server-computed). */
+  days_on_radar?: number | null;
 }
 
 interface TopicDetailArticle {
@@ -182,7 +186,7 @@ function articleSourceLabel(a: TopicDetailArticle): string {
   }
 }
 
-function fmtPublished(iso: string | null): string {
+function fmtPublished(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
@@ -462,6 +466,7 @@ function TrendDiscoveryInner() {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [approvingId, setApprovingId] = useState<number | null>(null);
   const [watchingId, setWatchingId] = useState<number | null>(null);
+  const [unwatchingId, setUnwatchingId] = useState<number | null>(null);
   const [demotingId, setDemotingId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [mergeOpen, setMergeOpen] = useState(false);
@@ -479,7 +484,7 @@ function TrendDiscoveryInner() {
   const [filterDomain, setFilterDomain] = useState("");
   const [filterSubdomain, setFilterSubdomain] = useState("");
   const [filterAction, setFilterAction] = useState("");
-  const [sortColumn, setSortColumn] = useState<SortColumn>("latest_article");
+  const [sortColumn, setSortColumn] = useState<SortColumn>("velocity");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [pipelineWindows, setPipelineWindows] =
     useState<PipelineTrendWindows>(DEFAULT_TREND_WINDOWS);
@@ -786,6 +791,26 @@ function TrendDiscoveryInner() {
       setError(e instanceof Error ? e.message : "Watch failed");
     } finally {
       setWatchingId(null);
+    }
+  }
+
+  async function unwatchTopic(id: number) {
+    setUnwatchingId(id);
+    setError(null);
+    try {
+      const res = await adminFetch(`${API_BASE}/api/admin/topics/${id}/unwatch`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        setError(await res.text().catch(() => res.statusText));
+        return;
+      }
+      setSelectedTopicId((cur) => (cur === id ? null : cur));
+      await loadTopics();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Remove from watchlist failed");
+    } finally {
+      setUnwatchingId(null);
     }
   }
 
@@ -1444,6 +1469,7 @@ function TrendDiscoveryInner() {
                     analyzingId === row.id ||
                     approvingId === row.id ||
                     watchingId === row.id ||
+                    unwatchingId === row.id ||
                     demotingId === row.id ||
                     subdomainSuggestingId === row.id ||
                     subdomainBulkBusy;
@@ -1513,6 +1539,15 @@ function TrendDiscoveryInner() {
                             <button
                               type="button"
                               disabled={rowBusy}
+                              title="Remove from watchlist (topic returns to Pending)"
+                              onClick={() => void unwatchTopic(row.id)}
+                              className={`${topicToolbarBtn} border-rose-500/45 text-rose-200/90 hover:border-rose-400`}
+                            >
+                              {unwatchingId === row.id ? <Spinner className="h-3 w-3" /> : "Unwatch"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={rowBusy}
                               title="Approve to radar"
                               onClick={() => void approveTopic(row.id)}
                               className={`${topicToolbarBtn} border-emerald-600/50 bg-emerald-900/30 text-emerald-200 hover:bg-emerald-900/45`}
@@ -1560,7 +1595,7 @@ function TrendDiscoveryInner() {
         <p className="py-12 text-center text-sm text-gray-500">No topics match the current filters.</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-gray-800">
-          <table className="w-full min-w-[1000px] text-left text-sm">
+          <table className="w-full min-w-[1080px] text-left text-sm">
             <thead className="bg-gray-900 text-xs uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="w-9 px-2 py-3" aria-hidden />
@@ -1597,6 +1632,12 @@ function TrendDiscoveryInner() {
                 />
                 <th className="px-3 py-3">Suggestion</th>
                 <th className="px-3 py-3">Published</th>
+                <th
+                  className="whitespace-nowrap px-3 py-3"
+                  title="Whole days since this topic was promoted to on-radar (approve / select)"
+                >
+                  Days on
+                </th>
                 <th className="w-[120px] px-2 py-3 text-right font-semibold normal-case tracking-normal">
                   Tools
                 </th>
@@ -1609,6 +1650,7 @@ function TrendDiscoveryInner() {
                   analyzingId === row.id ||
                   approvingId === row.id ||
                   watchingId === row.id ||
+                  unwatchingId === row.id ||
                   demotingId === row.id ||
                   subdomainSuggestingId === row.id ||
                   subdomainBulkBusy;
@@ -1675,6 +1717,16 @@ function TrendDiscoveryInner() {
                           </span>
                         )}
                       </td>
+                      <td
+                        className="whitespace-nowrap px-3 py-3 align-top tabular-nums text-gray-300"
+                        title={
+                          row.selected_at
+                            ? `On radar since ${row.selected_at}`
+                            : "Legacy row — promote again to start tracking days on radar"
+                        }
+                      >
+                        {typeof row.days_on_radar === "number" ? row.days_on_radar : "—"}
+                      </td>
                       <td className="px-2 py-3 align-top text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="inline-flex flex-wrap items-center justify-end gap-0.5">
                           <button
@@ -1707,7 +1759,7 @@ function TrendDiscoveryInner() {
                     </tr>
                     {expanded ? (
                       <tr className="bg-gray-900/40">
-                        <td colSpan={9} className="px-3 pb-4 pt-0">
+                        <td colSpan={10} className="px-3 pb-4 pt-0">
                           <div className="ml-6 border-l border-gray-700 pl-4">
                             {artsLoad ? (
                               <div className="flex items-center gap-2 py-4 text-xs text-gray-500">
@@ -1840,6 +1892,25 @@ function TrendDiscoveryInner() {
                     </>
                   ) : (
                     "Approve to radar"
+                  )}
+                </button>
+              </div>
+            )}
+            {selectedRow?.status === "watched" && (
+              <div className="border-t border-gray-800 px-4 py-3">
+                <button
+                  type="button"
+                  disabled={unwatchingId === selectedTopicId}
+                  onClick={() => selectedTopicId !== null && void unwatchTopic(selectedTopicId)}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-rose-500/45 bg-rose-950/20 px-4 py-2.5 text-sm font-medium text-rose-200 hover:bg-rose-950/35 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {unwatchingId === selectedTopicId ? (
+                    <>
+                      <Spinner className="h-4 w-4" />
+                      Removing…
+                    </>
+                  ) : (
+                    "Remove from watchlist"
                   )}
                 </button>
               </div>

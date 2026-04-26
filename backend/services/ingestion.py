@@ -1,5 +1,6 @@
 import logging
 from datetime import UTC, datetime
+from typing import Any
 
 import feedparser
 import httpx
@@ -44,6 +45,50 @@ def _strip_html(raw: str | None) -> str | None:
     if not raw:
         return None
     return BeautifulSoup(raw, "lxml").get_text(separator=" ", strip=True)
+
+
+def _rss_image_url_from_entry(entry: Any) -> str | None:
+    """Best-effort lead image from RSS/Atom (media_thumbnail, enclosure, media_content, first img)."""
+    try:
+        mt = getattr(entry, "media_thumbnail", None)
+        if mt:
+            first = mt[0] if isinstance(mt, list) else mt
+            if isinstance(first, dict) and first.get("url"):
+                u = str(first["url"]).strip()
+                if u:
+                    return u[:2048]
+        for link in entry.get("links", []) or []:
+            if not isinstance(link, dict):
+                continue
+            rel = (link.get("rel") or "").lower()
+            typ = (link.get("type") or "").lower()
+            if rel == "enclosure" or typ.startswith("image/"):
+                href = link.get("href")
+                if href:
+                    u = str(href).strip()
+                    if u:
+                        return u[:2048]
+        mc = entry.get("media_content") or []
+        if mc and isinstance(mc[0], dict) and mc[0].get("url"):
+            u = str(mc[0]["url"]).strip()
+            if u:
+                return u[:2048]
+        raw = None
+        contents = entry.get("content")
+        if contents and isinstance(contents, list) and contents:
+            raw = contents[0].get("value") if isinstance(contents[0], dict) else None
+        if not raw:
+            raw = entry.get("summary")
+        if raw:
+            soup = BeautifulSoup(raw, "lxml")
+            im = soup.find("img")
+            if im and im.get("src"):
+                u = str(im["src"]).strip()
+                if u:
+                    return u[:2048]
+    except Exception:
+        logger.debug("RSS image extraction failed for entry", exc_info=True)
+    return None
 
 
 def _parse_published(entry: feedparser.FeedParserDict) -> datetime | None:
@@ -129,6 +174,7 @@ def fetch_rss_feed(source: Source, db: Session) -> int:
             source_id=source.id,
             title=title.strip(),
             url=url,
+            image_url=_rss_image_url_from_entry(entry),
             content=plain_content,
             published_at=_parse_published(entry),
             status=ArticleStatus.raw,

@@ -30,7 +30,9 @@ def test_fill_missing_industry_grid_rows_preserves_existing_and_fills_rest():
     assert len(out) == len(INDUSTRY_GRID_LABELS)
     assert "Healthcare" in out
     assert out["Healthcare"]["impact_score"] == 8.5
-    assert "Included so this topic appears across all industries" in (out["Healthcare"].get("rationale") or "")
+    assert "Included so this topic appears across all industries" in (
+        out["Healthcare"].get("rationale") or ""
+    )
 
 
 def test_truncate_to_max_sentences_keeps_short_and_caps_long():

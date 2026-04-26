@@ -39,6 +39,10 @@ const ADOPTION_DOT: Record<string, string> = {
   "Make the Most Of": "bg-emerald-400",
 };
 
+function formatAdminTimestamp(d: Date): string {
+  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
 interface IndustryPosition {
   impact_score?: number;
   risk_level?: number;
@@ -200,37 +204,6 @@ function defaultIndustryRow(): IndustryPosition {
   };
 }
 
-function pickOptionalString(row: Record<string, unknown>, key: string): string | undefined {
-  const v = row[key];
-  return typeof v === "string" && v.trim() ? v.trim() : undefined;
-}
-
-function normalizeSuggestionRow(row: Record<string, unknown>): IndustryPosition {
-  const adoption =
-    typeof row.adoption_state === "string" ? row.adoption_state : ADOPTION_STATES[0];
-  const impact =
-    typeof row.impact_score === "number"
-      ? row.impact_score
-      : typeof row.score === "number"
-        ? row.score
-        : 5;
-  const risk = typeof row.risk_level === "number" ? row.risk_level : 5;
-  return {
-    adoption_state: ADOPTION_STATES.includes(adoption as (typeof ADOPTION_STATES)[number])
-      ? adoption
-      : ADOPTION_STATES[0],
-    impact_score: Math.min(10, Math.max(1, impact)),
-    risk_level: Math.min(10, Math.max(1, risk)),
-    rationale: pickOptionalString(row, "rationale"),
-    industry_impact: pickOptionalString(row, "industry_impact"),
-    scoring_rationale: pickOptionalString(row, "scoring_rationale"),
-    phase_rationale: pickOptionalString(row, "phase_rationale"),
-    remediation: pickOptionalString(row, "remediation"),
-    /** Default on so every suggested industry appears on the public radar until explicitly cleared. */
-    impact_approved: true,
-  };
-}
-
 function impactHeatClass(impact: number): string {
   if (impact >= 9) return "bg-red-500/10";
   if (impact >= 6) return "bg-amber-500/10";
@@ -325,9 +298,9 @@ const ADOPTION_BORDER: Record<string, string> = {
 };
 
 export default function AnalysisPage() {
-  const [gridLegendOpen, setGridLegendOpen] = useState(true);
-  const [impactRiskHelpOpen, setImpactRiskHelpOpen] = useState(true);
-  const [adoptionHelpOpen, setAdoptionHelpOpen] = useState(true);
+  const [gridLegendOpen, setGridLegendOpen] = useState(false);
+  const [impactRiskHelpOpen, setImpactRiskHelpOpen] = useState(false);
+  const [adoptionHelpOpen, setAdoptionHelpOpen] = useState(false);
   const [mainTab, setMainTab] = useState<"industry" | "persona">("industry");
   const [topics, setTopics] = useState<TopicRow[]>([]);
   const [drafts, setDrafts] = useState<Record<number, Record<string, IndustryPosition>>>({});
@@ -347,6 +320,9 @@ export default function AnalysisPage() {
   const [personaLoading, setPersonaLoading] = useState(false);
   const [personaSuggestingAll, setPersonaSuggestingAll] = useState(false);
   const [personaSavingAll, setPersonaSavingAll] = useState(false);
+  const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [serverJobHint, setServerJobHint] = useState<string | null>(null);
 
   const loadTopics = useCallback(async () => {
     setLoading(true);
@@ -367,6 +343,7 @@ export default function AnalysisPage() {
       }
       setDrafts(d);
       setDirtyIds(new Set());
+      setLastLoadedAt(new Date());
     } catch (e) {
       const msg =
         e instanceof TypeError
@@ -541,6 +518,7 @@ export default function AnalysisPage() {
       next.delete(topicId);
       return next;
     });
+    setLastSavedAt(new Date());
     return true;
   }, [drafts]);
 
@@ -560,54 +538,37 @@ export default function AnalysisPage() {
     }
   }, [dirtyIds, saveTopic]);
 
-  const suggestIndustries = useCallback(async (topicId: number) => {
-    const res = await adminFetch(`${API_BASE}/api/admin/topics/${topicId}/suggest-industry-positions`, {
-      method: "POST",
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      const detail = err.detail;
-      const msg =
-        typeof detail === "string"
-          ? detail
-          : Array.isArray(detail)
-            ? detail.map((d: { msg?: string }) => d.msg).filter(Boolean).join(" ")
-            : "AI suggestion failed.";
-      throw new Error(msg || "AI suggestion failed.");
-    }
-    const result: {
-      industry_suggestions?: Record<string, Record<string, unknown>>;
-      industry_positions?: Record<string, Record<string, unknown>>;
-    } = await res.json();
-    const raw = result.industry_suggestions ?? result.industry_positions ?? {};
-    setDrafts((prev) => {
-      const cur = { ...prev[topicId] };
-      for (const [name, row] of Object.entries(raw)) {
-        if (row && typeof row === "object") {
-          cur[name] = normalizeSuggestionRow(row as Record<string, unknown>);
-        }
-      }
-      return { ...prev, [topicId]: cur };
-    });
-    markDirty(topicId);
-  }, [markDirty]);
-
   const runAiSuggestAll = useCallback(async () => {
     setActionError(null);
+    setServerJobHint(null);
     setSuggestingAll(true);
     try {
-      for (const t of topics) {
-        try {
-          await suggestIndustries(t.id);
-        } catch (e) {
-          setActionError(e instanceof Error ? e.message : "AI suggest failed.");
-          return;
-        }
+      const res = await adminFetch(
+        `${API_BASE}/api/admin/topics/analysis/industry-suggest-all-background`,
+        { method: "POST" },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        const detail = err.detail;
+        const msg =
+          typeof detail === "string"
+            ? detail
+            : Array.isArray(detail)
+              ? detail.map((d: { msg?: string }) => d.msg).filter(Boolean).join(" ")
+              : "Could not start background job.";
+        throw new Error(msg || "Could not start background job.");
       }
+      const data: { message?: string } = await res.json().catch(() => ({}));
+      setServerJobHint(
+        data.message ??
+          "Industry AI is running on the server. You can leave this page; use Refresh after a few minutes to load results.",
+      );
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "AI suggest failed.");
     } finally {
       setSuggestingAll(false);
     }
-  }, [topics, suggestIndustries]);
+  }, []);
 
   const updatePersonaCell = useCallback((topicId: number, role: string, value: string) => {
     setPersonaDrafts((prev) => ({
@@ -643,20 +604,35 @@ export default function AnalysisPage() {
 
   const runAiSuggestPersonaAll = useCallback(async () => {
     setActionError(null);
+    setServerJobHint(null);
     setPersonaSuggestingAll(true);
     try {
-      for (const t of topics) {
-        try {
-          await suggestPersonaForTopic(t.id);
-        } catch (e) {
-          setActionError(e instanceof Error ? e.message : "AI persona suggest failed.");
-          return;
-        }
+      const res = await adminFetch(
+        `${API_BASE}/api/admin/topics/analysis/persona-suggest-all-background`,
+        { method: "POST" },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        const detail = err.detail;
+        const msg =
+          typeof detail === "string"
+            ? detail
+            : Array.isArray(detail)
+              ? detail.map((d: { msg?: string }) => d.msg).filter(Boolean).join(" ")
+              : "Could not start background job.";
+        throw new Error(msg || "Could not start background job.");
       }
+      const data: { message?: string } = await res.json().catch(() => ({}));
+      setServerJobHint(
+        data.message ??
+          "Persona AI is running on the server. You can leave this page; use Refresh after a few minutes to load results.",
+      );
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "AI persona suggest failed.");
     } finally {
       setPersonaSuggestingAll(false);
     }
-  }, [topics, suggestPersonaForTopic]);
+  }, []);
 
   const savePersonaTopic = useCallback(async (topicId: number) => {
     const row = personaDrafts[topicId];
@@ -673,6 +649,7 @@ export default function AnalysisPage() {
       next.delete(topicId);
       return next;
     });
+    setLastSavedAt(new Date());
     return true;
   }, [personaDrafts]);
 
@@ -714,7 +691,7 @@ export default function AnalysisPage() {
     await loadTopics();
   }, [topics, loadTopics]);
 
-  const refreshPersonaData = useCallback(async () => {
+  const reloadFromServer = useCallback(async () => {
     setActionError(null);
     await loadTopics();
   }, [loadTopics]);
@@ -1044,44 +1021,63 @@ export default function AnalysisPage() {
                   ))}
                 </tbody>
               </table>
-              <div className="flex flex-wrap items-center gap-3 border-t border-gray-800 px-3 py-3 text-xs text-gray-600">
-                <button
-                  type="button"
-                  disabled={personaSuggestingAll || topics.length === 0}
-                  onClick={() => {
-                    setActionError(null);
-                    void runAiSuggestPersonaAll().catch((e) =>
-                      setActionError(e instanceof Error ? e.message : "AI failed"),
-                    );
-                  }}
-                  className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {personaSuggestingAll ? "AI Suggest…" : "AI Suggest (all topics)"}
-                </button>
-                <button
-                  type="button"
-                  disabled={personaSavingAll || personaDirtyIds.size === 0}
-                  onClick={() => void saveAllPersonaDirty()}
-                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {personaSavingAll ? "Saving…" : `Save persona${personaDirtyIds.size ? ` (${personaDirtyIds.size})` : ""}`}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void refreshPersonaData()}
-                  className="rounded-lg border border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-300 hover:bg-gray-800"
-                >
-                  Refresh
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void clearAllPersonaOverrides()}
-                  className="rounded-lg border border-amber-900/60 px-3 py-1.5 text-sm font-medium text-amber-200/90 hover:bg-amber-950/40"
-                >
-                  Clear topic overrides
-                </button>
-                {personaDirtyIds.size > 0 ? (
-                  <span className="text-amber-400/90">{personaDirtyIds.size} topic(s) unsaved</span>
+              <div className="border-t border-gray-800 px-3 py-3 text-xs text-gray-600">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      disabled={personaSuggestingAll || topics.length === 0}
+                      onClick={() => {
+                        setActionError(null);
+                        void runAiSuggestPersonaAll().catch((e) =>
+                          setActionError(e instanceof Error ? e.message : "AI failed"),
+                        );
+                      }}
+                      className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {personaSuggestingAll ? "Starting…" : "AI Suggest (all topics)"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={personaSavingAll || personaDirtyIds.size === 0}
+                      onClick={() => void saveAllPersonaDirty()}
+                      className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {personaSavingAll ? "Saving…" : `Save persona${personaDirtyIds.size ? ` (${personaDirtyIds.size})` : ""}`}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void reloadFromServer()}
+                      className="rounded-lg border border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-300 hover:bg-gray-800"
+                    >
+                      Refresh
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void clearAllPersonaOverrides()}
+                      className="rounded-lg border border-amber-900/60 px-3 py-1.5 text-sm font-medium text-amber-200/90 hover:bg-amber-950/40"
+                    >
+                      Clear topic overrides
+                    </button>
+                    {personaDirtyIds.size > 0 ? (
+                      <span className="text-amber-400/90">{personaDirtyIds.size} topic(s) unsaved</span>
+                    ) : null}
+                  </div>
+                  <div className="min-w-[min(100%,240px)] text-right text-[11px] leading-relaxed text-gray-500">
+                    {lastLoadedAt ? (
+                      <div>
+                        Last loaded: <span className="text-gray-400">{formatAdminTimestamp(lastLoadedAt)}</span>
+                      </div>
+                    ) : null}
+                    {lastSavedAt ? (
+                      <div>
+                        Last saved: <span className="text-gray-400">{formatAdminTimestamp(lastSavedAt)}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+                {serverJobHint ? (
+                  <p className="mt-2 text-xs leading-snug text-[#019E7C]/90">{serverJobHint}</p>
                 ) : null}
               </div>
             </div>
@@ -1307,31 +1303,57 @@ export default function AnalysisPage() {
                 </div>
               </div>
 
-              <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-gray-800 pt-4">
-                <button
-                  type="button"
-                  disabled={suggestingAll || topics.length === 0}
-                  onClick={() => {
-                    setActionError(null);
-                    void runAiSuggestAll().catch((e) =>
-                      setActionError(e instanceof Error ? e.message : "AI failed"),
-                    );
-                  }}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {suggestingAll ? "AI Suggest…" : "AI Suggest (all topics)"}
-                </button>
-                <button
-                  type="button"
-                  disabled={savingAll || dirtyIds.size === 0}
-                  onClick={() => void saveAllDirty()}
-                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {savingAll ? "Saving…" : `Save all${dirtyIds.size ? ` (${dirtyIds.size})` : ""}`}
-                </button>
-                {dirtyIds.size > 0 && (
-                  <span className="text-xs text-amber-400/90">{dirtyIds.size} topic(s) with unsaved changes</span>
-                )}
+              <div className="mt-4 border-t border-gray-800 pt-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      disabled={suggestingAll || topics.length === 0}
+                      onClick={() => {
+                        setActionError(null);
+                        void runAiSuggestAll().catch((e) =>
+                          setActionError(e instanceof Error ? e.message : "AI failed"),
+                        );
+                      }}
+                      className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {suggestingAll ? "Starting…" : "AI Suggest (all topics)"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={savingAll || dirtyIds.size === 0}
+                      onClick={() => void saveAllDirty()}
+                      className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {savingAll ? "Saving…" : `Save all${dirtyIds.size ? ` (${dirtyIds.size})` : ""}`}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void reloadFromServer()}
+                      className="rounded-lg border border-gray-700 px-4 py-2 text-sm font-medium text-gray-300 hover:bg-gray-800"
+                    >
+                      Refresh
+                    </button>
+                    {dirtyIds.size > 0 && (
+                      <span className="text-xs text-amber-400/90">{dirtyIds.size} topic(s) with unsaved changes</span>
+                    )}
+                  </div>
+                  <div className="min-w-[min(100%,240px)] text-right text-[11px] leading-relaxed text-gray-500">
+                    {lastLoadedAt ? (
+                      <div>
+                        Last loaded: <span className="text-gray-400">{formatAdminTimestamp(lastLoadedAt)}</span>
+                      </div>
+                    ) : null}
+                    {lastSavedAt ? (
+                      <div>
+                        Last saved: <span className="text-gray-400">{formatAdminTimestamp(lastSavedAt)}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+                {serverJobHint ? (
+                  <p className="mt-2 text-xs leading-snug text-[#019E7C]/90">{serverJobHint}</p>
+                ) : null}
               </div>
             </>
           )}

@@ -24,6 +24,7 @@ export default function AdminUsersPage() {
     for (const n of INVITABLE_NAV) o[n.slug] = false;
     return o;
   });
+  const [inviteIsSuperuser, setInviteIsSuperuser] = useState(false);
   const [sendEmail, setSendEmail] = useState(true);
   const [inviting, setInviting] = useState(false);
   const [inviteMessage, setInviteMessage] = useState<string | null>(null);
@@ -56,7 +57,7 @@ export default function AdminUsersPage() {
     const page_permissions = Object.entries(invitePages)
       .filter(([, v]) => v)
       .map(([k]) => k);
-    if (page_permissions.length === 0) {
+    if (!inviteIsSuperuser && page_permissions.length === 0) {
       setInviteMessage("Select at least one page for this user.");
       return;
     }
@@ -67,7 +68,8 @@ export default function AdminUsersPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: inviteEmail.trim(),
-          page_permissions,
+          page_permissions: inviteIsSuperuser ? [] : page_permissions,
+          is_superuser: inviteIsSuperuser,
           send_email: sendEmail,
         }),
       });
@@ -81,7 +83,7 @@ export default function AdminUsersPage() {
         return;
       }
       const parts = [
-        `Created login for ${inviteEmail.trim()}.`,
+        `Created ${inviteIsSuperuser ? "admin" : "login"} for ${inviteEmail.trim()}.`,
         data.email_sent
           ? "Invitation email was sent."
           : "Email was not sent (SendGrid may be unset or failed).",
@@ -94,6 +96,7 @@ export default function AdminUsersPage() {
         for (const k of Object.keys(next)) next[k] = false;
         return next;
       });
+      setInviteIsSuperuser(false);
       await load();
     } catch {
       setInviteMessage("Invite request failed.");
@@ -126,6 +129,24 @@ export default function AdminUsersPage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ is_active }),
+      });
+      if (!res.ok) {
+        alert(await res.text());
+        return;
+      }
+      await load();
+    } catch {
+      alert("Update failed.");
+    }
+  }
+
+  async function makeAdmin(id: number, email: string) {
+    if (!confirm(`Make ${email} an Admin? Admins get access to every admin area all the time.`)) return;
+    try {
+      const res = await adminFetch(`${API_BASE}/api/admin/users/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_superuser: true }),
       });
       if (!res.ok) {
         alert(await res.text());
@@ -196,12 +217,32 @@ export default function AdminUsersPage() {
           </label>
           <fieldset>
             <legend className="text-sm text-gray-400 mb-2">Pages they can access</legend>
+            <label className="mb-3 flex items-start gap-2 rounded-lg border border-teal-500/20 bg-teal-500/5 px-3 py-2 text-sm text-gray-200">
+              <input
+                type="checkbox"
+                checked={inviteIsSuperuser}
+                onChange={(e) => setInviteIsSuperuser(e.target.checked)}
+                className="mt-1 rounded border-gray-600"
+              />
+              <span>
+                <span className="block font-semibold text-teal-300">Admin</span>
+                <span className="text-gray-400">
+                  Access to every admin page now and in the future, including Users and Settings.
+                </span>
+              </span>
+            </label>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {INVITABLE_NAV.map((n) => (
-                <label key={n.slug} className="flex items-center gap-2 text-sm text-gray-300">
+                <label
+                  key={n.slug}
+                  className={`flex items-center gap-2 text-sm ${
+                    inviteIsSuperuser ? "text-gray-600" : "text-gray-300"
+                  }`}
+                >
                   <input
                     type="checkbox"
                     checked={invitePages[n.slug] ?? false}
+                    disabled={inviteIsSuperuser}
                     onChange={() => togglePage(n.slug)}
                     className="rounded border-gray-600"
                   />
@@ -287,6 +328,13 @@ export default function AdminUsersPage() {
                           className="text-gray-400 hover:underline text-xs"
                         >
                           {u.is_active ? "Deactivate" : "Activate"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void makeAdmin(u.id, u.email)}
+                          className="text-teal-300 hover:underline text-xs"
+                        >
+                          Make admin
                         </button>
                         <button
                           type="button"

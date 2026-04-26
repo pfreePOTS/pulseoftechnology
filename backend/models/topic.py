@@ -1,6 +1,7 @@
 import enum
+from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, Enum, Float, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Enum, Float, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -49,6 +50,10 @@ class Topic(Base):
     # True = visible on the public radar; False = selected but held in sandbox
     is_published: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False
+    )
+    # Set when status becomes selected (on radar); cleared on demote to watched
+    selected_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
     )
     # Daily newsletter deep-dive copy (optional). Keys: what_is_it, what_changed, why_it_matters, what_to_do
     newsletter_briefing: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)

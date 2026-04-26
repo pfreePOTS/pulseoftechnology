@@ -1,7 +1,9 @@
 import logging
 import re
 import secrets
+import threading
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -17,7 +19,7 @@ from fastapi import (
 )
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 from sqlalchemy import and_, case, func
 from sqlalchemy.orm import Session, joinedload
 
@@ -47,12 +49,19 @@ from ..models.survey_response import SurveyResponse
 from ..models.topic import AdoptionState, Topic, TopicStatus
 from ..rate_limits import limiter
 from ..services.ai_service import (
+    HAIKU_MODEL,
     INDUSTRY_GRID_LABELS,
+    SONNET_MODEL,
+    _strip_fences,
     clear_prompt_template_cache,
+    default_model_for_agent,
     ensure_topic_industry_grid_complete,
     suggest_industry_positions,
     suggest_subdomain_for_topic,
     suggest_topic_persona_by_role,
+)
+from ..services.ai_service import (
+    _get_client as get_anthropic_client,
 )
 from ..services.email_service import (
     generate_newsletter_preview,
@@ -71,6 +80,49 @@ from ..services.pipeline_settings import (
 logger = logging.getLogger(__name__)
 
 _SUBSCRIBER_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+def _spawn_long_admin_job(fn: Callable[[], None]) -> None:
+    """
+    Run a long CPU/IO job off the Starlette/FastAPI BackgroundTasks queue.
+
+    BackgroundTasks are awaited during Uvicorn --reload shutdown; multi-minute Anthropic
+    loops (industry/persona suggest-all) would otherwise freeze the API until they finish,
+    which breaks the admin UI with endless \"Loading...\".
+    """
+    threading.Thread(target=fn, daemon=True, name=fn.__name__).start()
+
+
+def _normalize_query_str_list(values: list[str] | None) -> list[str] | None:
+    """Strip, drop empties, dedupe (case-insensitive) for repeated query params."""
+    if not values:
+        return None
+    out: list[str] = []
+    seen_lower: set[str] = set()
+    for raw in values:
+        s = (raw or "").strip()
+        if not s:
+            continue
+        key = s.lower()
+        if key in seen_lower:
+            continue
+        seen_lower.add(key)
+        out.append(s)
+    return out or None
+
+
+def _normalize_query_int_list(values: list[int] | None) -> list[int] | None:
+    if not values:
+        return None
+    out: list[int] = []
+    seen: set[int] = set()
+    for x in values:
+        if x in seen:
+            continue
+        seen.add(x)
+        out.append(int(x))
+    return out or None
+
 
 _bearer_optional = HTTPBearer(auto_error=False)
 
@@ -204,12 +256,14 @@ def admin_me(user: AdminUser = Depends(require_admin)) -> AdminUser:
 class InviteUserBody(BaseModel):
     email: str
     page_permissions: list[str] = Field(default_factory=list)
+    is_superuser: bool = False
     send_email: bool = True
 
 
 class PatchAdminUserBody(BaseModel):
     page_permissions: list[str] | None = None
     is_active: bool | None = None
+    is_superuser: bool | None = None
 
 
 def _validate_invite_permissions(slugs: list[str]) -> None:
@@ -235,8 +289,9 @@ def invite_admin_user(
     db: Session = Depends(get_db),
     _: AdminUser = Depends(require_superuser),
 ) -> dict:
-    _validate_invite_permissions(payload.page_permissions)
-    if not payload.page_permissions:
+    if not payload.is_superuser:
+        _validate_invite_permissions(payload.page_permissions)
+    if not payload.is_superuser and not payload.page_permissions:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Select at least one page this user can access",
@@ -252,10 +307,10 @@ def invite_admin_user(
     user = AdminUser(
         email=email,
         password_hash=hash_password(temp),
-        is_superuser=False,
+        is_superuser=payload.is_superuser,
         is_active=True,
         must_change_password=True,
-        page_permissions=list(payload.page_permissions),
+        page_permissions=[] if payload.is_superuser else list(payload.page_permissions),
     )
     db.add(user)
     db.commit()
@@ -267,6 +322,7 @@ def invite_admin_user(
     return {
         "id": user.id,
         "email": user.email,
+        "is_superuser": user.is_superuser,
         "temporary_password": temp,
         "email_sent": emailed,
     }
@@ -282,13 +338,27 @@ def patch_admin_user(
     u = db.get(AdminUser, user_id)
     if u is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    if u.is_superuser and (payload.is_active is False or payload.page_permissions is not None):
+    if u.is_superuser and (
+        payload.is_active is False
+        or payload.page_permissions is not None
+        or payload.is_superuser is False
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot modify superuser access"
         )
+    if payload.is_superuser is not None:
+        if actor.id == user_id and not payload.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot remove your own admin access",
+            )
+        u.is_superuser = payload.is_superuser
+        if payload.is_superuser:
+            u.page_permissions = []
     if payload.page_permissions is not None:
         _validate_invite_permissions(payload.page_permissions)
-        u.page_permissions = list(payload.page_permissions)
+        if not u.is_superuser:
+            u.page_permissions = list(payload.page_permissions)
     if payload.is_active is not None:
         if actor.id == user_id and not payload.is_active:
             raise HTTPException(
@@ -523,6 +593,19 @@ class ArticleOut(BaseModel):
         return data
 
 
+def _days_on_radar_from_selected_at(selected_at: datetime | None) -> int | None:
+    """Whole calendar days since the topic was promoted to on-radar (UTC)."""
+    if selected_at is None:
+        return None
+    now = datetime.now(UTC)
+    sa = selected_at
+    if sa.tzinfo is None:
+        sa = sa.replace(tzinfo=UTC)
+    else:
+        sa = sa.astimezone(UTC)
+    return max(0, (now - sa).days)
+
+
 class TopicOut(BaseModel):
     id: int
     name: str
@@ -544,8 +627,15 @@ class TopicOut(BaseModel):
     signal_id: int | None = None
     # Newest linked article: prefers RSS publication time, else ingest time (non-archived only).
     latest_article_at: datetime | None = None
+    # When status became selected (on radar); set on approve/select, cleared on demote.
+    selected_at: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+    @computed_field
+    @property
+    def days_on_radar(self) -> int | None:
+        return _days_on_radar_from_selected_at(self.selected_at)
 
 
 class TopicDetail(TopicOut):
@@ -585,6 +675,7 @@ class HotArticleBrief(BaseModel):
     published_at: datetime | None
     ingested_at: datetime
     source_name: str | None = None
+    image_url: str | None = None
 
 
 class HotOfDayOut(BaseModel):
@@ -691,6 +782,7 @@ def list_topics(
                 signal_suggested_action=sig.suggested_action if sig else None,
                 signal_id=sig.id if sig else None,
                 latest_article_at=latest_article_map.get(t.id),
+                selected_at=t.selected_at,
             )
         )
     return result
@@ -716,6 +808,87 @@ def trending_hot_of_day(
     from ..services.trend_service import build_hot_of_day
 
     return build_hot_of_day(db)
+
+
+def _run_analysis_industry_suggest_all_job() -> None:
+    """Background: AI industry grid for every on-radar topic; persists to DB."""
+    db = SessionLocal()
+    try:
+        ids = [
+            r.id
+            for r in db.query(Topic.id)
+            .filter(Topic.status == TopicStatus.selected)
+            .order_by(Topic.id)
+            .all()
+        ]
+        for tid in ids:
+            try:
+                result = suggest_industry_positions(tid, db)
+                sug = result.get("industry_suggestions")
+                if not isinstance(sug, dict):
+                    continue
+                topic = db.query(Topic).filter(Topic.id == tid).first()
+                if topic is None:
+                    continue
+                topic.industry_positions = sug
+                db.commit()
+            except Exception:
+                logger.exception("Background industry suggest-all failed for topic %s", tid)
+                db.rollback()
+    finally:
+        db.close()
+
+
+def _run_analysis_persona_suggest_all_job() -> None:
+    """Background: topic-level persona lines for every on-radar topic; persists to DB."""
+    db = SessionLocal()
+    try:
+        ids = [
+            r.id
+            for r in db.query(Topic.id)
+            .filter(Topic.status == TopicStatus.selected)
+            .order_by(Topic.id)
+            .all()
+        ]
+        for tid in ids:
+            try:
+                out = suggest_topic_persona_by_role(tid, db)
+                pbr = out.get("persona_by_role")
+                topic = db.query(Topic).filter(Topic.id == tid).first()
+                if topic is None:
+                    continue
+                if isinstance(pbr, dict):
+                    topic.persona_by_role = pbr
+                    db.commit()
+            except Exception:
+                logger.exception("Background persona suggest-all failed for topic %s", tid)
+                db.rollback()
+    finally:
+        db.close()
+
+
+@router.post("/topics/analysis/industry-suggest-all-background")
+def analysis_industry_suggest_all_background(
+    _: AdminUser = Depends(require_admin),
+):
+    """Queue server-side industry AI for all on-radar topics. Continues if the admin navigates away."""
+    _spawn_long_admin_job(_run_analysis_industry_suggest_all_job)
+    return {
+        "status": "queued",
+        "message": "Industry AI suggest-all started in the background. Refresh the page later to load results.",
+    }
+
+
+@router.post("/topics/analysis/persona-suggest-all-background")
+def analysis_persona_suggest_all_background(
+    _: AdminUser = Depends(require_admin),
+):
+    """Queue server-side persona AI for all on-radar topics. Continues if the admin navigates away."""
+    _spawn_long_admin_job(_run_analysis_persona_suggest_all_job)
+    return {
+        "status": "queued",
+        "message": "Persona AI suggest-all started in the background. Refresh the page later to load results.",
+    }
 
 
 @router.get("/topics/{topic_id}", response_model=TopicDetail)
@@ -910,6 +1083,27 @@ def watch_topic(
     return topic
 
 
+@router.post("/topics/{topic_id}/unwatch", response_model=TopicOut)
+def unwatch_topic(
+    topic_id: int,
+    db: Session = Depends(get_db),
+    _: AdminUser = Depends(require_admin),
+):
+    """Move a watched topic back to pending (remove from the watchlist)."""
+    topic = db.query(Topic).filter(Topic.id == topic_id).first()
+    if topic is None:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    if topic.status != TopicStatus.watched:
+        raise HTTPException(
+            status_code=409,
+            detail="Only watched topics can be removed from the watchlist",
+        )
+    topic.status = TopicStatus.pending
+    db.commit()
+    db.refresh(topic)
+    return topic
+
+
 @router.post("/topics/{topic_id}/select", response_model=TopicOut)
 def select_topic(
     topic_id: int,
@@ -922,6 +1116,8 @@ def select_topic(
         raise HTTPException(status_code=404, detail="Topic not found")
     if topic.status not in (TopicStatus.watched, TopicStatus.selected):
         raise HTTPException(status_code=409, detail="Only watched topics can be selected")
+    if topic.status == TopicStatus.watched:
+        topic.selected_at = datetime.now(UTC)
     topic.status = TopicStatus.selected
     db.query(Article).filter(Article.topic_id == topic_id).update(
         {"status": "published"}, synchronize_session=False
@@ -949,6 +1145,7 @@ def deselect_topic(
     if topic.status != TopicStatus.selected:
         raise HTTPException(status_code=409, detail="Only selected topics can be deselected")
     topic.status = TopicStatus.watched
+    topic.selected_at = None
     topic.is_published = False
     db.commit()
     db.refresh(topic)
@@ -984,6 +1181,7 @@ def approve_topic(
             latest_signal.status = "approved"
 
         topic.status = TopicStatus.selected
+        topic.selected_at = datetime.now(UTC)
         db.query(Article).filter(Article.topic_id == topic_id).update(
             {"status": "published"}, synchronize_session=False
         )
@@ -1230,6 +1428,7 @@ class PromptProposalOut(BaseModel):
     id: int
     agent_name: str
     base_version: str
+    model: str | None
     proposed_system_prompt: str
     rationale: str
     test_improvement_score: float | None
@@ -1243,11 +1442,75 @@ class PromptTemplateOut(BaseModel):
     id: int
     agent_name: str
     version: str
+    model: str | None
     is_active: bool
     created_at: datetime
     system_prompt: str
 
     model_config = {"from_attributes": True}
+
+
+class PromptProposalCreate(BaseModel):
+    template_id: int
+    proposed_system_prompt: str | None = None
+    model: str | None = None
+    rationale: str = ""
+
+
+class PromptProposalPatch(BaseModel):
+    proposed_system_prompt: str | None = None
+    model: str | None = None
+    rationale: str | None = None
+
+
+class PromptModelOut(BaseModel):
+    id: str
+    name: str
+
+
+class PromptTestBody(BaseModel):
+    system_prompt: str = Field(..., min_length=1, max_length=50000)
+    user_message: str = Field(..., min_length=1, max_length=50000)
+    model: str = Field(..., min_length=1, max_length=128)
+    max_tokens: int = Field(default=1024, ge=1, le=8192)
+
+
+class PromptTestOut(BaseModel):
+    output: str
+    model: str
+
+
+def _fallback_prompt_models() -> list[PromptModelOut]:
+    return [
+        PromptModelOut(id=HAIKU_MODEL, name="Claude Haiku 4.5"),
+        PromptModelOut(id=SONNET_MODEL, name="Claude Sonnet 4.6"),
+    ]
+
+
+def _proposal_out(proposal: PromptProposal) -> PromptProposalOut:
+    return PromptProposalOut(
+        id=proposal.id,
+        agent_name=proposal.agent_name,
+        base_version=proposal.base_version,
+        model=proposal.model or default_model_for_agent(proposal.agent_name),
+        proposed_system_prompt=proposal.proposed_system_prompt,
+        rationale=proposal.rationale,
+        test_improvement_score=proposal.test_improvement_score,
+        status=proposal.status,
+        created_at=proposal.created_at,
+    )
+
+
+def _template_out(row: PromptTemplate) -> PromptTemplateOut:
+    return PromptTemplateOut(
+        id=row.id,
+        agent_name=row.agent_name,
+        version=row.version,
+        model=row.model or default_model_for_agent(row.agent_name),
+        is_active=row.is_active,
+        created_at=row.created_at,
+        system_prompt=row.system_prompt,
+    )
 
 
 @router.get("/prompt-proposals", response_model=list[PromptProposalOut])
@@ -1263,7 +1526,66 @@ def list_prompt_proposals(
     s = (status or "pending").strip().lower()
     if s != "all":
         q = q.filter(PromptProposal.status == s)
-    return q.all()
+    return [_proposal_out(p) for p in q.all()]
+
+
+@router.post("/prompt-proposals", response_model=PromptProposalOut, status_code=201)
+def create_prompt_proposal(
+    payload: PromptProposalCreate,
+    db: Session = Depends(get_db),
+    _: AdminUser = Depends(require_admin),
+) -> PromptProposalOut:
+    template = db.get(PromptTemplate, payload.template_id)
+    if template is None:
+        raise HTTPException(status_code=404, detail="Prompt template not found")
+    prompt = (payload.proposed_system_prompt or template.system_prompt).strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt text cannot be empty")
+    proposal = PromptProposal(
+        agent_name=template.agent_name,
+        base_version=template.version,
+        model=(
+            payload.model or template.model or default_model_for_agent(template.agent_name)
+        ).strip(),
+        proposed_system_prompt=prompt,
+        rationale=payload.rationale.strip(),
+        test_improvement_score=None,
+        status="pending",
+    )
+    db.add(proposal)
+    db.commit()
+    db.refresh(proposal)
+    return _proposal_out(proposal)
+
+
+@router.patch("/prompt-proposals/{proposal_id}", response_model=PromptProposalOut)
+def patch_prompt_proposal(
+    proposal_id: int,
+    payload: PromptProposalPatch,
+    db: Session = Depends(get_db),
+    _: AdminUser = Depends(require_admin),
+) -> PromptProposalOut:
+    proposal = db.get(PromptProposal, proposal_id)
+    if proposal is None:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    if proposal.status != "pending":
+        raise HTTPException(status_code=400, detail="Only pending proposals can be edited")
+    if payload.proposed_system_prompt is not None:
+        text = payload.proposed_system_prompt.strip()
+        if not text:
+            raise HTTPException(status_code=400, detail="Prompt text cannot be empty")
+        proposal.proposed_system_prompt = text
+    if payload.model is not None:
+        model = payload.model.strip()
+        if not model:
+            raise HTTPException(status_code=400, detail="Model cannot be empty")
+        proposal.model = model
+    if payload.rationale is not None:
+        proposal.rationale = payload.rationale.strip()
+    db.add(proposal)
+    db.commit()
+    db.refresh(proposal)
+    return _proposal_out(proposal)
 
 
 @router.post("/prompt-proposals/{proposal_id}/approve")
@@ -1291,6 +1613,7 @@ def approve_prompt_proposal(
         PromptTemplate(
             agent_name=agent_name,
             version=new_version,
+            model=proposal.model or default_model_for_agent(agent_name),
             system_prompt=proposal.proposed_system_prompt,
             is_active=True,
         )
@@ -1333,7 +1656,51 @@ def list_prompt_templates(
     a = (agent or "all").strip().lower()
     if a != "all":
         q = q.filter(PromptTemplate.agent_name == agent)
-    return q.all()
+    return [_template_out(row) for row in q.all()]
+
+
+@router.get("/prompt-models", response_model=list[PromptModelOut])
+def list_prompt_models(_: AdminUser = Depends(require_admin)) -> list[PromptModelOut]:
+    if not app_settings.anthropic_api_key:
+        return _fallback_prompt_models()
+    try:
+        client = get_anthropic_client()
+        models_api = getattr(client, "models", None)
+        list_fn = getattr(models_api, "list", None)
+        if list_fn is None:
+            return _fallback_prompt_models()
+        result = list_fn(limit=100)
+        rows: list[PromptModelOut] = []
+        for m in getattr(result, "data", []) or []:
+            model_id = str(getattr(m, "id", "")).strip()
+            if model_id:
+                rows.append(
+                    PromptModelOut(id=model_id, name=str(getattr(m, "display_name", model_id)))
+                )
+        return rows or _fallback_prompt_models()
+    except Exception:
+        logger.exception("Unable to list Anthropic models; using fallback list")
+        return _fallback_prompt_models()
+
+
+@router.post("/prompt-lab/test", response_model=PromptTestOut)
+def test_prompt_lab_request(
+    payload: PromptTestBody,
+    _: AdminUser = Depends(require_admin),
+) -> PromptTestOut:
+    if not app_settings.anthropic_api_key:
+        raise HTTPException(status_code=400, detail="ANTHROPIC_API_KEY is not configured")
+    try:
+        response = get_anthropic_client().messages.create(
+            model=payload.model,
+            max_tokens=payload.max_tokens,
+            system=payload.system_prompt,
+            messages=[{"role": "user", "content": payload.user_message}],
+        )
+        return PromptTestOut(output=_strip_fences(response.content[0].text), model=payload.model)
+    except Exception as exc:
+        logger.exception("Prompt Lab test run failed")
+        raise HTTPException(status_code=502, detail=f"Prompt test failed: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -1984,13 +2351,12 @@ def newsletter_preview_filters(
     """
     Canonical industry grid (same as Analysis / AI) plus distinct topic.domain values.
 
-    Domains are limited to **selected** topics — the same population as the Radar Publishing
-    table (`GET /topics?status=selected`), so chip labels match the DOMAIN column. (Daily sends
-    can still include watched or published topics; those domains are omitted here on purpose.)
+    Domains come from **watched or selected** pipeline topics — the same cohort as the scheduled
+    newsletter and ``GET /api/admin/newsletter/preview``, so sandbox chips match preview rows.
     """
     domain_rows = (
         db.query(Topic.domain)
-        .filter(Topic.status == TopicStatus.selected)
+        .filter(Topic.status.in_([TopicStatus.watched, TopicStatus.selected]))
         .distinct()
         .order_by(Topic.domain.asc())
         .all()
@@ -2008,12 +2374,15 @@ def newsletter_preview(
     role_ids: list[int] = Query(default=[]),
 ):
     """Return a fully rendered HTML newsletter for a simulated subscriber profile."""
+    inds = _normalize_query_str_list(industries)
+    doms = _normalize_query_str_list(domains)
+    rids = _normalize_query_int_list(role_ids)
     return HTMLResponse(
         content=generate_newsletter_preview(
             db,
-            industries=industries or None,
-            domains=domains or None,
-            role_ids=role_ids or None,
+            industries=inds,
+            domains=doms,
+            role_ids=rids,
         )
     )
 
@@ -2041,13 +2410,7 @@ def get_survey_stats(
     }
 
 
-@router.get("/newsletter/feedback")
-def get_newsletter_feedback(
-    db: Session = Depends(get_db),
-    limit: int = Query(default=50, ge=1, le=200),
-    _: AdminUser = Depends(require_admin),
-):
-    """Rating System / Feedback campaign view for Pulse of Technology Daily."""
+def _newsletter_rating_feedback_payload(db: Session, limit: int) -> dict[str, Any]:
     rows = db.query(SurveyResponse).order_by(SurveyResponse.created_at.desc()).limit(limit).all()
     counts = db.query(SurveyResponse.score, func.count()).group_by(SurveyResponse.score).all()
     total = sum(r[1] for r in counts)
@@ -2055,6 +2418,12 @@ def get_newsletter_feedback(
     breakdown = {r[0]: r[1] for r in counts}
     return {
         "campaign": "Pulse of Technology Daily",
+        "question": "How relevant was today's briefing?",
+        "scale": {
+            "3": "Highly Relevant",
+            "2": "Somewhat Relevant",
+            "1": "Not Relevant",
+        },
         "total": total,
         "average_score": round(score_sum / total, 2) if total else None,
         "highly_relevant": breakdown.get(3, 0),
@@ -2071,6 +2440,26 @@ def get_newsletter_feedback(
             for row in rows
         ],
     }
+
+
+@router.get("/newsletter/feedback")
+def get_newsletter_feedback(
+    db: Session = Depends(get_db),
+    limit: int = Query(default=50, ge=1, le=200),
+    _: AdminUser = Depends(require_admin),
+):
+    """Legacy Newsletter-page endpoint for current rating responses."""
+    return _newsletter_rating_feedback_payload(db, limit)
+
+
+@router.get("/inbox/ratings")
+def get_inbox_ratings(
+    db: Session = Depends(get_db),
+    limit: int = Query(default=50, ge=1, le=200),
+    _: AdminUser = Depends(require_admin),
+):
+    """Inbox rating-system view for the current newsletter question."""
+    return _newsletter_rating_feedback_payload(db, limit)
 
 
 class NewsletterTestSendRequest(BaseModel):

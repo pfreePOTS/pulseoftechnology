@@ -1,5 +1,5 @@
 # Pulse of Technology — local quality gates (run from repo root)
-# For full parity with CI, use Docker for backend tests that need Postgres.
+# Backend quality gates run inside the Compose backend image for parity.
 
 .PHONY: lint lint-backend lint-frontend test test-backend test-frontend test-e2e install-backend-dev check
 
@@ -11,7 +11,7 @@ check: lint test
 lint: lint-backend lint-frontend
 
 lint-backend:
-	cd backend && . .venv/bin/activate && ruff check . && ruff format --check .
+	docker compose exec -w /app/backend backend ruff check . && docker compose exec -w /app/backend backend ruff format --check .
 
 lint-frontend:
 	cd frontend && npm run lint
@@ -19,7 +19,7 @@ lint-frontend:
 test: test-backend test-frontend
 
 test-backend:
-	cd backend && . .venv/bin/activate && pytest
+	docker compose exec -w /app/backend backend pytest
 
 test-frontend:
 	cd frontend && npm run test

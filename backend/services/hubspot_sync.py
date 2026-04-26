@@ -51,7 +51,11 @@ def _get_hs_client() -> hubspot.Client:
 def _role_names_from_subscriber(subscriber: Subscriber) -> list[str]:
     roles_attr = getattr(subscriber, "roles", None)
     if roles_attr is not None:
-        return [(getattr(r, "name", None) or "").strip() for r in roles_attr if (getattr(r, "name", None) or "").strip()]
+        return [
+            (getattr(r, "name", None) or "").strip()
+            for r in roles_attr
+            if (getattr(r, "name", None) or "").strip()
+        ]
     single = getattr(subscriber, "role", None)
     if single is not None and getattr(single, "name", None):
         return [single.name.strip()]
@@ -95,18 +99,19 @@ def sync_subscriber_to_hubspot(subscriber: Subscriber) -> bool:
 
     sub: Subscriber | None = None
     try:
-        db = SessionLocal()
-        try:
-            sub = db.query(Subscriber).filter(Subscriber.id == subscriber.id).first()
-            if sub is not None:
-                rids = sub.role_ids or []
-                if rids:
-                    rows = db.query(Role).filter(Role.id.in_(rids)).all()
-                    order = {rid: i for i, rid in enumerate(rids)}
-                    rows.sort(key=lambda r: order.get(r.id, 999))
-                    sub.roles = rows  # type: ignore[attr-defined]
-        finally:
-            db.close()
+        if isinstance(subscriber, Subscriber):
+            db = SessionLocal()
+            try:
+                sub = db.query(Subscriber).filter(Subscriber.id == subscriber.id).first()
+                if sub is not None:
+                    rids = sub.role_ids or []
+                    if rids:
+                        rows = db.query(Role).filter(Role.id.in_(rids)).all()
+                        order = {rid: i for i, rid in enumerate(rids)}
+                        rows.sort(key=lambda r: order.get(r.id, 999))
+                        sub.roles = rows  # type: ignore[attr-defined]
+            finally:
+                db.close()
     except Exception:
         logger.debug(
             "HubSpot: could not reload subscriber id=%s from DB — using in-memory object",

@@ -96,6 +96,8 @@ Run migrations inside the backend container (`alembic.ini` lives in `/app/backen
 docker compose exec -w /app/backend backend alembic upgrade head
 ```
 
+On `docker compose up`, the backend image runs `alembic upgrade head` before starting the API, so the database picks up new columns (for example `topics.selected_at`) without a separate step. Use the command above if you run the backend outside Compose or need to migrate manually.
+
 Generate a new migration after model changes:
 
 ```bash
@@ -108,20 +110,20 @@ docker compose exec -w /app/backend backend alembic revision --autogenerate -m "
 
 | Layer | Command | Notes |
 |-------|---------|--------|
-| **Backend lint** | `cd backend && ruff check . && ruff format --check .` | Requires `requirements-dev.txt` (see below) |
-| **Backend unit tests** | `cd backend && pytest` | Uses mocks; no Postgres needed for most tests |
+| **Backend lint** | `docker compose exec -w /app/backend backend ruff check . && docker compose exec -w /app/backend backend ruff format --check .` | Runs inside the Compose backend image |
+| **Backend unit tests** | `docker compose exec -w /app/backend backend pytest` | Uses in-memory SQLite fixtures for most tests |
 | **Frontend lint** | `cd frontend && npm run lint` | ESLint (Next.js config) |
 | **Frontend unit tests** | `cd frontend && npm run test` | Vitest + Testing Library |
 | **End-to-end** | `cd frontend && npm run test:e2e` | Playwright — **requires the stack running** |
 
-One-shot local checks (after `make install-backend-dev` once — see `Makefile`):
+One-shot local checks (with Compose running):
 
 ```bash
 make lint          # Ruff + ESLint
 make test          # pytest + Vitest (no E2E)
 ```
 
-**Backend dev dependencies:** `pip install -r requirements.txt -r requirements-dev.txt` (Ruff, pytest-cov). The runtime image only installs `requirements.txt`.
+**Backend dev dependencies:** the Compose backend image installs `requirements-dev.txt` (runtime requirements plus `pytest`, `pytest-cov`, and `ruff`) so tests and lint run in Docker. After changing Python dependencies, rebuild with `docker compose up -d --build backend`.
 
 **E2E (Playwright):** start the app, apply migrations, install browsers once, then run tests:
 

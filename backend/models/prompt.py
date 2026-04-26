@@ -14,6 +14,7 @@ class PromptTemplate(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     agent_name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     version: Mapped[str] = mapped_column(String(32), nullable=False)
+    model: Mapped[str | None] = mapped_column(String(128), nullable=True)
     system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -29,6 +30,7 @@ class PromptProposal(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     agent_name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     base_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    model: Mapped[str | None] = mapped_column(String(128), nullable=True)
     proposed_system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     rationale: Mapped[str] = mapped_column(Text, nullable=False, default="")
     test_improvement_score: Mapped[float | None] = mapped_column(Float, nullable=True)

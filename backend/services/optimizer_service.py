@@ -14,7 +14,13 @@ from ..config import settings
 from ..database import SessionLocal
 from ..models.agent_run import AgentRun
 from ..models.prompt import PromptProposal, PromptTemplate
-from .ai_service import _FALLBACK_PROMPTS, SONNET_MODEL, _get_client, _strip_fences
+from .ai_service import (
+    _FALLBACK_PROMPTS,
+    SONNET_MODEL,
+    _get_client,
+    _strip_fences,
+    default_model_for_agent,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +123,7 @@ def generate_prompt_improvement(db: Session, agent_name: str) -> PromptProposal 
     if tpl is not None:
         current_prompt = tpl.system_prompt
         base_version = tpl.version
+        runtime_model = tpl.model or default_model_for_agent(agent_name)
     else:
         fb = _FALLBACK_PROMPTS.get(agent_name)
         if fb is None:
@@ -124,6 +131,7 @@ def generate_prompt_improvement(db: Session, agent_name: str) -> PromptProposal 
             return None
         current_prompt = fb
         base_version = "fallback"
+        runtime_model = default_model_for_agent(agent_name)
 
     failed = (
         db.query(AgentRun)
@@ -172,6 +180,7 @@ def generate_prompt_improvement(db: Session, agent_name: str) -> PromptProposal 
     proposal = PromptProposal(
         agent_name=agent_name,
         base_version=base_version,
+        model=runtime_model,
         proposed_system_prompt=proposed,
         rationale="",
         test_improvement_score=None,

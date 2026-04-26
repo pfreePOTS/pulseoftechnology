@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -58,7 +60,11 @@ def client(db_session):
     def _get_db():
         yield db_session
 
+    # BackgroundTasks in routes use SessionLocal(), not get_db — bind it to the test engine.
+    test_session_local = sessionmaker(autocommit=False, autoflush=False, bind=db_session.bind)
+
     app.dependency_overrides[get_db] = _get_db
-    with TestClient(app) as c:
-        yield c
+    with patch("backend.routers.admin.SessionLocal", test_session_local):
+        with TestClient(app) as c:
+            yield c
     app.dependency_overrides.clear()

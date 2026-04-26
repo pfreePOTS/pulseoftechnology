@@ -27,6 +27,8 @@ class Article(Base):
     )
     title: Mapped[str] = mapped_column(String(1024), nullable=False)
     url: Mapped[str] = mapped_column(String(2048), unique=True, nullable=False, index=True)
+    # From RSS (media_thumbnail, enclosure, or first <img> in summary) — used in newsletter imagery
+    image_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ingested_at: Mapped[datetime] = mapped_column(

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { industryColor, INDUSTRY_COLORS, INDUSTRY_OPTIONS } from "@/lib/industryGrid";
 import { clampRadarRationaleParagraph } from "@/lib/sentences";
@@ -81,6 +81,10 @@ const STAR_HALO_R = 24 * SCALE;
 /** Hover/click target: tight to the star shape (visual halo stays large; hit area is not the halo). */
 const STAR_HIT_R = STAR_OUTER_R * 1.22;
 const STAR_HOVER_SCALE = 1.14;
+/** Brief delay before a star counts as hovered — avoids jitter when the cursor sweeps across dense stars. */
+const HOVER_ENTER_MS = 140;
+/** Short grace period before clearing hover so tiny gaps between hit circles do not flash. */
+const HOVER_LEAVE_MS = 90;
 const STAR_STROKE_W = 1.25 * SCALE;
 const STAR_STROKE_HOVER_W = STAR_STROKE_W * 1.35;
 const PILL_H = 22 * SCALE;
@@ -194,6 +198,20 @@ const ADOPTION_STATE_INDEX: Record<string, number> = {
 
 function adoptionStateToAxisIndex(state: string): number {
   return ADOPTION_STATE_INDEX[state] ?? 0;
+}
+
+/**
+ * Public detail panel headline for adoption phase — prominent above rationale.
+ * "Get Your Hands Around" maps to "Get Ahead of IT"; other states append " IT".
+ */
+function adoptionPhaseHeadline(state: string): string {
+  const s = state.trim();
+  if (s === "Get Your Hands Around") return "Get Ahead of IT";
+  if (s === "Get Ahead Of") return "Get Ahead of IT";
+  if (s === "Learn About") return "Learn About IT";
+  if (s === "Get Prepared For") return "Get Prepared For IT";
+  if (s === "Make the Most Of") return "Make the Most Of IT";
+  return s.endsWith(" IT") ? s : `${s} IT`;
 }
 
 /**
@@ -443,16 +461,51 @@ export default function RadarChart({
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [lockedKey, setLockedKey] = useState<string | null>(null);
   const positions = useMemo(() => computePositions(topics), [topics]);
+  const hoverEnterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hoverLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearHoverTimers = useCallback(() => {
+    if (hoverEnterTimerRef.current !== null) {
+      clearTimeout(hoverEnterTimerRef.current);
+      hoverEnterTimerRef.current = null;
+    }
+    if (hoverLeaveTimerRef.current !== null) {
+      clearTimeout(hoverLeaveTimerRef.current);
+      hoverLeaveTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleHoverEnter = useCallback(
+    (ptKey: string) => {
+      clearHoverTimers();
+      hoverEnterTimerRef.current = setTimeout(() => {
+        setHoveredKey(ptKey);
+        hoverEnterTimerRef.current = null;
+      }, HOVER_ENTER_MS);
+    },
+    [clearHoverTimers],
+  );
+
+  const scheduleHoverLeave = useCallback(() => {
+    clearHoverTimers();
+    hoverLeaveTimerRef.current = setTimeout(() => {
+      setHoveredKey(null);
+      hoverLeaveTimerRef.current = null;
+    }, HOVER_LEAVE_MS);
+  }, [clearHoverTimers]);
+
+  useEffect(() => () => clearHoverTimers(), [clearHoverTimers]);
 
   // Clear stale locked/hovered state when the topic list changes (e.g. filter switch)
   const prevTopicsRef = useRef(topics);
   useEffect(() => {
     if (prevTopicsRef.current !== topics) {
       prevTopicsRef.current = topics;
+      clearHoverTimers();
       setHoveredKey(null);
       setLockedKey(null);
     }
-  }, [topics]);
+  }, [topics, clearHoverTimers]);
 
   /** Hover previews another star while locked; otherwise show locked selection. */
   const displayKey = hoveredKey ?? lockedKey;
@@ -464,6 +517,8 @@ export default function RadarChart({
   const topThree = useMemo(() => topTopicsForSidebar(topics, 3), [topics]);
 
   function handleStarPointerDown(ptKey: string) {
+    clearHoverTimers();
+    setHoveredKey(null);
     setLockedKey((prev) => (prev === ptKey ? null : ptKey));
   }
 
@@ -471,6 +526,7 @@ export default function RadarChart({
     <div
       className={
         "mx-auto flex w-full select-none flex-col items-stretch justify-start lg:flex-row lg:items-start " +
+        "[overflow-anchor:none] " +
         (compact
           ? "max-w-none gap-3 lg:gap-4"
           : "max-w-[min(100%,96rem)] gap-6 lg:gap-5")
@@ -685,12 +741,13 @@ export default function RadarChart({
               stroke="none"
               pointerEvents="all"
               className="cursor-pointer touch-manipulation"
-              onMouseEnter={() => setHoveredKey(pt.key)}
-              onMouseLeave={() => setHoveredKey(null)}
+              onPointerEnter={() => scheduleHoverEnter(pt.key)}
+              onPointerLeave={scheduleHoverLeave}
               onPointerDown={(e) => {
                 e.stopPropagation();
                 handleStarPointerDown(pt.key);
               }}
+              onPointerCancel={scheduleHoverLeave}
             />
           );
         })}
@@ -700,13 +757,13 @@ export default function RadarChart({
       {/* ── Detail panel: lg top padding matches SVG “Learn About” pill (not the raw SVG box top) ── */}
       <aside
         className={
-          "w-full min-w-0 shrink-0 max-lg:pt-0 " +
+          "w-full min-w-0 shrink-0 max-lg:pt-0 [overflow-anchor:none] " +
           (compact ? "lg:max-w-sm " : "lg:max-w-md ") +
           (compact
             ? "lg:pt-[calc(var(--radar-top-pill-offset)*min(1520px,calc(100vw-3rem)))]"
             : "lg:pt-[calc(var(--radar-top-pill-offset)*min(1163px,calc(100vw-3rem)))]")
         }
-        aria-live="polite"
+        aria-label="Selected signal details"
       >
         <div
           className={[
@@ -851,15 +908,16 @@ function RadarTooltipPanel({ point: pt }: { point: PlotPointXY }) {
         {pt.industry ? ` · ${pt.industry}` : ""}
       </p>
       <p className="mt-3 text-sm text-gray-700">
-        <span className="font-medium">Impact</span> {impactShown.toFixed(1)} / 10
+        <span className="font-medium">Impact</span> {impactShown.toFixed(1)} / 10 IT
         {riskShown !== null ? (
           <>
             <span className="mx-2 text-gray-300">·</span>
-            <span className="font-medium">Risk</span> {riskShown.toFixed(1)} / 10
+            <span className="font-medium">Risk</span> {riskShown.toFixed(1)} / 10 IT
           </>
         ) : null}
-        <span className="mx-2 text-gray-300">·</span>
-        <span className="font-medium">{pt.adoptionState}</span>
+      </p>
+      <p className="mt-4 text-base font-semibold leading-snug text-pulse-teal">
+        {adoptionPhaseHeadline(pt.adoptionState)}
       </p>
       {narrative ? (
         <div className="mt-4 border-t border-gray-200 pt-4">

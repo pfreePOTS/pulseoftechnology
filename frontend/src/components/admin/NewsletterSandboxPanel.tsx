@@ -72,7 +72,7 @@ export default function NewsletterSandboxPanel({ embedded = false }: Props) {
         const url = `${API_BASE}/api/admin/newsletter/preview${
           params.toString() ? `?${params}` : ""
         }`;
-        const res = await adminFetch(url);
+        const res = await adminFetch(url, { cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         setHtml(await res.text());
         setLastRefreshed(new Date());
@@ -233,8 +233,8 @@ export default function NewsletterSandboxPanel({ embedded = false }: Props) {
                 Domains (multi)
               </h2>
               <p className="mb-2 text-[11px] leading-snug text-gray-600">
-                List is built from <strong className="font-medium text-gray-500">selected</strong> topics only (same cohort as the live newsletter). Leave all off to
-                preview the full eligible briefing; turn domains on to narrow the simulation.
+                Topics are the watched/selected pipeline (same as the daily send). Leave all domain chips off to preview
+                the full eligible briefing; turn domains on to narrow the simulation like subscriber domain picks.
               </p>
               <div className="flex flex-wrap gap-2">
                 {industryChips.length === 0 && !filterOptionsError ? (

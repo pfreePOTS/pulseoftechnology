@@ -15,6 +15,7 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
   { label: "Analysis", href: "/admin/analysis", slug: "analysis" },
   { label: "Publishing", href: "/admin/publishing", slug: "publishing" },
   { label: "Newsletter", href: "/admin/newsletter", slug: "newsletter" },
+  { label: "Inbox", href: "/admin/inbox", slug: "inbox" },
   { label: "Radar Preview", href: "/admin/radar-preview", slug: "radar_preview" },
   { label: "Manage Sources", href: "/admin/sources", slug: "sources" },
   { label: "Subscribers", href: "/admin/subscribers", slug: "subscribers" },

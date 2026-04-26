@@ -44,5 +44,9 @@ def archive_old_articles(db: Session) -> int:
         article.archived_at = now
     if stale:
         db.commit()
-        logger.info("Archived %d article(s) older than %d-day retention", len(stale), merged.article_retention_days)
+        logger.info(
+            "Archived %d article(s) older than %d-day retention",
+            len(stale),
+            merged.article_retention_days,
+        )
     return len(stale)

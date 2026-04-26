@@ -69,6 +69,7 @@ def test_run_daily_skips_when_pending_proposal(db_session, monkeypatch):
 
     monkeypatch.setattr(optimizer_service, "analyze_agent_performance", boom)
     monkeypatch.setattr(optimizer_service, "generate_prompt_improvement", boom)
+
     # run_daily_prompt_optimizer_job uses SessionLocal(); bind it to the test SQLite session.
     class _SessionFactory:
         def __call__(self):

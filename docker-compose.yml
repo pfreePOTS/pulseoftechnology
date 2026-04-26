@@ -40,6 +40,7 @@ services:
       ENVIRONMENT: development
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3100,http://127.0.0.1:3000,http://127.0.0.1:3100}
       ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET:-dev-only-set-ADMIN_JWT_SECRET-in-production}
+      SUBSCRIBER_TOKEN_SECRET: ${SUBSCRIBER_TOKEN_SECRET:-dev-only-set-SUBSCRIBER_TOKEN_SECRET-in-production}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
       SENDGRID_FROM_EMAIL: ${SENDGRID_FROM_EMAIL:-radar@pulseone.com}

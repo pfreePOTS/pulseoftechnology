@@ -19,6 +19,7 @@ _bearer = HTTPBearer(auto_error=False)
 
 # httpOnly cookie name for browser admin sessions
 ADMIN_COOKIE_NAME = "pulse_admin"
+_ADMIN_JWT_AUDIENCE = "admin"
 
 
 def verify_password(plain: str, password_hash: str) -> bool:
@@ -59,13 +60,23 @@ def create_admin_access_token(user: AdminUser) -> str:
     expire = datetime.now(UTC) + timedelta(minutes=settings.admin_token_expire_minutes)
     payload = {
         "sub": str(user.id),
+        "aud": _ADMIN_JWT_AUDIENCE,
+        "typ": "admin",
         "exp": expire,
     }
     return jwt.encode(payload, settings.admin_jwt_secret, algorithm="HS256")
 
 
 def decode_admin_token(token: str) -> dict:
-    return jwt.decode(token, settings.admin_jwt_secret, algorithms=["HS256"])
+    payload = jwt.decode(
+        token,
+        settings.admin_jwt_secret,
+        algorithms=["HS256"],
+        audience=_ADMIN_JWT_AUDIENCE,
+    )
+    if payload.get("typ") != "admin":
+        raise jwt.InvalidTokenError("Invalid token type")
+    return payload
 
 
 def get_token_from_request(

@@ -185,6 +185,7 @@ pulseoftechnology/
 | `ADMIN_PASSWORD`       | `pulseadmin`       | Password for the **bootstrap** superuser when `admin_users` is empty (with `FIRST_ADMIN_EMAIL`) |
 | `FIRST_ADMIN_EMAIL`    | `pulseoneadmin@pulseone.local` | Login email for that bootstrap account (short name `pulseoneadmin` also works) |
 | `ADMIN_JWT_SECRET`     | (see `.env.example`) | HS256 signing key for admin JWT sessions |
+| `SUBSCRIBER_TOKEN_SECRET` | (see `.env.example`) | Separate HS256 signing key for subscriber preference/unsubscribe links |
 | `CORS_ORIGINS`         | `http://localhost:3000,http://localhost:3100` | Allowed browser origins (comma-separated) |
 | `SENDGRID_API_KEY`     | —                  | Email delivery (optional for dev)        |
 | `HUBSPOT_API_KEY`      | —                  | CRM sync (optional)                      |
@@ -209,6 +210,7 @@ Admin users live in the **`admin_users`** table. On first startup, if the table 
 | Area | Implementation |
 |------|----------------|
 | **Admin passwords** | Stored as **bcrypt** hashes; optional legacy **`ADMIN_PASSWORD_HASH`** for non-DB flows is unused by console login (see `dependencies.py`). |
+| **Token separation** | Admin JWTs and subscriber magic-link JWTs use separate signing secrets and audiences. |
 | **Client storage** | No admin tokens in `localStorage`; session uses **httpOnly** cookie. |
 | **LLM / RSS** | Untrusted article text is wrapped in **XML CDATA** (`<article>`, `<context>`) and system prompts instruct the model to **ignore instructions** inside those blocks. |
 | **Rate limits** | **SlowAPI**: `POST /api/admin/login` **10/minute**, `POST /api/subscribe` **30/minute** per client IP (tune in `routers/`). |

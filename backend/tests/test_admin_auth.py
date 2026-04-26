@@ -1,9 +1,12 @@
 """Admin JWT login, session, and protected routes."""
 
 import jwt
+import pytest
 
-from ..config import settings
+from ..config import Settings, settings
 from ..dependencies import ADMIN_COOKIE_NAME, decode_admin_token
+from ..models.subscriber import Subscriber
+from ..services.subscriber_tokens import create_subscriber_preferences_token
 
 
 def test_login_rejects_wrong_password(client):
@@ -114,6 +117,41 @@ def test_expired_jwt_rejected(client):
         headers={"Authorization": f"Bearer {expired}"},
     )
     assert r.status_code == 401
+
+
+def test_subscriber_preferences_token_cannot_authenticate_as_admin(client, db_session):
+    db_session.add(
+        Subscriber(
+            id=1,
+            email="subscriber@example.com",
+            first_name="Sub",
+            last_name="Scriber",
+            industries=["Technology"],
+            domains=["AI"],
+            role_ids=None,
+        )
+    )
+    db_session.commit()
+    subscriber = db_session.get(Subscriber, 1)
+    assert subscriber is not None
+    token = create_subscriber_preferences_token(subscriber)
+
+    r = client.get("/api/admin/session", headers={"Authorization": f"Bearer {token}"})
+
+    assert r.status_code == 200
+    assert r.json()["authenticated"] is False
+
+
+def test_production_rejects_default_admin_and_subscriber_token_secrets():
+    with pytest.raises(ValueError):
+        Settings(
+            _env_file=None,
+            environment="production",
+            admin_jwt_secret="dev-only-set-ADMIN-JWT-SECRET-in-production",
+            subscriber_token_secret="dev-only-set-SUBSCRIBER_TOKEN_SECRET-in-production",
+            admin_password="pulseadmin",
+            admin_password_hash="",
+        )
 
 
 def test_create_subscriber_requires_auth(client):

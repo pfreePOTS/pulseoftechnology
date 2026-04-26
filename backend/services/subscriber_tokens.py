@@ -24,14 +24,14 @@ def create_subscriber_preferences_token(
         "iat": now,
         "exp": now + timedelta(days=expires_in_days),
     }
-    return jwt.encode(payload, settings.admin_jwt_secret, algorithm=_ALGORITHM)
+    return jwt.encode(payload, settings.subscriber_token_secret, algorithm=_ALGORITHM)
 
 
 def decode_subscriber_preferences_token(token: str) -> tuple[int, str]:
     """Return (subscriber_id, email) or raise PyJWTError for invalid/expired tokens."""
     payload = jwt.decode(
         token,
-        settings.admin_jwt_secret,
+        settings.subscriber_token_secret,
         algorithms=[_ALGORITHM],
         audience=_PREFERENCES_AUDIENCE,
     )

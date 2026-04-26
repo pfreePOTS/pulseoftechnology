@@ -1,4 +1,4 @@
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     # HS256 signing key for admin JWTs — override in production
     admin_jwt_secret: str = "dev-only-set-ADMIN-JWT-SECRET-in-production"
     admin_token_expire_minutes: int = 60 * 24  # 24 hours
+    # Separate HS256 key for subscriber preference/unsubscribe magic links.
+    subscriber_token_secret: str = "dev-only-set-SUBSCRIBER_TOKEN_SECRET-in-production"
     anthropic_api_key: str = ""
     # SendGrid
     sendgrid_api_key: str = ""
@@ -61,6 +63,38 @@ class Settings(BaseSettings):
         if not s or s.startswith("#"):
             return ""
         return s
+
+    @model_validator(mode="after")
+    def reject_unsafe_production_defaults(self) -> "Settings":
+        """Fail closed when production/staging still uses local-dev secrets."""
+        if self.environment.strip().lower() not in {"production", "staging"}:
+            return self
+
+        errors: list[str] = []
+        unsafe_admin_jwt = {
+            "",
+            "change-me-to-a-long-random-secret",
+            "dev-only-set-ADMIN_JWT_SECRET-in-production",
+            "dev-only-set-ADMIN-JWT-SECRET-in-production",
+        }
+        unsafe_subscriber = {
+            "",
+            "change-me-to-a-long-random-secret",
+            "dev-only-set-SUBSCRIBER_TOKEN_SECRET-in-production",
+        }
+        if self.admin_jwt_secret in unsafe_admin_jwt or len(self.admin_jwt_secret) < 32:
+            errors.append("ADMIN_JWT_SECRET must be a non-default random value of at least 32 chars")
+        if self.subscriber_token_secret in unsafe_subscriber or len(self.subscriber_token_secret) < 32:
+            errors.append(
+                "SUBSCRIBER_TOKEN_SECRET must be a non-default random value of at least 32 chars"
+            )
+        if self.subscriber_token_secret == self.admin_jwt_secret:
+            errors.append("SUBSCRIBER_TOKEN_SECRET must differ from ADMIN_JWT_SECRET")
+        if not self.admin_password_hash and self.admin_password in {"", "pulseadmin"}:
+            errors.append("ADMIN_PASSWORD_HASH or a non-default ADMIN_PASSWORD is required")
+        if errors:
+            raise ValueError("; ".join(errors))
+        return self
 
     model_config = {"env_file": ".env"}
 

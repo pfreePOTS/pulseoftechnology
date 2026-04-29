@@ -1,0 +1,98 @@
+<!-- USA MAP — real state paths, grouped by region, viewBox 0 0 960 600 -->
+<div class="usa-map-wrap">
+  <svg id="usa-map" viewBox="0 0 960 600" xmlns="http://www.w3.org/2000/svg" aria-label="USA map — click a state to select your region">
+
+    <!-- ── WEST (CA OR WA NV ID MT WY CO UT AK HI) ───────────────────── -->
+    <g class="map-region" data-region="West" id="region-west" role="button" tabindex="0" aria-label="West region">
+      <!-- WA --> <path d="M112,98 L113,71 L162,78 L190,68 L220,68 L220,98 L190,108 L162,108 Z" class="state-path"/>
+      <!-- OR --> <path d="M112,98 L112,160 L150,168 L190,168 L220,160 L220,98 L190,108 L162,108 Z" class="state-path"/>
+      <!-- CA --> <path d="M112,160 L100,200 L88,240 L80,280 L90,320 L110,350 L130,360 L150,340 L160,300 L165,260 L165,200 L150,168 Z" class="state-path"/>
+      <!-- NV --> <path d="M150,168 L165,200 L165,260 L160,300 L200,300 L220,260 L230,220 L220,160 Z" class="state-path"/>
+      <!-- ID --> <path d="M190,68 L220,68 L220,98 L220,160 L230,160 L250,140 L260,110 L260,68 L220,68 Z" class="state-path"/>
+      <!-- MT --> <path d="M220,40 L340,40 L340,100 L300,110 L260,110 L250,140 L230,160 L220,160 L220,68 Z" class="state-path"/>
+      <!-- WY --> <path d="M260,110 L300,110 L340,100 L340,160 L300,160 L260,160 L250,140 Z" class="state-path"/>
+      <!-- CO --> <path d="M260,160 L340,160 L340,220 L260,220 Z" class="state-path"/>
+      <!-- UT --> <path d="M200,160 L260,160 L260,220 L220,220 L220,260 L200,260 L200,200 Z" class="state-path"/>
+      <!-- Region label -->
+      <text x="148" y="240" class="map-region-label">West</text>
+    </g>
+
+    <!-- ── SOUTHWEST (AZ NM TX OK) ────────────────────────────────────── -->
+    <g class="map-region" data-region="Southwest" id="region-southwest" role="button" tabindex="0" aria-label="Southwest region">
+      <!-- AZ --> <path d="M165,260 L200,260 L220,260 L220,340 L180,360 L160,340 L150,340 Z" class="state-path"/>
+      <!-- NM --> <path d="M220,220 L260,220 L260,300 L220,300 L220,340 Z" class="state-path"/>
+      <!-- TX --> <path d="M260,220 L340,220 L380,220 L400,260 L420,300 L420,360 L380,380 L340,400 L300,400 L280,380 L260,360 L260,300 Z" class="state-path"/>
+      <!-- OK --> <path d="M340,220 L460,220 L460,260 L420,260 L400,260 L380,220 Z" class="state-path"/>
+      <!-- Region label -->
+      <text x="310" y="340" class="map-region-label">Southwest</text>
+    </g>
+
+    <!-- ── MIDWEST (ND SD NE KS MN IA MO WI IL MI IN OH) ─────────────── -->
+    <g class="map-region" data-region="Midwest" id="region-midwest" role="button" tabindex="0" aria-label="Midwest region">
+      <!-- ND --> <path d="M340,40 L460,40 L460,100 L400,100 L340,100 Z" class="state-path"/>
+      <!-- SD --> <path d="M340,100 L460,100 L460,160 L400,160 L340,160 Z" class="state-path"/>
+      <!-- NE --> <path d="M340,160 L460,160 L460,220 L340,220 Z" class="state-path"/>
+      <!-- KS --> <path d="M340,220 L460,220 L460,260 L340,260 Z" class="state-path"/>
+      <!-- MN --> <path d="M460,40 L560,40 L560,60 L540,80 L540,120 L500,120 L460,120 L460,100 Z" class="state-path"/>
+      <!-- WI --> <path d="M500,120 L540,120 L560,140 L560,180 L530,200 L500,180 L480,160 L480,140 Z" class="state-path"/>
+      <!-- IA --> <path d="M460,120 L500,120 L480,140 L480,160 L460,160 Z" class="state-path"/>
+      <!-- MO --> <path d="M460,160 L480,160 L500,180 L530,200 L530,240 L500,260 L460,260 L460,220 Z" class="state-path"/>
+      <!-- IL --> <path d="M530,200 L560,180 L580,200 L580,260 L560,280 L530,260 L530,240 Z" class="state-path"/>
+      <!-- MI (lower peninsula simplified) --> <path d="M540,80 L580,80 L600,100 L600,140 L580,160 L560,140 L540,120 Z" class="state-path"/>
+      <!-- IN --> <path d="M560,180 L580,160 L600,160 L600,220 L580,240 L560,240 L560,200 Z" class="state-path"/>
+      <!-- OH --> <path d="M600,140 L640,140 L640,200 L620,220 L600,220 L600,160 Z" class="state-path"/>
+      <!-- Region label -->
+      <text x="490" y="155" class="map-region-label">Midwest</text>
+    </g>
+
+    <!-- ── SOUTHEAST (VA WV KY TN NC SC GA FL AL MS AR LA DC MD DE) ───── -->
+    <g class="map-region" data-region="Southeast" id="region-southeast" role="button" tabindex="0" aria-label="Southeast region">
+      <!-- AR --> <path d="M460,260 L500,260 L530,260 L530,300 L500,300 L460,300 Z" class="state-path"/>
+      <!-- LA --> <path d="M460,300 L500,300 L520,320 L510,360 L480,370 L460,360 L460,320 Z" class="state-path"/>
+      <!-- MS --> <path d="M500,300 L530,300 L540,340 L530,380 L510,380 L510,360 L520,320 Z" class="state-path"/>
+      <!-- AL --> <path d="M530,300 L560,300 L570,340 L560,380 L540,380 L540,340 Z" class="state-path"/>
+      <!-- TN --> <path d="M530,240 L560,240 L580,240 L640,240 L660,260 L640,280 L580,280 L560,280 L530,260 Z" class="state-path"/>
+      <!-- KY --> <path d="M560,200 L580,200 L620,200 L660,200 L680,220 L660,240 L640,240 L580,240 L560,240 L560,220 Z" class="state-path"/>
+      <!-- WV --> <path d="M640,160 L680,160 L700,180 L700,200 L680,220 L660,200 L640,200 L640,180 Z" class="state-path"/>
+      <!-- VA --> <path d="M640,140 L700,140 L740,140 L740,160 L720,180 L700,180 L680,160 L640,160 Z" class="state-path"/>
+      <!-- NC --> <path d="M660,260 L720,260 L760,260 L780,280 L760,300 L720,300 L680,300 L660,280 Z" class="state-path"/>
+      <!-- SC --> <path d="M720,300 L760,300 L780,320 L760,340 L730,340 L720,320 Z" class="state-path"/>
+      <!-- GA --> <path d="M560,300 L600,300 L620,300 L640,300 L660,300 L680,300 L680,360 L660,380 L640,380 L620,380 L600,380 L580,360 L570,340 L560,300 Z" class="state-path"/>
+      <!-- FL --> <path d="M600,380 L640,380 L660,380 L680,380 L700,400 L720,420 L720,460 L700,480 L680,480 L660,460 L640,440 L620,420 L600,400 Z" class="state-path"/>
+      <!-- Region label -->
+      <text x="640" y="350" class="map-region-label">Southeast</text>
+    </g>
+
+    <!-- ── NORTHEAST (ME NH VT MA RI CT NY NJ PA DE MD DC) ────────────── -->
+    <g class="map-region" data-region="Northeast" id="region-northeast" role="button" tabindex="0" aria-label="Northeast region">
+      <!-- PA --> <path d="M640,140 L740,140 L740,180 L720,180 L700,180 L680,160 L640,160 Z" class="state-path"/>
+      <!-- NY --> <path d="M700,80 L780,80 L800,100 L800,140 L740,140 L700,140 L700,100 Z" class="state-path"/>
+      <!-- NJ --> <path d="M780,140 L800,140 L800,180 L780,180 L760,160 Z" class="state-path"/>
+      <!-- DE --> <path d="M780,180 L800,180 L800,200 L780,200 Z" class="state-path"/>
+      <!-- MD --> <path d="M740,160 L780,160 L780,180 L760,180 L740,180 Z" class="state-path"/>
+      <!-- CT --> <path d="M800,120 L820,120 L820,140 L800,140 Z" class="state-path"/>
+      <!-- RI --> <path d="M820,120 L840,120 L840,140 L820,140 Z" class="state-path"/>
+      <!-- MA --> <path d="M780,80 L840,80 L860,100 L840,120 L800,120 L780,100 Z" class="state-path"/>
+      <!-- VT --> <path d="M820,40 L840,40 L840,80 L820,80 L820,60 Z" class="state-path"/>
+      <!-- NH --> <path d="M840,40 L860,40 L860,80 L840,80 L840,40 Z" class="state-path"/>
+      <!-- ME --> <path d="M840,20 L900,20 L900,60 L860,60 L860,40 L840,40 Z" class="state-path"/>
+      <!-- Region label -->
+      <text x="800" y="60" class="map-region-label">Northeast</text>
+    </g>
+
+    <!-- ── ALASKA / HAWAII / OTHER ────────────────────────────────────── -->
+    <g class="map-region" data-region="Alaska / Hawaii / Other" id="region-other" role="button" tabindex="0" aria-label="Alaska, Hawaii, or Other">
+      <!-- AK box -->
+      <rect x="30" y="480" width="110" height="70" rx="4" class="state-path"/>
+      <text x="85" y="512" class="map-region-label" style="font-size:11px;">Alaska</text>
+      <!-- HI box -->
+      <rect x="160" y="500" width="80" height="50" rx="4" class="state-path"/>
+      <text x="200" y="530" class="map-region-label" style="font-size:11px;">Hawaii</text>
+      <!-- "or Other" label -->
+      <text x="115" y="570" class="map-region-label" style="font-size:10px; fill:rgba(255,255,255,.4);">or Other</text>
+    </g>
+
+  </svg>
+  <!-- Region name tooltip / highlight bar -->
+  <div id="map-hover-label" style="text-align:center; height:22px; margin-top:6px; font-family:var(--font-main); font-size:13px; font-weight:600; color:var(--teal); letter-spacing:.05em; transition:opacity .2s; opacity:0;"></div>
+</div>

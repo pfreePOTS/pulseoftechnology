@@ -1,0 +1,170 @@
+<!-- ═══ HOW CAN WE HELP ════════════════════════════════════════════ -->
+<section class="goals-section" id="how-can-we-help">
+  <div style="max-width:1200px; margin:0 auto; padding:0 24px; display:grid; grid-template-columns:1fr 1fr; gap:64px; align-items:start;">
+    <!-- Left: photo + intro -->
+    <div style="position:sticky; top:100px;">
+      <span class="section-label-light" style="color:var(--teal);">How Can We Help?</span>
+      <h2 style="color:var(--white); margin:12px 0 16px; font-family:var(--font-main); font-size:32px; font-weight:700; line-height:1.2;">Good news &mdash; we have you covered.</h2>
+      <p style="color:rgba(255,255,255,.65); font-family:var(--font-cond); font-size:17px; line-height:1.7; margin-bottom:28px;">Answer these quick questions and we&rsquo;ll tailor what you see to your situation.</p>
+      <div class="photo-wrap photo-wrap-rounded" style="width:100%;">
+        <img src="images/consultation_meeting.jpg" alt="Consultation meeting" style="width:100%; height:280px; object-fit:cover; display:block;" />
+      </div>
+    </div>
+    <!-- Right: survey -->
+    <div>
+      <div class="intake-steps" id="intake-steps-main">
+
+        <!-- Step 0: Location (USA Map) -->
+        <div class="intake-step active" id="step-0">
+          <div class="intake-step-label">Step 1 of 5 &mdash; Your Location</div>
+          <div class="intake-question" style="color:var(--white);">Where is your organization based?</div>
+          <p style="color:rgba(255,255,255,.5); font-family:var(--font-cond); font-size:14px; margin-bottom:18px;">Click your region on the map, or type your state below.</p>
+          <!-- SVG USA Map -->
+          <div class="usa-map-wrap">
+            <svg id="usa-map" viewBox="0 0 960 600" xmlns="http://www.w3.org/2000/svg">
+              <!-- West -->
+              <g class="map-region" data-region="West" data-states="CA,OR,WA,NV,ID,MT,WY,CO,UT">
+                <rect x="20" y="60" width="160" height="200" rx="4" class="map-region-rect"/>
+                <text x="100" y="148" class="map-region-label">West</text>
+                <text x="100" y="166" class="map-region-sublabel">CA &middot; OR &middot; WA &middot; NV &middot; ID</text>
+                <text x="100" y="182" class="map-region-sublabel">MT &middot; WY &middot; CO &middot; UT</text>
+              </g>
+              <!-- Southwest -->
+              <g class="map-region" data-region="Southwest" data-states="TX,OK,NM,AZ">
+                <rect x="200" y="320" width="160" height="120" rx="4" class="map-region-rect"/>
+                <text x="280" y="372" class="map-region-label">Southwest</text>
+                <text x="280" y="390" class="map-region-sublabel">TX &middot; OK &middot; NM &middot; AZ</text>
+              </g>
+              <!-- Midwest -->
+              <g class="map-region" data-region="Midwest" data-states="OH,IN,IL,MI,WI,MN,IA,MO,ND,SD,NE,KS">
+                <rect x="380" y="120" width="180" height="160" rx="4" class="map-region-rect"/>
+                <text x="470" y="188" class="map-region-label">Midwest</text>
+                <text x="470" y="206" class="map-region-sublabel">OH &middot; IN &middot; IL &middot; MI &middot; WI &middot; MN</text>
+                <text x="470" y="222" class="map-region-sublabel">IA &middot; MO &middot; ND &middot; SD &middot; NE &middot; KS</text>
+              </g>
+              <!-- Southeast -->
+              <g class="map-region" data-region="Southeast" data-states="VA,WV,NC,SC,GA,FL,AL,MS,TN,KY,AR,LA">
+                <rect x="580" y="260" width="180" height="160" rx="4" class="map-region-rect"/>
+                <text x="670" y="328" class="map-region-label">Southeast</text>
+                <text x="670" y="346" class="map-region-sublabel">VA &middot; WV &middot; NC &middot; SC &middot; GA &middot; FL</text>
+                <text x="670" y="362" class="map-region-sublabel">AL &middot; MS &middot; TN &middot; KY &middot; AR &middot; LA</text>
+              </g>
+              <!-- Northeast -->
+              <g class="map-region" data-region="Northeast" data-states="ME,NH,VT,MA,RI,CT,NY,NJ,PA,DE,MD">
+                <rect x="780" y="40" width="160" height="180" rx="4" class="map-region-rect"/>
+                <text x="860" y="118" class="map-region-label">Northeast</text>
+                <text x="860" y="136" class="map-region-sublabel">ME &middot; NH &middot; VT &middot; MA &middot; RI &middot; CT</text>
+                <text x="860" y="152" class="map-region-sublabel">NY &middot; NJ &middot; PA &middot; DE &middot; MD</text>
+              </g>
+              <!-- Alaska / Hawaii / Other -->
+              <g class="map-region" data-region="Alaska / Hawaii / Other">
+                <rect x="20" y="490" width="160" height="80" rx="4" class="map-region-rect"/>
+                <text x="100" y="524" class="map-region-label">AK / HI / Other</text>
+              </g>
+            </svg>
+          </div>
+          <div style="margin-top:16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <span style="color:rgba(255,255,255,.45); font-family:var(--font-cond); font-size:13px;">Or type your state:</span>
+            <input type="text" id="map-state-input" placeholder="e.g. New Jersey" style="background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.2); color:var(--white); font-family:var(--font-cond); font-size:14px; padding:8px 14px; border-radius:6px; outline:none; width:180px; transition:border-color .2s;" />
+            <button id="map-state-submit" style="background:var(--red); color:var(--white); border:none; padding:9px 18px; border-radius:6px; font-family:var(--font-btn); font-size:13px; font-weight:600; cursor:pointer; transition:background .2s;">Next &rarr;</button>
+          </div>
+        </div>
+
+        <!-- Step 1: Industry -->
+        <div class="intake-step" id="step-1">
+          <div class="intake-step-label">Step 2 of 5 &mdash; Your Industry</div>
+          <div class="intake-question" style="color:var(--white);">Which industry best describes your organization?</div>
+          <div class="intake-options" id="options-industry">
+            <button class="intake-option intake-option-dark" data-key="industry" data-value="Healthcare">Healthcare</button>
+            <button class="intake-option intake-option-dark" data-key="industry" data-value="Legal">Legal</button>
+            <button class="intake-option intake-option-dark" data-key="industry" data-value="Manufacturing">Manufacturing</button>
+            <button class="intake-option intake-option-dark" data-key="industry" data-value="Financial Services">Financial Services</button>
+            <button class="intake-option intake-option-dark" data-key="industry" data-value="Education">Education</button>
+            <button class="intake-option intake-option-dark" data-key="industry" data-value="Nonprofit">Nonprofit</button>
+            <button class="intake-option intake-option-dark" data-key="industry" data-value="Construction">Construction &amp; Real Estate</button>
+            <button class="intake-option intake-option-dark" data-key="industry" data-value="Professional Services">Professional Services</button>
+            <button class="intake-option intake-option-dark" data-key="industry" data-value="Government">Government</button>
+            <button class="intake-option intake-option-dark intake-option-other-trigger" data-key="industry" data-value="Other">Other</button>
+          </div>
+          <div class="intake-other-wrap" id="other-industry" style="display:none; margin-top:14px;">
+            <input type="text" class="intake-other-input" placeholder="Please describe your industry&hellip;" id="other-industry-input" />
+            <button class="intake-other-submit" data-key="industry" data-next="step-2" data-progress="40">Next &rarr;</button>
+          </div>
+        </div>
+
+        <!-- Step 2: Role -->
+        <div class="intake-step" id="step-2">
+          <div class="intake-step-label">Step 3 of 5 &mdash; Your Role</div>
+          <div class="intake-question" style="color:var(--white);">What best describes your role?</div>
+          <div class="intake-options" id="options-role">
+            <button class="intake-option intake-option-dark" data-key="role" data-value="CEO / President / Owner">CEO / President / Owner</button>
+            <button class="intake-option intake-option-dark" data-key="role" data-value="COO">COO</button>
+            <button class="intake-option intake-option-dark" data-key="role" data-value="CFO">CFO</button>
+            <button class="intake-option intake-option-dark" data-key="role" data-value="CIO / CTO">CIO / CTO</button>
+            <button class="intake-option intake-option-dark" data-key="role" data-value="CISO">CISO</button>
+            <button class="intake-option intake-option-dark" data-key="role" data-value="IT Manager / Director">IT Manager / Director</button>
+            <button class="intake-option intake-option-dark" data-key="role" data-value="Operations">Operations</button>
+            <button class="intake-option intake-option-dark intake-option-other-trigger" data-key="role" data-value="Other">Other / Not Sure</button>
+          </div>
+          <div class="intake-other-wrap" id="other-role" style="display:none; margin-top:14px;">
+            <input type="text" class="intake-other-input" placeholder="Please describe your role&hellip;" id="other-role-input" />
+            <button class="intake-other-submit" data-key="role" data-next="step-3" data-progress="60">Next &rarr;</button>
+          </div>
+        </div>
+
+        <!-- Step 3: Challenge -->
+        <div class="intake-step" id="step-3">
+          <div class="intake-step-label">Step 4 of 5 &mdash; Your Challenge</div>
+          <div class="intake-question" style="color:var(--white);">What&rsquo;s your biggest technology concern right now?</div>
+          <div class="intake-options" id="options-issue">
+            <button class="intake-option intake-option-dark" data-key="issue" data-value="Cybersecurity">Cybersecurity &amp; Threats</button>
+            <button class="intake-option intake-option-dark" data-key="issue" data-value="AI">AI &amp; Emerging Technology</button>
+            <button class="intake-option intake-option-dark" data-key="issue" data-value="Compliance">Compliance &amp; Risk</button>
+            <button class="intake-option intake-option-dark" data-key="issue" data-value="Cloud">Cloud &amp; Infrastructure</button>
+            <button class="intake-option intake-option-dark" data-key="issue" data-value="IT Management">Day-to-Day IT Management</button>
+            <button class="intake-option intake-option-dark" data-key="issue" data-value="Strategy">Long-Term Technology Strategy</button>
+            <button class="intake-option intake-option-dark intake-option-other-trigger" data-key="issue" data-value="Other">Something Else</button>
+          </div>
+          <div class="intake-other-wrap" id="other-issue" style="display:none; margin-top:14px;">
+            <input type="text" class="intake-other-input" placeholder="Briefly describe your concern&hellip;" id="other-issue-input" />
+            <button class="intake-other-submit" data-key="issue" data-next="step-4" data-progress="80">Next &rarr;</button>
+          </div>
+        </div>
+
+        <!-- Step 4: Open-ended situation -->
+        <div class="intake-step" id="step-4">
+          <div class="intake-step-label">Step 5 of 5 &mdash; Your Situation</div>
+          <div class="intake-question" style="color:var(--white);">In one sentence, describe where things stand.</div>
+          <p style="color:rgba(255,255,255,.5); font-family:var(--font-cond); font-size:14px; margin-bottom:18px;">No need for technical detail &mdash; just tell us what&rsquo;s on your mind.</p>
+          <textarea id="situation-input" rows="3" placeholder="e.g. We&rsquo;re a healthcare company that recently had a security scare and we&rsquo;re not sure if we&rsquo;re protected&hellip;" style="width:100%; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.2); color:var(--white); font-family:var(--font-cond); font-size:15px; padding:14px 16px; border-radius:8px; outline:none; resize:vertical; line-height:1.6; transition:border-color .2s; box-sizing:border-box;"></textarea>
+          <div style="margin-top:16px; display:flex; gap:14px; align-items:center; flex-wrap:wrap;">
+            <button id="situation-submit" class="btn-primary" style="padding:13px 32px;">Show Me What We Can Do &rarr;</button>
+            <button id="situation-skip" style="background:none; border:none; color:rgba(255,255,255,.4); font-family:var(--font-cond); font-size:13px; cursor:pointer; text-decoration:underline;">Skip this step</button>
+          </div>
+        </div>
+
+        <!-- Result -->
+        <div class="intake-step" id="step-result">
+          <div style="text-align:center; padding:20px 0;">
+            <div style="font-size:52px; color:var(--teal); margin-bottom:16px;">&#10003;</div>
+            <div id="intake-result-msg" style="font-family:var(--font-main); font-size:20px; font-weight:600; color:var(--white); margin-bottom:8px; line-height:1.4;">Thanks &mdash; we know just where to start.</div>
+            <p id="intake-result-sub" style="font-family:var(--font-cond); font-size:15px; color:rgba(255,255,255,.55); margin-bottom:28px; line-height:1.6;"></p>
+            <div style="display:flex; gap:16px; justify-content:center; align-items:center; flex-wrap:wrap;">
+              <a href="#" class="btn-primary" id="intake-cta">See Your Recommended Path</a>
+              <button id="intake-restart" style="background:none; border:none; font-family:var(--font-cond); font-size:14px; color:rgba(255,255,255,.4); cursor:pointer; text-decoration:underline;">Start over</button>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- end intake-steps -->
+
+      <!-- Progress bar -->
+      <div class="intake-progress-wrap" style="margin-top:28px;">
+        <div class="intake-progress-bar" id="intake-progress" style="width:20%;"></div>
+      </div>
+      <!-- Skip link -->
+      <div class="intake-skip"><a href="#philosophy" style="color:rgba(255,255,255,.3);">Skip &mdash; just show me everything</a></div>
+    </div><!-- end right col -->
+  </div><!-- end grid -->
+</section>
+

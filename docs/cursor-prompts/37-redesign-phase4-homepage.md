@@ -1,55 +1,47 @@
-# Prompt 37: PulseOne Redesign Phase 4 — Homepage & Intake Routing
+# Prompt 37: PulseOne Redesign Phase 4 — Homepage & 5-Step Intake Routing
 
 ## Context
-With the Radar app safely moved to `/radar`, we now have the root `/` path free. This phase focuses on building the new corporate homepage and the interactive intake survey that routes users based on their selections.
+With the Radar app safely moved to `/radar`, we now have the root `/` path free. This phase focuses on building the new corporate homepage and the interactive 5-step intake survey that routes users based on their selections.
 
 ## Source Material
-- The rebranding prototype `docs/frontend-redesign/source/index.html` (specifically the `<section class="goals-section" id="how-can-we-help">`)
+- The v3.0 rebranding prototype `docs/frontend-redesign/source/index-v3.html`
+- The survey components: `survey_section.html`, `survey_js.txt`, `usa_map.html`
 - The new components created in Phase 2: `GlobalHeader`, `HeroSection`, `PhilosophySection`, `GlobalFooter`
 
 ## Instructions
 
 ### Step 1: `<ExecutiveIntakeForm />` Component
 1. Create `frontend/src/components/ExecutiveIntakeForm.tsx`.
-2. Convert the 4-step HTML structure from `index.html` into a React client component (`"use client"`).
+2. Convert the 5-step HTML structure from `survey_section.html` into a React client component (`"use client"`).
 3. Implement state management (`useState`) for:
-   - `currentStep` (1-4)
-   - `selectedIndustry`
-   - `selectedRole`
-   - `selectedIssue`
-   - `selectedStage`
-4. Handle the "Next" transitions, ensuring validation (an option must be selected before proceeding).
-5. On Step 4 completion, redirect to `/recommended-path` using `useRouter` from `next/navigation`, passing the selected state via URL parameters (e.g., `?industry=Healthcare&role=CIO...`).
+   - `currentStep` (1-5)
+   - `selectedRegion` (Step 1)
+   - `selectedIndustry` (Step 2)
+   - `selectedRole` (Step 3)
+   - `selectedIssue` (Step 4)
+   - `selectedStage` (Step 5)
+4. **The USA Map (Step 1):** Integrate the SVG map from `usa_map.html`. Convert it to a React component (`<USAMap />`) that accepts an `onRegionSelect` callback. When a user clicks a `<g class="map-region">`, capture the `data-region` attribute.
+5. Handle the "Next" transitions, ensuring validation (an option must be selected before proceeding).
+6. On Step 5 completion, redirect to `/recommended-path` using `useRouter` from `next/navigation`, passing all five selected states via URL parameters (e.g., `?region=West&industry=Healthcare&role=CIO...`).
 
 ### Step 2: Build the New `/` Homepage
-1. Create a new `frontend/src/app/page.tsx`.
-2. Import the required components:
-   ```typescript
-   import GlobalHeader from "@/components/GlobalHeader";
-   import HeroSection from "@/components/HeroSection";
-   import PhilosophySection from "@/components/PhilosophySection";
-   import ExecutiveIntakeForm from "@/components/ExecutiveIntakeForm";
-   import GlobalFooter from "@/components/GlobalFooter";
-   ```
-3. Assemble the page in the following order:
+1. Open `frontend/src/app/page.tsx`.
+2. Assemble the page in the exact order defined in `index-v3.html`:
    - `<GlobalHeader />`
    - `<HeroSection />`
    - `<PhilosophySection />`
+   - `<IndustriesSection />` (Extract from `index-v3.html` if not built in Phase 2)
    - `<ExecutiveIntakeForm />`
    - `<GlobalFooter />`
 
-### Step 3: `/recommended-path` Route
-1. Create `frontend/src/app/recommended-path/page.tsx`.
-2. Import `GlobalHeader` and `GlobalFooter`.
-3. Implement logic to read the URL search parameters (`useSearchParams`).
-4. Display tailored content based on the selections (e.g., "Here is the recommended path for a CIO in Healthcare facing Compliance issues").
-5. Include two strong CTAs:
-   - "Explore the Pulse of Technology" (linking to `/radar`)
-   - "Schedule a Consultation" (linking to a contact form or mailto)
+### Step 3: Temporary `/recommended-path` Route
+1. Create a basic placeholder at `frontend/src/app/recommended-path/page.tsx`.
+2. For now, just render a simple success message that displays the 5 URL search parameters (Region, Industry, Role, Issue, Stage).
+3. (We will build the full dynamic Recommended Path page in Prompts 38 and 39).
 
 ### Step 4: Validation
 - Navigate to `http://localhost:3100/`.
-- Verify the new corporate homepage loads with the hero, philosophy, and intake form.
-- Complete the 4-step survey on the homepage.
+- Verify the new corporate homepage loads with the hero, philosophy, industries, and intake form.
+- Complete the 5-step survey, ensuring the SVG map click interaction works correctly.
 - Verify the redirect to `/recommended-path` works correctly.
-- Verify the URL parameters are present and the Recommended Path page reflects the selections.
+- Verify all 5 URL parameters are present in the address bar.

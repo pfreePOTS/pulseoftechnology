@@ -1,0 +1,22 @@
+
+    /* ─── USA MAP ────────────────────────────────────────────── */
+    .usa-map-wrap { width: 100%; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 16px; }
+    #usa-map { width: 100%; height: auto; display: block; }
+    .map-region { cursor: pointer; }
+    .map-region-rect { fill: rgba(255,255,255,.06); stroke: rgba(255,255,255,.18); stroke-width: 1.5; transition: fill .2s, stroke .2s; }
+    .map-region:hover .map-region-rect { fill: rgba(213,23,30,.25); stroke: var(--red); }
+    .map-region.selected .map-region-rect { fill: var(--red); stroke: #a00; }
+    .map-region-label { font-family: var(--font-main); font-size: 13px; font-weight: 700; fill: rgba(255,255,255,.85); text-anchor: middle; pointer-events: none; }
+    .map-region.selected .map-region-label { fill: var(--white); }
+    .map-region-sublabel { font-family: var(--font-cond); font-size: 10px; fill: rgba(255,255,255,.45); text-anchor: middle; pointer-events: none; }
+    .map-region.selected .map-region-sublabel { fill: rgba(255,255,255,.8); }
+    /* ─── OTHER INPUT ────────────────────────────────────────── */
+    .intake-other-wrap { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .intake-other-input { font-family: var(--font-cond); font-size: 15px; padding: 10px 16px; border-radius: 6px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.08); color: var(--white); outline: none; flex: 1; min-width: 200px; transition: border-color .2s; }
+    .intake-other-input:focus { border-color: var(--red); }
+    .intake-other-input::placeholder { color: rgba(255,255,255,.3); }
+    .intake-other-submit { font-family: var(--font-btn); font-size: 13px; font-weight: 600; background: var(--red); color: var(--white); border: none; padding: 11px 20px; border-radius: 6px; cursor: pointer; transition: background .2s; white-space: nowrap; }
+    .intake-other-submit:hover { background: #a00; }
+    /* ─── TEXTAREA ───────────────────────────────────────────── */
+    #situation-input:focus { border-color: var(--red) !important; }
+    #situation-input::placeholder { color: rgba(255,255,255,.3); }

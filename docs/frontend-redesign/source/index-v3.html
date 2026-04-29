@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PulseOne – The Pulse of Technology</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@400;600;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --red:       #d5171e;
+      --red-dark:  #a81117;
+      --teal:      #13c3bd;
+      --teal-dark: #0fa09b;
+      --silver:    #cbc9c9;
+      --gray:      #646464;
+      --black:     #1a1a1a;
+      --dark-bg:   #1e1e1e;
+      --darker-bg: #141414;
+      --light-bg:  #f4f4f4;
+      --white:     #ffffff;
+      --font-main: 'IBM Plex Sans', Helvetica, Arial, sans-serif;
+      --font-cond: 'IBM Plex Sans', Helvetica, Arial, sans-serif;
+      --font-btn:  'IBM Plex Sans', Helvetica, Arial, sans-serif;
+    }
+    body { font-family: var(--font-cond); font-size: 16px; color: var(--gray); background: var(--white); }
+
+    /* ─── PHOTO PLACEHOLDER ──────────────────────────────────── */
+    .photo-placeholder {
+      background: var(--silver); display: flex; align-items: center; justify-content: center;
+      color: var(--gray); font-family: var(--font-main); font-size: 13px; font-weight: 500;
+      letter-spacing: 0.5px; border-radius: 6px; overflow: hidden; position: relative;
+    }
+    .photo-placeholder::after {
+      content: ''; position: absolute; inset: 0;
+      background: repeating-linear-gradient(45deg, rgba(255,255,255,0) 0px, rgba(255,255,255,0) 10px, rgba(255,255,255,0.15) 10px, rgba(255,255,255,0.15) 11px);
+    }
+    .photo-placeholder span { position: relative; z-index: 1; }
+
+    /* ─── NAVIGATION ─────────────────────────────────────────── */
+    header { position: sticky; top: 0; z-index: 100; background: var(--white); box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+    .nav-inner { max-width: 1200px; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; height: 72px; }
+    .logo-wrap img { height: 48px; width: auto; display: block; }
+    nav { display: flex; align-items: center; gap: 4px; }
+    nav a { font-family: var(--font-main); font-size: 13.5px; font-weight: 600; color: var(--gray); text-decoration: none; padding: 6px 10px; border-radius: 4px; transition: color .2s; white-space: nowrap; }
+    nav a:hover { color: var(--red); }
+    nav a.nav-teal { color: var(--teal); }
+    nav a.nav-teal:hover { color: var(--teal-dark); }
+    nav a.nav-login { font-size: 13px; color: var(--teal); }
+    .nav-cta { font-family: var(--font-btn); font-size: 13.5px; font-weight: 600; background: var(--red); color: var(--white) !important; padding: 9px 18px !important; border-radius: 4px; transition: background .2s !important; }
+    .nav-cta:hover { background: var(--red-dark) !important; }
+    .nav-arrow { font-size: 9px; margin-left: 3px; opacity: 0.6; vertical-align: middle; display: inline-block; }
+
+    /* ─── HERO ───────────────────────────────────────────────── */
+    .hero {
+      position: relative; min-height: 680px; display: flex; align-items: center;
+      justify-content: center; overflow: hidden; text-align: center;
+      background: url('hero_bg.png') center 30% / cover no-repeat;
+    }
+    .hero-overlay {
+      position: absolute; inset: 0;
+      background: linear-gradient(
+        to bottom,
+        rgba(10,10,10,0.72) 0%,
+        rgba(10,10,10,0.55) 50%,
+        rgba(10,10,10,0.75) 100%
+      );
+    }
+    .hero-layout { position: relative; z-index: 2; max-width: 1100px; margin: 0 auto; padding: 110px 24px 100px; width: 100%; }
+    .hero-eyebrow {
+      font-family: var(--font-btn); font-size: 11px; font-weight: 600; letter-spacing: 4px;
+      text-transform: uppercase; color: var(--teal); margin-bottom: 22px;
+      display: inline-block; background: rgba(19,195,189,0.12);
+      border: 1px solid rgba(19,195,189,0.35); padding: 5px 14px; border-radius: 20px;
+    }
+    .hero h1 { font-family: var(--font-main); font-size: 58px; font-weight: 700; color: var(--white); line-height: 1.1; margin-bottom: 26px; letter-spacing: -0.5px; }
+    .hero h1 .hero-static { color: var(--white); }
+    .hero h1 .hero-cycling {
+      color: var(--red); display: inline;
+      white-space: nowrap;
+      transition: opacity 0.4s ease;
+      text-shadow: 0 0 40px rgba(213,23,30,0.4);
+    }
+    .hero-sub { font-family: var(--font-cond); font-size: 20px; color: rgba(255,255,255,.78); line-height: 1.6; margin-bottom: 42px; max-width: 580px; margin-left: auto; margin-right: auto; }
+    .hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+    .btn-primary { font-family: var(--font-btn); font-size: 14px; font-weight: 600; background: var(--red); color: var(--white); border: none; padding: 13px 26px; border-radius: 4px; cursor: pointer; text-decoration: none; transition: background .2s; display: inline-block; }
+    .btn-primary:hover { background: var(--red-dark); }
+    .btn-outline { font-family: var(--font-btn); font-size: 14px; font-weight: 600; background: transparent; color: var(--white); border: 2px solid rgba(255,255,255,.5); padding: 11px 26px; border-radius: 4px; cursor: pointer; text-decoration: none; transition: border-color .2s; display: inline-block; }
+    .btn-outline:hover { border-color: var(--white); }
+    .btn-teal-outline { font-family: var(--font-btn); font-size: 14px; font-weight: 600; background: transparent; color: var(--teal); border: 2px solid var(--teal); padding: 11px 28px; border-radius: 4px; cursor: pointer; text-decoration: none; transition: all .2s; display: inline-block; }
+    .btn-teal-outline:hover { background: var(--teal); color: var(--white); }
+
+    /* ─── ACCENT STRIP ───────────────────────────────────────── */
+    .accent-strip { height: 5px; background: linear-gradient(90deg, var(--red) 0%, var(--teal) 100%); }
+    /* ── INTAKE ── */
+    .intake-section { background: var(--white); padding: 64px 24px 56px; border-bottom: 1px solid #e8e8e8; }
+    .intake-inner { max-width: 860px; margin: 0 auto; }
+    .intake-header { text-align: center; margin-bottom: 40px; }
+    .intake-header h2 { font-family: var(--font-main); font-size: 30px; font-weight: 700; color: var(--black); margin-bottom: 10px; }
+    .intake-sub { font-family: var(--font-cond); font-size: 16px; color: var(--gray); margin-top: 8px; }
+    .intake-steps { min-height: 300px; }
+    @media (max-width: 640px) {
+      .goals-survey-card { padding: 28px 20px !important; }
+    }
+    .intake-step { display: none; animation: fadeIn .35s ease; }
+    .intake-step.active { display: block; }
+    .intake-step-label { font-family: var(--font-btn); font-size: 11px; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; color: var(--teal); margin-bottom: 14px; }
+    .intake-question { font-family: var(--font-main); font-size: 22px; font-weight: 700; color: var(--black); margin-bottom: 24px; }
+    .intake-options { display: flex; flex-wrap: wrap; gap: 12px; }
+    .intake-option { font-family: var(--font-cond); font-size: 15px; padding: 10px 20px; border-radius: 6px; border: 2px solid #d0d0d0; background: var(--white); color: var(--dark); cursor: pointer; transition: border-color .2s, background .2s, color .2s; }
+    .intake-option:hover { border-color: var(--red); color: var(--red); }
+    .intake-option.selected { border-color: var(--red); background: var(--red); color: var(--white); }
+    .intake-result-icon { font-size: 48px; color: var(--teal); text-align: center; margin-bottom: 16px; }
+    .intake-result-msg { font-family: var(--font-main); font-size: 20px; font-weight: 600; color: var(--black); text-align: center; margin-bottom: 28px; }
+    .intake-result-actions { display: flex; gap: 16px; justify-content: center; align-items: center; flex-wrap: wrap; }
+    .intake-restart { background: none; border: none; font-family: var(--font-cond); font-size: 14px; color: var(--gray); cursor: pointer; text-decoration: underline; }
+    .intake-restart:hover { color: var(--red); }
+    .intake-progress-wrap { height: 4px; background: #e8e8e8; border-radius: 2px; margin-top: 36px; }
+    .intake-progress-bar { height: 4px; background: linear-gradient(90deg, var(--red), var(--teal)); border-radius: 2px; width: 0%; transition: width .4s ease; }
+    .intake-skip { text-align: center; margin-top: 18px; }
+    .intake-skip a { font-family: var(--font-cond); font-size: 13px; color: #aaa; text-decoration: none; }
+    .intake-skip a:hover { color: var(--gray); }
+    .intake-option-dark { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.2); color: rgba(255,255,255,.85); }
+    .intake-option-dark:hover { border-color: var(--red); color: var(--white); background: rgba(213,23,30,.15); }
+    .intake-option-dark.selected { border-color: var(--red); background: var(--red); color: var(--white); }
+    /* Step content box — matches the usa-map-wrap visual container */
+    .step-content-box { width: 100%; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08); border-radius: 10px; padding: 24px; box-sizing: border-box; min-height: 260px; display: flex; flex-direction: column; justify-content: center; }
+
+    /* ─── PHILOSOPHY (light bg) ──────────────────────────────── */
+    .philosophy { background: var(--light-bg); padding: 80px 24px; }
+    .philosophy-inner { max-width: 1200px; margin: 0 auto; }
+    .philosophy-intro {
+      max-width: 720px; margin-bottom: 56px;
+    }
+    .section-label { font-family: var(--font-btn); font-size: 11px; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; color: var(--teal); margin-bottom: 12px; display: block; }
+    .philosophy-intro h2 {
+      font-family: var(--font-main); font-size: 34px; font-weight: 700;
+      color: var(--black); line-height: 1.2; margin-bottom: 20px;
+      border-left: 5px solid var(--red); padding-left: 18px;
+    }
+    .philosophy-p1 { font-family: var(--font-cond); font-size: 17px; color: var(--gray); line-height: 1.8; margin-bottom: 14px; }
+    .philosophy-p2 { font-family: var(--font-cond); font-size: 17px; color: var(--gray); line-height: 1.8; }
+    .philosophy-pillars { display: grid; grid-template-columns: repeat(3,1fr); gap: 24px; }
+    .pillar-card { background: var(--white); border-radius: 8px; overflow: hidden; box-shadow: 0 2px 14px rgba(0,0,0,.07); }
+    .pillar-photo { height: 200px; border-radius: 0; }
+    .photo-wrap { position: relative; display: block; overflow: hidden; }
+    .photo-wrap::after { content: ''; position: absolute; inset: 0; background: linear-gradient(135deg, rgba(213,23,30,0.35) 0%, rgba(10,10,10,0.15) 60%, transparent 100%); pointer-events: none; }
+    .photo-wrap-rounded { border-radius: 8px; }
+    .photo-wrap-rounded img { border-radius: 8px; }
+    .pillar-body { padding: 24px 22px; }
+    .pillar-badge { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 8px; margin-bottom: 14px; }
+    .pillar-badge.red  { background: var(--red); }
+    .pillar-badge.teal { background: var(--teal); }
+    .pillar-badge.dark { background: var(--black); }
+    .pillar-badge svg { width: 24px; height: 24px; fill: white; }
+    .pillar-body h4 { font-family: var(--font-main); font-size: 17px; font-weight: 700; color: var(--black); margin-bottom: 8px; }
+    .pillar-body p { font-family: var(--font-cond); font-size: 14px; color: var(--gray); line-height: 1.6; }
+    /* ─── INDUSTRIES (white bg, scrolling marquee) ─────────────── */
+    .industries-section { background: var(--white); padding: 64px 24px; overflow: hidden; }
+    .industries-inner { max-width: 1200px; margin: 0 auto; }
+    .industries-header { text-align: center; margin-bottom: 36px; }
+    .industries-header h2 { font-family: var(--font-main); font-size: 32px; font-weight: 700; color: var(--black); margin-bottom: 10px; display: inline-block; }
+    .industries-header p { font-family: var(--font-cond); font-size: 16px; color: var(--gray); max-width: 860px; margin: 0 auto; line-height: 1.65; }
+    .industries-marquee-wrap { overflow: hidden; position: relative; }
+    .industries-marquee-wrap::before,
+    .industries-marquee-wrap::after {
+      content: ''; position: absolute; top: 0; bottom: 0; width: 80px; z-index: 2; pointer-events: none;
+    }
+    .industries-marquee-wrap::before { left: 0; background: linear-gradient(to right, var(--white), transparent); }
+    .industries-marquee-wrap::after  { right: 0; background: linear-gradient(to left, var(--white), transparent); }
+    .industries-marquee-track {
+      display: flex; gap: 0;
+      animation: marquee-scroll 48s linear infinite;
+      width: max-content;
+    }
+    .industries-marquee-track:hover { animation-play-state: paused; }
+    .industry-pill {
+      display: flex; align-items: center; gap: 10px;
+      padding: 14px 28px; border-right: 1px solid var(--silver);
+      white-space: nowrap;
+    }
+    .industry-pill-icon { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .industry-pill-icon svg { width: 20px; height: 20px; fill: var(--red); }
+    .industry-pill-name { font-family: var(--font-main); font-size: 16px; font-weight: 600; color: var(--black); }
+    @keyframes marquee-scroll {
+      0%   { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }   /* ─── SERVICES — two-column list (dark bg) ───────────────── */
+    .services-section { background: var(--dark-bg); padding: 80px 24px; }
+    .services-inner { max-width: 1200px; margin: 0 auto; }
+    .services-top { margin-bottom: 48px; }
+    .services-top .section-label-light { font-family: var(--font-btn); font-size: 11px; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; color: rgba(255,255,255,.45); margin-bottom: 10px; display: block; }
+    .services-top h2 { font-family: var(--font-main); font-size: 34px; font-weight: 700; color: var(--white); margin-bottom: 10px; }
+    .services-top p { font-family: var(--font-cond); font-size: 16px; color: rgba(255,255,255,.5); max-width: 560px; line-height: 1.65; }
+    .services-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 0 48px; }
+    .services-col-header {
+      font-family: var(--font-main); font-size: 15px; font-weight: 700;
+      color: var(--teal); letter-spacing: 0.3px;
+      padding-bottom: 14px; margin-bottom: 4px;
+      border-bottom: 2px solid rgba(19,195,189,.25);
+      font-style: italic;
+    }
+    .service-list-item {
+      display: flex; align-items: center;
+      font-family: var(--font-main); font-size: 17px; font-weight: 400;
+      color: rgba(255,255,255,.82); text-decoration: none;
+      padding: 16px 0; border-bottom: 1px solid rgba(255,255,255,.07);
+      transition: color .2s, padding-left .2s;
+      cursor: pointer;
+    }
+    .service-list-item:hover { color: var(--teal); padding-left: 6px; }
+    .service-list-item::before {
+      content: ''; display: inline-block; width: 6px; height: 6px;
+      border-radius: 50%; background: rgba(255,255,255,.2);
+      margin-right: 14px; min-width: 6px; transition: background .2s;
+    }
+    .service-list-item:hover::before { background: var(--teal); }
+    .services-cta-row { margin-top: 40px; }
+
+    /* ─── GOAL NAVIGATOR ─────────────────────────────────────── */
+    .goals-section { background: var(--dark-bg); padding: 0; border-top: 4px solid var(--red); position: relative; overflow: hidden; height: 100vh; display: flex; flex-direction: column; justify-content: center; box-sizing: border-box; }
+    .goals-section::before { content: ''; position: absolute; top: -80px; right: -80px; width: 400px; height: 400px; border-radius: 50%; background: radial-gradient(circle, rgba(213,23,30,.1) 0%, transparent 70%); pointer-events: none; }
+    .goals-section::after { content: ''; position: absolute; bottom: -60px; left: -60px; width: 300px; height: 300px; border-radius: 50%; background: radial-gradient(circle, rgba(213,23,30,.07) 0%, transparent 70%); pointer-events: none; }
+    .goals-inner { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: stretch; }
+    .goals-left {}
+    .goals-left .section-label-light { font-family: var(--font-btn); font-size: 11px; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; color: var(--teal); margin-bottom: 12px; display: block; }
+    .goals-left h2 { font-family: var(--font-main); font-size: 32px; font-weight: 700; color: var(--white); line-height: 1.2; margin-bottom: 16px; }
+    .goals-left p { font-family: var(--font-cond); font-size: 15px; color: rgba(255,255,255,.45); line-height: 1.7; }
+    .goals-right {}
+    .goals-heading {
+      font-family: var(--font-main); font-size: 16px; font-weight: 700;
+      color: var(--teal); font-style: italic; margin-bottom: 4px;
+      padding-bottom: 14px; border-bottom: 2px solid rgba(19,195,189,.2);
+    }
+    .goal-icon { width: 20px; height: 20px; min-width: 20px; fill: var(--teal); margin-right: 14px; opacity: 0.85; }
+    .goal-item {
+      display: flex; align-items: center; justify-content: space-between;
+      font-family: var(--font-main); font-size: 18px; font-weight: 400;
+      color: rgba(255,255,255,.8); text-decoration: none;
+      padding: 18px 0; border-bottom: 1px solid rgba(255,255,255,.07);
+      transition: color .2s; cursor: pointer;
+    }
+    .goal-item:hover { color: var(--white); }
+    .goal-item:hover .goal-arrow { color: var(--teal); }
+    .goal-arrow { font-size: 18px; color: rgba(255,255,255,.25); transition: color .2s; }
+
+    /* ─── PULSE OF TECHNOLOGY (light grey + teal top border) ─── */
+    .radar-section { background: var(--light-bg); padding: 80px 24px; border-top: 4px solid var(--teal); }
+    .radar-inner { max-width: 1200px; margin: 0 auto; }
+    .radar-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 36px; flex-wrap: wrap; gap: 16px; }
+    .radar-header-text .section-label { margin-bottom: 8px; }
+    .radar-header-text h2 { font-family: var(--font-main); font-size: 34px; font-weight: 700; color: var(--black); line-height: 1.2; margin-bottom: 8px; border-left: 5px solid var(--red); padding-left: 18px; }
+    .radar-header-text p { font-family: var(--font-cond); font-size: 16px; color: var(--gray); max-width: 480px; line-height: 1.6; }
+    .radar-view-all { font-family: var(--font-main); font-size: 14px; font-weight: 600; color: var(--teal); text-decoration: none; white-space: nowrap; }
+    .radar-view-all:hover { text-decoration: underline; }
+    .radar-cards { display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; }
+    .radar-card { background: var(--white); border: 1px solid #ddd; border-radius: 8px; overflow: hidden; transition: box-shadow .2s, transform .2s; }
+    .radar-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,.1); transform: translateY(-3px); }
+    .radar-card-tag { padding: 7px 16px; font-family: var(--font-btn); font-size: 11px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--white); }
+    .tag-urgent   { background: var(--red); }
+    .tag-growing  { background: var(--teal); }
+    .tag-emerging { background: var(--gray); }
+    .radar-card-body { padding: 22px; }
+    .radar-card-body h4 { font-family: var(--font-main); font-size: 17px; font-weight: 700; color: var(--black); margin-bottom: 8px; }
+    .radar-card-body p { font-family: var(--font-cond); font-size: 14px; color: var(--gray); line-height: 1.6; }
+
+    /* ─── NEWSLETTER (dark teal-tinted) ─────────────────────── */
+    .newsletter-section {
+      background: var(--dark-bg);
+      padding: 80px 24px; position: relative; overflow: hidden;
+      border-top: 4px solid var(--red);
+    }
+    .newsletter-section::before { content: ''; position: absolute; top: -80px; right: -80px; width: 400px; height: 400px; border-radius: 50%; background: radial-gradient(circle, rgba(213,23,30,.1) 0%, transparent 70%); pointer-events: none; }
+    .newsletter-section::after { content: ''; position: absolute; bottom: -60px; left: -60px; width: 300px; height: 300px; border-radius: 50%; background: radial-gradient(circle, rgba(213,23,30,.07) 0%, transparent 70%); pointer-events: none; }
+    .newsletter-inner { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; position: relative; z-index: 1; }
+    .newsletter-badge { display: inline-block; background: rgba(19,195,189,.15); border: 1px solid rgba(19,195,189,.3); color: var(--teal); font-family: var(--font-btn); font-size: 11px; font-weight: 600; letter-spacing: 2.5px; text-transform: uppercase; padding: 5px 12px; border-radius: 20px; margin-bottom: 16px; }
+    .newsletter-copy h3 { font-family: var(--font-main); font-size: 30px; font-weight: 700; color: var(--white); line-height: 1.2; margin-bottom: 14px; }
+    .newsletter-copy h3 span { color: var(--red); }
+    .newsletter-copy p { font-family: var(--font-cond); font-size: 16px; color: rgba(255,255,255,.6); line-height: 1.65; margin-bottom: 20px; }
+    .newsletter-features { display: flex; flex-direction: column; gap: 10px; }
+    .newsletter-feature { display: flex; align-items: center; gap: 10px; font-family: var(--font-cond); font-size: 14px; color: rgba(255,255,255,.7); }
+    .newsletter-feature::before { content: ''; width: 8px; height: 8px; min-width: 8px; border-radius: 50%; background: var(--red); }
+    .newsletter-right { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 12px; padding: 36px 32px; }
+    .newsletter-right h4 { font-family: var(--font-main); font-size: 20px; font-weight: 700; color: var(--white); margin-bottom: 6px; }
+    .newsletter-right p { font-family: var(--font-cond); font-size: 14px; color: rgba(255,255,255,.5); margin-bottom: 24px; }
+    .newsletter-form { display: flex; flex-direction: column; gap: 12px; }
+    .newsletter-form input { font-family: var(--font-cond); font-size: 15px; padding: 13px 16px; border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.07); color: var(--white); border-radius: 6px; outline: none; transition: border-color .2s; }
+    .newsletter-form input:focus { border-color: var(--red); }
+    .newsletter-form input::placeholder { color: rgba(255,255,255,.35); }
+    .btn-teal-full { font-family: var(--font-btn); font-size: 15px; font-weight: 600; background: var(--red); color: var(--white); border: none; padding: 14px 20px; border-radius: 6px; cursor: pointer; text-decoration: none; text-align: center; transition: background .2s; display: block; }
+    .btn-teal-full:hover { background: var(--red-dark); }
+    .newsletter-disclaimer { font-family: var(--font-cond); font-size: 12px; color: rgba(255,255,255,.3); text-align: center; margin-top: 10px; }
+
+    /* ─── ENGAGE CTA ─────────────────────────────────────────── */
+    .engage-section { background: var(--dark-bg); padding: 90px 24px; border-top: 3px solid var(--red); position: relative; overflow: hidden; }
+    .engage-section::before { content:''; position:absolute; inset:0; background: radial-gradient(ellipse at 60% 50%, rgba(213,23,30,.12) 0%, transparent 70%); pointer-events:none; }
+    .engage-inner { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; position: relative; }
+    .engage-left .section-label-light { color: var(--teal); }
+    .engage-left h2 { font-family: var(--font-main); font-size: 42px; font-weight: 700; color: var(--white); margin: 14px 0 20px; line-height: 1.2; }
+    .engage-left p { font-family: var(--font-cond); font-size: 17px; color: rgba(255,255,255,.65); line-height: 1.75; margin-bottom: 36px; }
+    .engage-steps { display: flex; flex-direction: column; gap: 24px; }
+    .engage-step { display: flex; align-items: flex-start; gap: 18px; }
+    .engage-step-num { width: 36px; height: 36px; border-radius: 50%; background: var(--red); color: var(--white); font-family: var(--font-main); font-size: 14px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+    .engage-step-text strong { display: block; font-family: var(--font-main); font-size: 16px; font-weight: 600; color: var(--white); margin-bottom: 4px; }
+    .engage-step-text span { font-family: var(--font-cond); font-size: 15px; color: rgba(255,255,255,.55); line-height: 1.6; }
+    .engage-cta-card { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.1); border-radius: 12px; padding: 40px; text-align: center; }
+    .engage-cta-card h3 { font-family: var(--font-main); font-size: 26px; font-weight: 700; color: var(--white); margin-bottom: 14px; }
+    .engage-cta-card p { font-family: var(--font-cond); font-size: 16px; color: rgba(255,255,255,.55); line-height: 1.7; margin-bottom: 32px; }
+    .engage-cta-card .btn-primary { display: inline-block; margin-bottom: 14px; width: 100%; text-align: center; }
+    .engage-cta-card .btn-outline { display: inline-block; width: 100%; text-align: center; border: 1px solid rgba(255,255,255,.2); color: rgba(255,255,255,.6); padding: 13px 24px; border-radius: 4px; font-family: var(--font-btn); font-size: 13px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; text-decoration: none; transition: all .2s; }
+    .engage-cta-card .btn-outline:hover { border-color: var(--teal); color: var(--teal); }
+    .engage-cta-card .engage-note { font-family: var(--font-cond); font-size: 13px; color: rgba(255,255,255,.3); margin-top: 18px; }
+    /* ─── TESTIMONIALS (light bg) ────────────────────────────── */
+    .testimonials-section { background: var(--light-bg); padding: 80px 24px; }
+    .testimonials-inner { max-width: 1200px; margin: 0 auto; }
+    .testimonials-layout { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-top: 40px; }
+    .testimonial-card { background: var(--white); border-radius: 8px; padding: 30px 26px; border-top: 4px solid var(--teal); box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+    .testimonial-card.red-top { border-top-color: var(--red); }
+    .testimonial-card blockquote { font-family: var(--font-cond); font-size: 15px; color: var(--gray); line-height: 1.7; border: none; padding: 0; margin-bottom: 22px; }
+    .quote-mark { font-family: Georgia, serif; font-size: 52px; color: var(--teal); line-height: 0; vertical-align: -18px; margin-right: 4px; }
+    .red-top .quote-mark { color: var(--red); }
+    .testimonial-attr { font-family: var(--font-main); font-size: 14px; font-weight: 700; color: var(--black); }
+    .testimonial-attr span { display: block; font-weight: 400; color: var(--gray); font-size: 13px; margin-top: 3px; }
+    .testimonials-photo-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 40px; }
+    .testimonials-photo-row .photo-placeholder { height: 220px; }    /* ─── INSIGHTS ───────────────────────────────────────────── */
+    .insights-section { background: var(--white); padding: 80px 24px; border-top: 1px solid #e8e8e8; }
+    .insights-inner { max-width: 1200px; margin: 0 auto; }
+    .insights-header { text-align: center; margin-bottom: 28px; }
+    .insights-filter { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-bottom: 40px; }
+    .insights-filter-label { font-family: var(--font-cond); font-size: 13px; color: var(--gray); text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; margin-right: 6px; }
+    .filter-pill { font-family: var(--font-cond); font-size: 14px; font-weight: 600; padding: 8px 18px; border-radius: 100px; border: 1.5px solid #ddd; color: var(--gray-dark); background: var(--white); cursor: pointer; transition: all .2s; text-decoration: none; }
+    .filter-pill:hover { border-color: var(--red); color: var(--red); }
+    .filter-pill.active { background: var(--red); border-color: var(--red); color: var(--white); }
+    .insights-header-left h2 { font-family: var(--font-main); font-size: 32px; font-weight: 700; color: var(--black); margin-bottom: 6px; display: inline-block; }
+    .insights-header-left p { font-family: var(--font-cond); font-size: 15px; color: var(--gray); }
+    .insights-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 28px; }
+    .insight-card { background: var(--light-bg); border-radius: 8px; overflow: hidden; border: 1px solid #e0e0e0; display: flex; flex-direction: column; transition: border-color .2s, box-shadow .2s, transform .2s; }
+    .insight-card:hover { border-color: var(--teal); box-shadow: 0 6px 20px rgba(0,0,0,.08); transform: translateY(-2px); }
+    .insight-card-tag { font-family: var(--font-btn); font-size: 10px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; padding: 3px 10px; border-radius: 3px; display: inline-block; }
+    .tag-security { background: rgba(213,23,30,.1); color: var(--red); }
+    .tag-ai { background: rgba(19,195,189,.12); color: var(--teal-dark); }
+    .tag-compliance { background: rgba(100,100,100,.1); color: var(--gray); }
+    .tag-cloud { background: rgba(19,100,195,.1); color: #1464c3; }
+    .insight-card-body { padding: 22px 22px 18px; flex: 1; display: flex; flex-direction: column; }
+    .insight-card-body h4 { font-family: var(--font-main); font-size: 18px; font-weight: 700; color: var(--black); line-height: 1.35; margin: 10px 0 12px; flex: 1; }
+    .insight-card-body p { font-family: var(--font-cond); font-size: 14px; color: var(--gray); line-height: 1.65; margin-bottom: 22px; }
+    .insight-read-more { font-family: var(--font-btn); font-size: 12.5px; font-weight: 600; color: var(--red); text-decoration: none; display: inline-flex; align-items: center; gap: 5px; transition: gap .2s; }
+    .insight-read-more:hover { gap: 9px; }
+    .insights-cta-row { text-align: center; margin-top: 40px; }
+
+    /* ─── FOOTER ───────────────────────────────────────────────── */
+    footer { background: var(--dark-bg); color: rgba(255,255,255,.55); padding: 60px 24px 24px; }
+    .footer-inner { max-width: 1200px; margin: 0 auto; }
+    .footer-top { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 40px; margin-bottom: 40px; }
+    .footer-logo img { height: 40px; width: auto; filter: brightness(0) invert(1); margin-bottom: 16px; }
+    .footer-brand-desc { font-family: var(--font-cond); font-size: 14px; color: rgba(255,255,255,.45); line-height: 1.65; }
+    .footer-col h5 { font-family: var(--font-main); font-size: 12px; font-weight: 700; color: var(--white); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 14px; }
+    .footer-col a { display: block; font-family: var(--font-cond); font-size: 14px; color: rgba(255,255,255,.45); text-decoration: none; margin-bottom: 9px; transition: color .2s; }
+    .footer-col a:hover { color: var(--teal); }
+    .footer-bottom { border-top: 1px solid rgba(255,255,255,.08); padding-top: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+    .footer-bottom p { font-family: var(--font-cond); font-size: 13px; color: rgba(255,255,255,.3); }
+    .footer-bottom a { color: rgba(255,255,255,.3); text-decoration: none; }
+    .footer-bottom a:hover { color: var(--teal); }
+  
+    /* ─── USA MAP ────────────────────────────────────────────── */
+    .usa-map-wrap { width: 100%; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08); border-radius: 10px; padding: 0; box-sizing: border-box; overflow: hidden; }
+    #usa-map { width: 560px; max-width: 100%; height: auto; display: block; margin: 0 auto; }
+    .map-region { cursor: pointer; }
+    .state-path { fill: rgba(19,195,189,.12); stroke: rgba(19,195,189,.45); stroke-width: 0.7; transition: fill .2s, stroke .2s; }
+    .region-hit-area { cursor: pointer; }
+    #map-hover-label { display: none; }
+    .map-region:hover .state-path { fill: rgba(213,23,30,.45); stroke: var(--red); }
+    .map-region.selected .state-path { fill: var(--red); stroke: #a00; }
+    .map-region-label { font-family: var(--font-main); font-size: 18px; font-weight: 700; fill: rgba(255,255,255,.95); text-anchor: middle; pointer-events: none; text-shadow: 0 1px 4px rgba(0,0,0,.8); }
+    .map-region.selected .map-region-label { fill: var(--white); }
+    .map-sublabel { font-family: var(--font-cond); font-size: 13px; fill: rgba(255,255,255,.5); text-anchor: middle; pointer-events: none; }
+    /* ─── OTHER INPUT ────────────────────────────────────────── */
+    .intake-other-wrap { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .intake-other-input { font-family: var(--font-cond); font-size: 15px; padding: 10px 16px; border-radius: 6px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.08); color: var(--white); outline: none; flex: 1; min-width: 200px; transition: border-color .2s; }
+    .intake-other-input:focus { border-color: var(--red); }
+    .intake-other-input::placeholder { color: rgba(255,255,255,.3); }
+    .intake-other-submit { font-family: var(--font-btn); font-size: 13px; font-weight: 600; background: var(--red); color: var(--white); border: none; padding: 11px 20px; border-radius: 6px; cursor: pointer; transition: background .2s; white-space: nowrap; }
+    .intake-other-submit:hover { background: #a00; }
+    /* ─── TEXTAREA ───────────────────────────────────────────── */
+    #situation-input:focus { border-color: var(--red) !important; }
+    #situation-input::placeholder { color: rgba(255,255,255,.3); }
+
+  </style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═══════════════════════════════════════════════════ -->
+<header>
+  <div class="nav-inner">
+    <div class="logo-wrap">
+      <img src="pulseone_logo_official.png" alt="PulseOne – People | Technology | Progress" />
+    </div>
+    <nav>
+      <a href="#" class="nav-teal">Pulse of Technology <span class="nav-arrow">&#9660;</span></a>
+      <a href="#">Our Approach</a>
+      <a href="#">Assessments</a>
+      <a href="#" class="nav-login">Client Login</a>
+      <a href="#" class="nav-cta">Let's Talk</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ═══ HERO ══════════════════════════════════════════════════════ -->
+<section class="hero">
+  <div class="hero-overlay"></div>
+  <div class="hero-layout">
+    <div class="hero-eyebrow">The Pulse of Technology</div>
+    <h1>
+      <span class="hero-static">Find where your organization</span><br><span class="hero-static">stands in </span><span class="hero-cycling" id="hero-cycling">Cybersecurity</span><span class="hero-static">.</span>
+    </h1>
+    <p class="hero-sub">PulseOne helps business leaders navigate technology change with clarity, confidence, and the operational depth to act on it.</p>
+    <div class="hero-ctas">
+      <a href="#" class="btn-primary">View Our Executive Assessments</a>
+      <a href="#" class="btn-outline">Talk with an Expert</a>
+    </div>
+  </div>
+</section>
+<div class="accent-strip"></div>
+
+<!-- ═══ PHILOSOPHY ════════════════════════════════════════════════ -->
+<section class="philosophy">
+  <div class="philosophy-inner">
+    <div class="philosophy-intro">
+      <span class="section-label">Why PulseOne?</span>
+      <h2>A People-First Philosophy</h2>
+      <p class="philosophy-p1">For over 20 years, PulseOne has operated across various industries on a simple belief: technology is only as powerful as the relationships built around it. Our customer service begins with listening to your wants, needs, and challenges.</p>
+    </div>
+    <div class="philosophy-pillars">
+      <div class="pillar-card">
+        <div class="photo-wrap"><img src="images/people_team.jpg" alt="People collaborating" class="pillar-photo" style="width:100%; height:200px; object-fit:cover; display:block;" /></div>
+        <div class="pillar-body">
+          <div class="pillar-badge red"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></div>
+          <h4>People</h4>
+          <p>Every technology decision starts and ends with the people it serves. We work closely with your team to ensure you're getting the partnership you need.</p>
+        </div>
+      </div>
+      <div class="pillar-card">
+        <div class="photo-wrap"><img src="images/technology_server.jpg" alt="Technology infrastructure" class="pillar-photo" style="width:100%; height:200px; object-fit:cover; display:block;" /></div>
+        <div class="pillar-body">
+          <div class="pillar-badge teal"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/></svg></div>
+          <h4>Technology</h4>
+          <p>We view technology as a strategic ally. We monitor, interpret, and manage the technology landscape so you can act with confidence.</p>
+        </div>
+      </div>
+      <div class="pillar-card">
+        <div class="photo-wrap"><img src="images/progress_handshake.jpg" alt="Business progress and partnership" class="pillar-photo" style="width:100%; height:200px; object-fit:cover; display:block;" /></div>
+        <div class="pillar-body">
+          <div class="pillar-badge dark"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M13 2.05V4.05C17.39 4.59 20.5 8.58 19.96 12.97C19.5 16.61 16.64 19.5 13 19.93V21.93C18.5 21.38 22.5 16.5 21.95 11C21.5 6.25 17.73 2.5 13 2.05M11 2.06C9.05 2.25 7.19 3 5.67 4.26L7.1 5.74C8.22 4.84 9.57 4.26 11 4.06V2.06M4.26 5.67C3 7.19 2.25 9.04 2.05 11H4.05C4.24 9.58 4.8 8.23 5.69 7.1L4.26 5.67M2.06 13C2.26 14.96 3.03 16.81 4.27 18.33L5.69 16.9C4.81 15.77 4.24 14.42 4.06 13H2.06M7.1 18.37L5.67 19.74C7.18 21 9.04 21.79 11 22V20C9.58 19.82 8.23 19.25 7.1 18.37M12 7L8 11H11V17H13V11H16L12 7Z"/></svg></div>
+          <h4>Progress</h4>
+          <p>At PulseOne, we harness the power of technology to accelerate your business growth, making measurable advancements along each step of the way.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ INDUSTRIES ════════════════════════════════════════════════ -->
+<section class="industries-section">
+  <div class="industries-inner">
+    <div class="industries-header">
+      <span class="section-label" style="display:block; text-align:center;">Who We Serve</span>
+      <h2>Built for Your Industry</h2>
+      <p>With a team that has seen everything from manufacturing and legal to healthcare, insurance, and nonprofits, our rich tapestry of experiences allows us to combine the best technologies to meet your needs.</p>
+    </div>
+  </div>
+  <div class="industries-marquee-wrap">
+    <div class="industries-marquee-track" id="marquee-track">
+      <div class="industry-pill"><span class="industry-pill-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm-7 3a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm6 13H6v-.5c0-2.5 3.6-4.5 6-4.5s6 2 6 4.5V19z"/></svg></span><span class="industry-pill-name">Healthcare</span></div>
+      <div class="industry-pill"><span class="industry-pill-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 3L1 9l4 2.18V17h2v-4.82L12 14l7-3.82V17h2v-5.82L23 9 12 3zm0 2.27L19.32 9 12 12.73 4.68 9 12 5.27zM5 19v2h14v-2H5z"/></svg></span><span class="industry-pill-name">Legal</span></div>
+      <div class="industry-pill"><span class="industry-pill-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/></svg></span><span class="industry-pill-name">Manufacturing</span></div>
+      <div class="industry-pill"><span class="industry-pill-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg></span><span class="industry-pill-name">Financial Services</span></div>
+      <div class="industry-pill"><span class="industry-pill-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82zM12 3L1 9l11 6 9-4.91V17h2V9L12 3z"/></svg></span><span class="industry-pill-name">Education</span></div>
+      <div class="industry-pill"><span class="industry-pill-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></span><span class="industry-pill-name">Nonprofits</span></div>
+      <div class="industry-pill"><span class="industry-pill-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M13 2.05V4.07c3.39.49 6 3.39 6 6.93 0 2.65-1.35 4.98-3.38 6.38L14 16v5h5l-1.22-1.22C19.91 18.07 22 15.14 22 11.7 22 6.81 18.05 2.82 13 2.05zM11 2.05C5.95 2.82 2 6.81 2 11.7c0 3.44 2.09 6.37 5.22 8.08L6 21h5v-5l-1.62 1.38C8.35 16.18 7 13.85 7 11.2c0-3.54 2.61-6.44 6-6.93V2.05z"/></svg></span><span class="industry-pill-name">Construction &amp; Real Estate</span></div>
+      <div class="industry-pill"><span class="industry-pill-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 6h-2.18c.07-.44.18-.88.18-1.34C18 2.54 15.96.5 13.5.5c-1.32 0-2.5.56-3.36 1.46L9 3.09 7.86 1.96C7 1.06 5.82.5 4.5.5 2.04.5 0 2.54 0 5c0 .46.11.9.18 1.34H0v2h.5L3 20h18l2.5-12H24V6h-4zm-6.5-3.5c.83 0 1.5.67 1.5 1.5S14.33 5.5 13.5 5.5 12 4.83 12 4s.67-.5 1.5-.5zM4.5 2c.83 0 1.5.67 1.5 1.5S5.33 5 4.5 5 3 4.33 3 3.5 3.67 2 4.5 2zM5 18l-1-8h16l-1 8H5z"/></svg></span><span class="industry-pill-name">Professional Services</span></div>
+      <div class="industry-pill"><span class="industry-pill-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span><span class="industry-pill-name">Government &amp; Public Sector</span></div>
+      <div class="industry-pill"><span class="industry-pill-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19.8 18.4L14 10.67V6.5l1.35-1.69c.26-.33.03-.81-.39-.81H9.04c-.42 0-.65.48-.39.81L10 6.5v4.17L4.2 18.4c-.49.66-.02 1.6.8 1.6h14c.82 0 1.29-.94.8-1.6z"/></svg></span><span class="industry-pill-name">Life Sciences</span></div>
+      <!-- duplicate set for seamless loop -->
+      <div class="industry-pill"><span class="industry-pill-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm-7 3a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm6 13H6v-.5c0-2.5 3.6-4.5 6-4.5s6 2 6 4.5V19z"/></svg></span><span class="industry-pill-name">Healthcare</span></div>
+      <div class="industry-pill"><span class="industry-pill-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 3L1 9l4 2.18V17h2v-4.82L12 14l7-3.82V17h2v-5.82L23 9 12 3zm0 2.27L19.32 9 12 12.73 4.68 9 12 5.27zM5 19v2h14v-2H5z"/></svg></span><span class="industry-pill-name">Legal</span></div>
+      <div class="industry-pill"><span class="industry-pill-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/></svg></span><span class="industry-pill-name">Manufacturing</span></div>
+      <div class="industry-pill"><span class="industry-pill-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg></span><span class="industry-pill-name">Financial Services</span></div>
+      <div class="industry-pill"><span class="industry-pill-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82zM12 3L1 9l11 6 9-4.91V17h2V9L12 3z"/></svg></span><span class="industry-pill-name">Education</span></div>
+      <div class="industry-pill"><span class="industry-pill-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></span><span class="industry-pill-name">Nonprofits</span></div>
+      <div class="industry-pill"><span class="industry-pill-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M13 2.05V4.07c3.39.49 6 3.39 6 6.93 0 2.65-1.35 4.98-3.38 6.38L14 16v5h5l-1.22-1.22C19.91 18.07 22 15.14 22 11.7 22 6.81 18.05 2.82 13 2.05zM11 2.05C5.95 2.82 2 6.81 2 11.7c0 3.44 2.09 6.37 5.22 8.08L6 21h5v-5l-1.62 1.38C8.35 16.18 7 13.85 7 11.2c0-3.54 2.61-6.44 6-6.93V2.05z"/></svg></span><span class="industry-pill-name">Construction &amp; Real Estate</span></div>
+      <div class="industry-pill"><span class="industry-pill-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 6h-2.18c.07-.44.18-.88.18-1.34C18 2.54 15.96.5 13.5.5c-1.32 0-2.5.56-3.36 1.46L9 3.09 7.86 1.96C7 1.06 5.82.5 4.5.5 2.04.5 0 2.54 0 5c0 .46.11.9.18 1.34H0v2h.5L3 20h18l2.5-12H24V6h-4zm-6.5-3.5c.83 0 1.5.67 1.5 1.5S14.33 5.5 13.5 5.5 12 4.83 12 4s.67-.5 1.5-.5zM4.5 2c.83 0 1.5.67 1.5 1.5S5.33 5 4.5 5 3 4.33 3 5 3.67 2 4.5 2zM5 18l-1-8h16l-1 8H5z"/></svg></span><span class="industry-pill-name">Professional Services</span></div>
+      <div class="industry-pill"><span class="industry-pill-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span><span class="industry-pill-name">Government &amp; Public Sector</span></div>
+      <div class="industry-pill"><span class="industry-pill-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19.8 18.4L14 10.67V6.5l1.35-1.69c.26-.33.03-.81-.39-.81H9.04c-.42 0-.65.48-.39.81L10 6.5v4.17L4.2 18.4c-.49.66-.02 1.6.8 1.6h14c.82 0 1.29-.94.8-1.6z"/></svg></span><span class="industry-pill-name">Life Sciences</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ HOW CAN WE HELP ════════════════════════════════════════════ -->
+<section class="goals-section" id="how-can-we-help">
+  <!-- ── MAP STEP: full-width, shown first ─────────────────────────── -->
+  <div id="survey-map-panel" style="max-width:860px; margin:0 auto; padding:20px 24px 12px; width:100%; position:relative; z-index:1;">
+    <div style="text-align:center; margin-bottom:16px;">
+      <span class="section-label-light" style="color:var(--teal); display:block; margin-bottom:12px;">How Can We Help?</span>
+      <h2 style="color:var(--white); font-family:var(--font-main); font-size:32px; font-weight:700; line-height:1.2; margin-bottom:10px;">It starts with where you are.</h2>
+      <p style="color:rgba(255,255,255,.55); font-family:var(--font-cond); font-size:16px; line-height:1.65; white-space:nowrap; margin:0 auto;">Click your region on the map below and we'll tailor everything to your location and situation.</p>
+    </div>
+    <div class="intake-steps" id="intake-steps-map">
+      <div class="intake-step active" id="step-0">
+          <!-- SVG USA Map -->
+          <div class="usa-map-wrap">
+            <svg id="usa-map" viewBox="0 0 960 600" xmlns="http://www.w3.org/2000/svg" aria-label="USA map — click a region">
+  <g class="map-region" data-region="West" id="region-west" role="button" tabindex="0" aria-label="West region">
+    <path d="M 104.0 171.4 L 115.5 171.3 L 133.7 171.6 L 147.8 171.6 L 147.8 202.2 L 147.8 224.6 L 165.2 240.5 L 181.7 256.1 L 194.7 268.8 L 204.1 278.2 L 220.5 295.4 L 220.5 297.6 L 222.8 300.5 L 224.6 305.2 L 227.3 307.7 L 225.7 310.0 L 223.5 311.2 L 221.9 314.3 L 222.4 318.4 L 222.0 321.0 L 219.3 323.6 L 220.2 330.2 L 222.0 330.2 L 222.8 333.5 L 222.0 335.1 L 219.4 335.8 L 201.4 337.4 L 186.8 339.0 L 185.1 336.6 L 185.1 333.0 L 184.0 328.6 L 182.1 325.5 L 177.8 321.2 L 172.4 317.3 L 171.4 318.3 L 169.3 317.7 L 169.6 315.9 L 167.2 312.3 L 164.0 313.1 L 158.4 310.5 L 157.6 308.3 L 153.8 305.7 L 149.5 305.8 L 145.9 304.7 L 141.4 305.2 L 139.0 302.8 L 139.5 297.9 L 138.7 297.1 L 139.2 293.6 L 135.7 291.0 L 135.5 287.4 L 134.2 287.2 L 132.0 284.1 L 130.4 283.4 L 129.7 281.5 L 124.5 274.2 L 122.1 272.1 L 121.6 266.4 L 122.6 266.9 L 123.6 263.5 L 121.6 260.4 L 119.3 260.8 L 116.1 258.0 L 115.0 255.7 L 115.2 253.6 L 113.7 250.8 L 113.7 246.1 L 116.2 246.1 L 115.2 239.6 L 114.1 240.3 L 113.8 243.5 L 111.2 244.2 L 108.0 241.8 L 107.4 237.6 L 105.4 234.3 L 102.6 232.3 L 101.1 230.0 L 97.1 225.4 L 97.8 224.0 L 95.9 218.1 L 96.8 214.8 L 95.6 209.9 L 92.1 205.1 L 88.7 202.3 L 88.0 199.1 L 91.4 191.4 L 92.1 188.8 L 91.4 186.7 L 92.7 181.4 L 91.6 176.6 L 90.1 175.4 L 90.7 171.5 L 104.0 171.4 Z" class="state-path"/>
+    <path d="M 311.6 189.2 L 341.3 189.3 L 364.0 189.2 L 391.1 189.2 L 391.1 206.9 L 391.3 260.1 L 378.3 260.0 L 360.2 260.1 L 325.9 260.1 L 318.4 260.0 L 296.4 260.0 L 296.4 239.4 L 296.2 237.4 L 296.2 222.4 L 296.3 189.3 L 311.6 189.2 Z" class="state-path"/>
+    <path d="M 201.4 47.7 L 201.4 65.8 L 205.8 70.8 L 205.8 75.6 L 208.4 77.7 L 211.2 78.5 L 211.5 79.8 L 216.5 84.5 L 217.1 86.4 L 220.7 88.3 L 220.8 89.5 L 224.8 89.4 L 222.9 95.9 L 222.5 100.1 L 223.9 102.8 L 221.4 104.8 L 222.4 106.6 L 221.7 108.5 L 224.6 110.4 L 228.0 108.0 L 229.3 106.0 L 231.8 107.8 L 231.4 109.2 L 232.7 112.6 L 235.0 116.2 L 236.6 117.5 L 236.5 120.8 L 238.1 122.3 L 240.9 122.5 L 242.7 128.2 L 244.2 129.2 L 245.7 127.5 L 249.9 127.6 L 253.0 126.1 L 254.9 127.0 L 258.1 126.2 L 258.7 127.1 L 261.5 126.5 L 264.6 122.8 L 266.7 125.9 L 269.2 127.7 L 269.2 171.5 L 254.0 171.6 L 228.6 171.6 L 188.1 171.5 L 188.1 139.2 L 189.9 133.3 L 188.8 131.9 L 186.2 131.6 L 185.2 129.2 L 187.9 122.9 L 189.4 122.3 L 190.8 119.7 L 190.5 118.0 L 192.1 115.9 L 192.9 112.8 L 195.7 107.6 L 194.6 105.1 L 191.4 103.9 L 189.6 100.9 L 189.5 97.8 L 187.7 94.7 L 187.9 93.2 L 187.9 69.6 L 188.0 47.7 L 201.4 47.7 Z" class="state-path"/>
+    <path d="M 364.1 47.7 L 364.2 67.8 L 364.1 101.8 L 364.2 118.5 L 364.0 118.5 L 338.8 118.4 L 295.9 118.4 L 269.1 118.4 L 269.2 127.7 L 266.7 125.9 L 264.6 122.8 L 261.5 126.5 L 258.7 127.1 L 258.1 126.2 L 254.9 127.0 L 253.0 126.1 L 249.9 127.6 L 245.7 127.5 L 244.2 129.2 L 242.7 128.2 L 240.9 122.5 L 238.1 122.3 L 236.5 120.8 L 236.6 117.5 L 235.0 116.2 L 232.7 112.6 L 231.4 109.2 L 231.8 107.8 L 229.3 106.0 L 228.0 108.0 L 224.6 110.4 L 221.7 108.5 L 222.4 106.6 L 221.4 104.8 L 223.9 102.8 L 222.5 100.1 L 222.9 95.9 L 224.8 89.4 L 220.8 89.5 L 220.7 88.3 L 217.1 86.4 L 216.5 84.5 L 211.5 79.8 L 211.2 78.5 L 208.4 77.7 L 205.8 75.6 L 205.8 70.8 L 201.4 65.8 L 201.4 47.7 L 263.0 47.8 L 290.8 47.7 L 364.1 47.7 Z" class="state-path"/>
+    <path d="M 188.1 171.5 L 228.6 171.6 L 228.5 260.0 L 228.5 274.2 L 227.1 277.2 L 225.7 277.3 L 224.1 275.2 L 219.1 275.9 L 220.0 286.3 L 221.1 289.6 L 221.4 292.9 L 220.5 295.4 L 204.1 278.2 L 194.7 268.8 L 181.7 256.1 L 165.2 240.5 L 147.8 224.6 L 147.8 202.2 L 147.8 171.6 L 165.4 171.7 L 188.1 171.5 Z" class="state-path"/>
+    <path d="M 104.3 97.7 L 105.5 97.5 L 108.4 99.3 L 109.7 101.5 L 110.3 106.8 L 117.3 108.7 L 123.3 105.9 L 127.0 105.6 L 131.3 106.6 L 131.7 107.8 L 139.2 105.2 L 140.9 106.1 L 144.9 105.6 L 148.3 103.9 L 154.2 102.3 L 159.7 102.0 L 161.5 100.8 L 189.6 100.9 L 191.4 103.9 L 194.6 105.1 L 195.7 107.6 L 192.9 112.8 L 192.1 115.9 L 190.5 118.0 L 190.8 119.7 L 189.4 122.3 L 187.9 122.9 L 185.2 129.2 L 186.2 131.6 L 188.8 131.9 L 189.9 133.3 L 188.1 139.2 L 188.1 171.5 L 165.4 171.7 L 147.8 171.6 L 133.7 171.6 L 115.5 171.3 L 104.0 171.4 L 90.7 171.5 L 88.7 169.5 L 87.7 163.8 L 87.9 159.8 L 86.1 156.7 L 87.4 153.8 L 88.4 149.0 L 90.4 144.0 L 91.3 139.5 L 92.7 124.5 L 92.5 122.5 L 93.9 115.9 L 94.4 106.8 L 93.6 101.8 L 94.3 98.8 L 99.7 96.1 L 102.1 98.2 L 104.3 97.7 Z" class="state-path"/>
+    <path d="M 254.0 171.6 L 269.2 171.5 L 269.2 189.3 L 296.3 189.3 L 296.2 222.4 L 296.2 237.4 L 296.4 239.4 L 296.4 260.0 L 276.6 259.9 L 228.5 260.0 L 228.6 171.6 L 254.0 171.6 Z" class="state-path"/>
+    <path d="M 188.0 47.7 L 187.9 69.6 L 187.9 93.2 L 187.7 94.7 L 189.5 97.8 L 189.6 100.9 L 161.5 100.8 L 159.7 102.0 L 154.2 102.3 L 148.3 103.9 L 144.9 105.6 L 140.9 106.1 L 139.2 105.2 L 131.7 107.8 L 131.3 106.6 L 127.0 105.6 L 123.3 105.9 L 117.3 108.7 L 110.3 106.8 L 109.7 101.5 L 108.4 99.3 L 105.5 97.5 L 104.3 97.7 L 102.1 98.2 L 99.7 96.1 L 97.3 95.5 L 95.3 96.5 L 92.7 95.0 L 93.2 92.6 L 95.0 91.3 L 92.2 87.6 L 90.4 78.0 L 89.3 76.8 L 87.8 70.0 L 85.1 67.4 L 84.0 62.1 L 85.5 58.6 L 88.2 60.3 L 93.8 62.5 L 97.6 62.4 L 101.4 63.3 L 104.9 62.4 L 106.6 64.0 L 109.8 63.9 L 112.1 67.7 L 113.7 67.5 L 114.0 72.7 L 114.9 77.4 L 116.3 77.0 L 114.9 72.9 L 115.3 68.9 L 117.5 64.8 L 115.8 63.2 L 115.6 60.3 L 114.3 57.1 L 114.9 54.8 L 114.1 52.0 L 111.9 51.7 L 109.9 49.6 L 110.4 47.7 L 188.0 47.7 Z" class="state-path"/>
+    <path d="M 110.9 59.9 L 112.7 59.1 L 112.4 62.7 L 110.3 61.4 L 110.9 59.9 Z" class="state-path"/>
+    <path d="M 106.8 55.1 L 108.3 52.7 L 110.3 55.5 L 109.7 58.0 L 106.6 57.3 L 106.8 55.1 Z" class="state-path"/>
+    <path d="M 295.9 118.4 L 338.8 118.4 L 364.0 118.5 L 364.0 153.8 L 364.0 189.2 L 341.3 189.3 L 311.6 189.2 L 296.3 189.3 L 269.2 189.3 L 269.2 171.5 L 269.2 127.7 L 269.1 118.4 L 295.9 118.4 Z" class="state-path"/>
+    <rect x="80" y="44" width="315" height="299" fill="transparent" class="region-hit-area"/>
+    <text x="175" y="290" class="map-region-label">West</text>
+  </g>
+  <g class="map-region" data-region="Southwest" id="region-southwest" role="button" tabindex="0" aria-label="Southwest region">
+    <path d="M 296.4 260.0 L 296.3 360.3 L 268.8 360.3 L 252.9 353.7 L 218.1 339.7 L 219.4 335.8 L 222.0 335.1 L 222.8 333.5 L 222.0 330.2 L 220.2 330.2 L 219.3 323.6 L 222.0 321.0 L 222.4 318.4 L 221.9 314.3 L 223.5 311.2 L 225.7 310.0 L 227.3 307.7 L 224.6 305.2 L 222.8 300.5 L 220.5 297.6 L 220.5 295.4 L 221.4 292.9 L 221.1 289.6 L 220.0 286.3 L 219.1 275.9 L 224.1 275.2 L 225.7 277.3 L 227.1 277.2 L 228.5 274.2 L 228.5 260.0 L 276.6 259.9 L 296.4 260.0 Z" class="state-path"/>
+    <path d="M 318.4 260.0 L 325.9 260.1 L 360.2 260.1 L 378.3 260.0 L 378.3 268.8 L 377.8 268.8 L 377.7 312.8 L 377.4 330.7 L 377.4 348.5 L 329.3 348.5 L 328.9 350.2 L 330.5 352.2 L 307.7 352.2 L 307.7 360.3 L 296.3 360.3 L 296.4 260.0 L 318.4 260.0 Z" class="state-path"/>
+    <path d="M 417.8 260.0 L 492.0 260.0 L 492.0 268.8 L 494.5 288.4 L 493.8 319.5 L 488.6 317.6 L 487.2 315.5 L 483.7 313.8 L 482.8 315.3 L 479.4 315.2 L 478.6 314.3 L 475.4 316.0 L 474.1 315.0 L 471.2 315.9 L 468.5 318.6 L 467.5 317.1 L 464.7 315.8 L 461.7 315.8 L 460.7 313.8 L 457.3 317.7 L 456.2 315.5 L 454.6 316.2 L 453.4 314.7 L 450.2 313.4 L 447.9 315.7 L 446.8 313.3 L 444.9 313.0 L 443.8 311.1 L 441.2 310.3 L 439.5 311.9 L 438.4 310.5 L 435.7 310.7 L 432.7 309.1 L 430.0 309.3 L 429.0 305.9 L 424.7 305.7 L 423.1 306.3 L 420.0 302.9 L 419.0 303.1 L 419.0 268.8 L 394.4 268.8 L 378.3 268.8 L 378.3 260.0 L 391.3 260.1 L 417.8 260.0 Z" class="state-path"/>
+    <path d="M 394.4 268.8 L 419.0 268.8 L 419.0 303.1 L 420.0 302.9 L 423.1 306.3 L 424.7 305.7 L 429.0 305.9 L 430.0 309.3 L 432.7 309.1 L 435.7 310.7 L 438.4 310.5 L 439.5 311.9 L 441.2 310.3 L 443.8 311.1 L 444.9 313.0 L 446.8 313.3 L 447.9 315.7 L 450.2 313.4 L 453.4 314.7 L 454.6 316.2 L 456.2 315.5 L 457.3 317.7 L 460.7 313.8 L 461.7 315.8 L 464.7 315.8 L 467.5 317.1 L 468.5 318.6 L 471.2 315.9 L 474.1 315.0 L 475.4 316.0 L 478.6 314.3 L 479.4 315.2 L 482.8 315.3 L 483.7 313.8 L 487.2 315.5 L 488.6 317.6 L 493.8 319.5 L 495.2 321.1 L 497.8 320.3 L 499.8 321.0 L 499.8 330.4 L 499.8 348.6 L 502.8 352.4 L 502.8 356.3 L 506.5 363.5 L 506.8 367.3 L 505.4 371.8 L 504.0 373.7 L 504.5 376.1 L 503.5 377.9 L 504.5 381.3 L 501.3 387.6 L 502.5 389.4 L 500.3 389.5 L 493.2 391.9 L 490.7 390.5 L 490.3 387.6 L 488.5 389.6 L 487.2 389.2 L 486.6 391.7 L 488.0 392.7 L 488.2 396.0 L 485.7 399.5 L 481.6 403.9 L 473.4 408.5 L 472.6 407.8 L 470.1 408.9 L 470.1 407.9 L 466.7 408.6 L 465.2 406.4 L 464.2 406.9 L 467.8 411.4 L 465.2 412.9 L 462.7 412.0 L 462.4 415.2 L 459.3 418.5 L 456.2 424.6 L 454.2 431.0 L 452.7 430.5 L 452.3 432.9 L 453.9 432.3 L 453.1 436.9 L 452.1 437.1 L 452.0 439.7 L 453.3 441.2 L 453.7 446.5 L 455.1 448.4 L 455.5 451.8 L 456.7 454.8 L 452.5 456.6 L 450.8 454.3 L 447.6 453.4 L 443.4 453.6 L 439.8 450.7 L 437.0 450.4 L 434.9 448.1 L 432.1 447.3 L 430.2 445.1 L 428.9 439.7 L 426.5 436.5 L 426.8 433.8 L 425.7 430.9 L 426.0 428.4 L 424.3 425.6 L 422.9 425.3 L 420.6 422.8 L 419.9 419.6 L 417.9 416.7 L 415.0 414.3 L 413.6 408.9 L 412.2 407.5 L 410.4 403.2 L 409.8 399.7 L 408.1 397.2 L 405.2 395.0 L 404.6 393.4 L 401.9 392.1 L 399.8 388.2 L 393.9 387.3 L 390.3 387.5 L 387.3 386.2 L 386.6 388.0 L 383.3 388.6 L 380.9 392.3 L 379.4 398.2 L 378.6 398.3 L 376.7 401.8 L 374.5 401.9 L 371.2 399.1 L 362.8 394.8 L 361.1 392.5 L 357.9 390.2 L 355.6 385.2 L 355.4 380.6 L 353.1 377.0 L 352.6 373.8 L 351.1 371.7 L 345.8 368.7 L 343.0 364.6 L 340.7 363.2 L 338.3 359.7 L 334.8 357.9 L 332.5 353.2 L 330.5 352.2 L 328.9 350.2 L 329.3 348.5 L 377.4 348.5 L 377.4 330.7 L 377.7 312.8 L 377.8 268.8 L 378.3 268.8 L 394.4 268.8 Z" class="state-path"/>
+    <rect x="214" y="256" width="297" height="205" fill="transparent" class="region-hit-area"/>
+    <text x="310" y="400" class="map-region-label">Southwest</text>
+  </g>
+  <g class="map-region" data-region="Midwest" id="region-midwest" role="button" tabindex="0" aria-label="Midwest region">
+    <path d="M 545.9 162.5 L 571.0 162.8 L 584.4 162.8 L 583.9 166.2 L 586.0 170.2 L 588.2 176.7 L 588.1 218.4 L 586.6 221.6 L 588.3 225.4 L 588.5 228.5 L 586.8 231.0 L 586.4 233.3 L 583.9 237.1 L 582.4 237.4 L 582.7 239.6 L 581.7 240.5 L 580.9 244.7 L 581.3 245.8 L 579.5 248.4 L 580.8 251.5 L 575.2 253.1 L 574.7 255.0 L 576.0 257.3 L 574.3 258.7 L 569.3 256.0 L 567.7 256.2 L 565.7 259.3 L 566.3 260.3 L 564.2 260.1 L 561.1 255.1 L 562.2 253.9 L 561.1 250.5 L 561.1 247.8 L 556.7 244.0 L 555.3 244.4 L 553.8 242.1 L 549.8 238.5 L 549.8 235.7 L 552.1 231.1 L 551.8 229.5 L 553.1 227.3 L 551.2 226.1 L 548.2 225.3 L 546.6 227.0 L 545.6 225.9 L 544.7 220.1 L 540.2 216.3 L 536.0 211.7 L 534.3 206.3 L 534.2 202.7 L 535.4 200.2 L 535.6 197.0 L 539.4 195.1 L 539.7 192.4 L 541.5 190.6 L 541.7 187.5 L 539.5 185.0 L 540.4 181.9 L 545.7 181.0 L 549.9 178.8 L 550.4 176.1 L 552.1 174.9 L 552.7 171.5 L 552.3 169.3 L 549.2 167.6 L 548.9 165.7 L 545.9 162.5 Z" class="state-path"/>
+    <path d="M 608.9 175.8 L 625.0 175.8 L 625.0 177.0 L 625.1 198.1 L 624.8 222.8 L 623.8 223.6 L 624.9 228.4 L 622.5 228.5 L 620.0 230.2 L 616.5 229.4 L 616.7 232.9 L 614.4 234.3 L 613.5 236.5 L 611.1 237.4 L 609.8 241.9 L 608.3 243.0 L 605.2 241.4 L 604.7 239.4 L 601.7 241.6 L 602.0 243.5 L 598.9 244.2 L 598.0 242.5 L 594.6 244.2 L 593.5 246.0 L 590.1 243.4 L 588.3 244.0 L 587.1 242.7 L 586.0 244.0 L 582.6 244.2 L 581.3 245.8 L 580.9 244.7 L 581.7 240.5 L 582.7 239.6 L 582.4 237.4 L 583.9 237.1 L 586.4 233.3 L 586.8 231.0 L 588.5 228.5 L 588.3 225.4 L 586.6 221.6 L 588.1 218.4 L 588.2 176.7 L 589.5 177.8 L 593.7 177.8 L 597.7 175.8 L 608.9 175.8 Z" class="state-path"/>
+    <path d="M 536.0 145.0 L 538.1 145.0 L 538.2 147.6 L 540.3 149.3 L 538.6 151.5 L 539.1 155.4 L 540.1 158.3 L 544.9 160.3 L 545.9 162.5 L 548.9 165.7 L 549.2 167.6 L 552.3 169.3 L 552.7 171.5 L 552.1 174.9 L 550.4 176.1 L 549.9 178.8 L 545.7 181.0 L 540.4 181.9 L 539.5 185.0 L 541.7 187.5 L 541.5 190.6 L 539.7 192.4 L 539.4 195.1 L 535.6 197.0 L 535.4 200.2 L 533.9 199.6 L 531.1 196.0 L 529.7 196.1 L 510.4 196.6 L 491.8 196.8 L 476.4 196.5 L 474.8 194.2 L 475.6 189.6 L 474.2 185.7 L 474.3 181.2 L 471.9 179.7 L 471.6 177.2 L 472.4 175.1 L 471.5 172.0 L 469.6 170.8 L 467.2 162.9 L 464.7 159.0 L 465.8 156.4 L 466.3 152.9 L 467.3 151.7 L 465.6 149.9 L 466.1 146.8 L 465.3 145.4 L 467.1 145.0 L 536.0 145.0 Z" class="state-path"/>
+    <path d="M 393.1 206.9 L 482.6 206.9 L 484.0 208.5 L 488.3 209.9 L 485.3 215.0 L 487.0 216.8 L 489.2 220.9 L 492.1 221.8 L 492.0 260.0 L 417.8 260.0 L 391.3 260.1 L 391.1 206.9 L 393.1 206.9 Z" class="state-path"/>
+    <path d="M 643.3 176.3 L 625.0 177.0 L 625.0 175.8 L 608.9 175.8 L 597.7 175.8 L 600.4 173.5 L 602.3 169.5 L 604.0 167.1 L 605.2 163.7 L 606.0 158.8 L 605.7 153.6 L 601.7 143.3 L 602.9 139.5 L 602.0 134.8 L 605.2 130.1 L 605.8 126.1 L 605.4 123.9 L 607.6 123.1 L 607.9 120.2 L 611.4 119.4 L 614.1 116.2 L 613.8 122.6 L 615.3 122.9 L 617.0 119.7 L 617.1 114.3 L 618.2 112.9 L 621.9 112.0 L 620.8 108.3 L 623.2 105.1 L 626.3 104.9 L 629.7 106.9 L 633.0 107.2 L 634.6 109.7 L 637.2 109.9 L 641.4 112.2 L 642.9 112.1 L 645.2 115.9 L 643.3 117.9 L 645.1 120.6 L 645.8 123.6 L 645.0 130.1 L 642.2 131.8 L 641.6 135.2 L 638.3 136.4 L 636.5 140.4 L 637.2 142.0 L 640.4 143.4 L 643.0 141.2 L 645.9 136.6 L 650.6 134.9 L 652.9 136.3 L 654.3 138.8 L 655.7 146.1 L 656.0 149.8 L 657.4 154.3 L 656.0 160.7 L 653.8 161.6 L 653.7 159.3 L 652.2 160.0 L 650.5 165.3 L 647.8 167.4 L 647.0 171.4 L 643.6 174.8 L 643.3 176.3 Z" class="state-path"/>
+    <path d="M 615.5 105.5 L 615.7 107.7 L 613.9 108.1 L 614.7 105.1 L 615.5 105.5 Z" class="state-path"/>
+    <path d="M 587.3 116.8 L 585.2 114.9 L 586.4 112.4 L 583.3 112.0 L 584.5 109.6 L 584.7 106.5 L 581.8 104.4 L 580.3 102.1 L 574.5 100.4 L 572.7 101.0 L 566.9 98.4 L 553.0 94.8 L 551.5 91.8 L 548.9 90.7 L 554.2 88.9 L 556.6 86.7 L 562.5 85.9 L 566.4 83.3 L 568.2 83.2 L 569.7 81.3 L 573.9 78.7 L 576.0 76.5 L 579.2 75.0 L 582.3 76.3 L 576.9 81.7 L 575.7 83.5 L 575.8 86.8 L 578.4 84.3 L 583.0 84.7 L 586.7 86.4 L 589.9 91.3 L 591.7 92.2 L 595.1 91.4 L 596.0 92.5 L 599.4 93.0 L 606.6 89.0 L 610.4 88.6 L 615.5 88.8 L 618.9 87.4 L 621.5 87.3 L 622.0 92.3 L 624.7 92.9 L 627.4 92.2 L 628.5 93.3 L 630.3 91.9 L 634.2 91.4 L 634.3 97.6 L 636.1 100.2 L 638.7 100.9 L 639.0 99.1 L 641.6 99.1 L 643.0 101.0 L 641.8 102.3 L 634.4 101.2 L 630.9 102.0 L 627.0 99.8 L 625.9 101.8 L 626.4 103.4 L 624.7 103.0 L 622.2 100.6 L 617.8 99.1 L 615.6 99.0 L 613.4 101.4 L 609.8 102.0 L 606.0 101.5 L 604.4 102.4 L 604.0 104.4 L 599.8 106.0 L 600.0 103.7 L 598.2 103.2 L 597.4 105.6 L 594.3 105.7 L 592.9 106.8 L 590.8 111.0 L 587.0 116.3 L 587.3 116.8 Z" class="state-path"/>
+    <path d="M 570.8 65.8 L 567.4 68.0 L 565.6 68.3 L 565.7 66.5 L 574.3 62.3 L 572.6 65.2 L 570.8 65.8 Z" class="state-path"/>
+    <path d="M 527.3 88.3 L 526.2 87.5 L 523.5 89.0 L 523.5 99.4 L 522.7 100.5 L 518.8 102.0 L 515.7 105.7 L 515.5 108.3 L 517.0 108.4 L 518.7 110.7 L 517.2 113.4 L 517.5 116.4 L 516.5 122.9 L 520.1 126.1 L 522.9 126.4 L 524.3 128.3 L 528.4 130.2 L 529.1 132.6 L 533.0 135.6 L 535.1 136.3 L 537.7 140.1 L 537.4 142.9 L 538.1 145.0 L 536.0 145.0 L 467.1 145.0 L 467.1 113.2 L 464.0 111.2 L 461.6 107.8 L 465.3 104.0 L 465.6 102.0 L 465.1 94.9 L 463.5 93.0 L 462.4 89.2 L 462.6 84.4 L 462.1 83.6 L 461.6 72.3 L 458.9 66.3 L 457.9 62.9 L 457.5 55.7 L 458.3 53.3 L 456.6 47.7 L 484.7 47.7 L 484.7 40.9 L 487.4 41.1 L 489.2 42.5 L 490.9 51.7 L 492.4 52.7 L 496.8 53.0 L 497.3 53.9 L 502.5 54.3 L 503.1 56.2 L 507.6 55.7 L 507.6 55.0 L 511.1 54.0 L 514.1 54.4 L 517.6 55.8 L 518.6 57.7 L 520.6 57.5 L 522.4 61.4 L 523.3 59.8 L 526.7 59.0 L 527.3 60.7 L 531.3 61.8 L 531.3 63.4 L 533.3 64.6 L 537.4 64.0 L 539.9 62.2 L 543.2 61.2 L 544.4 63.8 L 546.7 63.2 L 549.5 63.8 L 552.7 63.4 L 556.3 65.6 L 559.8 65.2 L 559.5 66.2 L 555.0 68.4 L 548.6 70.2 L 544.6 72.0 L 538.7 76.6 L 536.2 79.4 L 532.3 82.6 L 526.2 86.8 L 527.3 88.3 Z" class="state-path"/>
+    <path d="M 529.7 196.1 L 531.1 196.0 L 533.9 199.6 L 535.4 200.2 L 534.2 202.7 L 534.3 206.3 L 536.0 211.7 L 540.2 216.3 L 544.7 220.1 L 545.6 225.9 L 546.6 227.0 L 548.2 225.3 L 551.2 226.1 L 553.1 227.3 L 551.8 229.5 L 552.1 231.1 L 549.8 235.7 L 549.8 238.5 L 553.8 242.1 L 555.3 244.4 L 556.7 244.0 L 561.1 247.8 L 561.1 250.5 L 562.2 253.9 L 561.1 255.1 L 564.2 260.1 L 566.3 260.3 L 565.2 267.5 L 563.2 266.7 L 562.5 268.9 L 561.6 268.9 L 560.8 268.9 L 560.9 273.3 L 558.2 277.7 L 549.5 277.7 L 551.6 274.4 L 553.7 272.3 L 552.5 268.9 L 493.9 268.8 L 492.0 268.8 L 492.0 260.0 L 492.1 221.8 L 489.2 220.9 L 487.0 216.8 L 485.3 215.0 L 488.3 209.9 L 484.0 208.5 L 482.6 206.9 L 479.3 202.2 L 476.4 196.5 L 491.8 196.8 L 510.4 196.6 L 529.7 196.1 Z" class="state-path"/>
+    <path d="M 373.9 153.8 L 396.9 153.9 L 439.3 153.9 L 439.8 154.8 L 446.8 158.0 L 448.4 156.2 L 450.3 156.6 L 456.7 156.6 L 463.8 159.9 L 464.7 162.4 L 467.2 162.9 L 469.6 170.8 L 471.5 172.0 L 472.4 175.1 L 471.6 177.2 L 471.9 179.7 L 474.3 181.2 L 474.2 185.7 L 475.6 189.6 L 474.8 194.2 L 476.4 196.5 L 479.3 202.2 L 482.6 206.9 L 393.1 206.9 L 391.1 206.9 L 391.1 189.2 L 364.0 189.2 L 364.0 153.8 L 373.9 153.8 Z" class="state-path"/>
+    <path d="M 456.6 47.7 L 458.3 53.3 L 457.5 55.7 L 457.9 62.9 L 458.9 66.3 L 461.6 72.3 L 462.1 83.6 L 462.6 84.4 L 462.4 89.2 L 463.5 93.0 L 465.1 94.9 L 465.6 102.0 L 364.1 101.8 L 364.2 67.8 L 364.1 47.7 L 456.6 47.7 Z" class="state-path"/>
+    <path d="M 683.1 171.9 L 683.1 195.7 L 681.1 196.6 L 682.1 198.6 L 682.0 201.3 L 680.2 205.5 L 678.9 212.0 L 673.6 217.7 L 671.9 218.5 L 670.4 217.4 L 668.9 219.9 L 667.3 219.8 L 665.6 223.2 L 666.0 225.2 L 664.6 226.9 L 662.6 224.1 L 660.0 228.4 L 660.7 231.1 L 659.1 232.1 L 658.6 234.4 L 655.0 234.8 L 653.1 232.4 L 651.6 231.9 L 651.0 228.9 L 649.1 229.5 L 647.6 231.2 L 642.4 229.9 L 640.3 231.1 L 637.2 228.7 L 633.0 228.0 L 632.8 226.5 L 630.0 222.8 L 624.8 222.8 L 625.1 198.1 L 625.0 177.0 L 643.3 176.3 L 648.6 178.7 L 650.4 180.1 L 651.7 178.8 L 654.7 181.6 L 656.6 182.5 L 662.9 180.1 L 666.6 180.6 L 670.6 177.3 L 676.5 174.1 L 683.1 171.9 L 683.1 171.9 Z" class="state-path"/>
+    <path d="M 364.1 101.8 L 465.6 102.0 L 465.3 104.0 L 461.6 107.8 L 464.0 111.2 L 467.1 113.2 L 467.1 145.0 L 465.3 145.4 L 466.1 146.8 L 465.6 149.9 L 467.3 151.7 L 466.3 152.9 L 465.8 156.4 L 464.7 159.0 L 467.2 162.9 L 464.7 162.4 L 463.8 159.9 L 456.7 156.6 L 450.3 156.6 L 448.4 156.2 L 446.8 158.0 L 439.8 154.8 L 439.3 153.9 L 396.9 153.9 L 373.9 153.8 L 364.0 153.8 L 364.0 118.5 L 364.2 118.5 L 364.1 101.8 Z" class="state-path"/>
+    <path d="M 548.9 90.7 L 551.5 91.8 L 553.0 94.8 L 566.9 98.4 L 572.7 101.0 L 574.5 100.4 L 580.3 102.1 L 581.8 104.4 L 584.7 106.5 L 584.5 109.6 L 583.3 112.0 L 586.4 112.4 L 585.2 114.9 L 587.3 116.8 L 586.7 118.9 L 584.1 119.3 L 581.9 123.4 L 581.1 126.2 L 582.7 126.7 L 584.7 124.8 L 587.0 121.3 L 589.8 120.0 L 592.0 115.5 L 594.8 114.5 L 594.6 116.9 L 592.7 119.0 L 588.9 126.4 L 587.9 130.4 L 587.9 133.3 L 586.5 134.3 L 585.3 138.3 L 585.7 141.7 L 584.5 143.9 L 582.9 149.4 L 583.3 153.8 L 584.9 157.7 L 584.4 162.8 L 571.0 162.8 L 545.9 162.5 L 544.9 160.3 L 540.1 158.3 L 539.1 155.4 L 538.6 151.5 L 540.3 149.3 L 538.2 147.6 L 538.1 145.0 L 537.4 142.9 L 537.7 140.1 L 535.1 136.3 L 533.0 135.6 L 529.1 132.6 L 528.4 130.2 L 524.3 128.3 L 522.9 126.4 L 520.1 126.1 L 516.5 122.9 L 517.5 116.4 L 517.2 113.4 L 518.7 110.7 L 517.0 108.4 L 515.5 108.3 L 515.7 105.7 L 518.8 102.0 L 522.7 100.5 L 523.5 99.4 L 523.5 89.0 L 526.2 87.5 L 527.3 88.3 L 530.3 88.5 L 539.7 85.5 L 543.2 83.8 L 544.4 85.1 L 542.6 87.4 L 547.0 90.4 L 548.9 90.7 Z" class="state-path"/>
+    <rect x="360" y="37" width="327" height="245" fill="transparent" class="region-hit-area"/>
+    <text x="530" y="210" class="map-region-label">Midwest</text>
+  </g>
+  <g class="map-region" data-region="Southeast" id="region-southeast" role="button" tabindex="0" aria-label="Southeast region">
+    <path d="M 590.4 295.4 L 614.1 295.7 L 616.5 310.9 L 619.9 333.3 L 621.4 338.2 L 622.9 341.0 L 622.3 342.7 L 623.9 343.8 L 621.6 346.0 L 621.6 348.3 L 620.5 351.3 L 621.8 356.6 L 620.8 361.3 L 622.3 366.1 L 615.6 366.2 L 587.1 366.2 L 586.7 368.5 L 589.7 371.9 L 589.2 374.8 L 590.2 376.3 L 588.2 378.9 L 586.4 379.5 L 583.0 376.6 L 582.6 372.2 L 581.5 371.7 L 580.3 375.0 L 579.8 378.2 L 576.3 377.3 L 575.3 350.3 L 578.4 316.7 L 580.4 297.3 L 578.9 295.5 L 590.4 295.4 Z" class="state-path"/>
+    <path d="M 493.9 268.8 L 552.5 268.9 L 553.7 272.3 L 551.6 274.4 L 549.5 277.7 L 558.2 277.7 L 557.8 281.0 L 555.8 282.0 L 555.3 284.7 L 552.8 287.6 L 553.0 291.9 L 551.7 295.0 L 550.4 295.5 L 551.2 297.0 L 549.0 298.4 L 548.1 301.4 L 546.6 302.1 L 546.9 305.6 L 544.4 306.6 L 544.5 307.8 L 541.7 310.7 L 542.5 312.6 L 540.0 315.4 L 537.9 320.8 L 540.3 323.2 L 539.1 324.6 L 539.8 328.3 L 538.8 330.7 L 505.6 330.4 L 499.8 330.4 L 499.8 321.0 L 497.8 320.3 L 495.2 321.1 L 493.8 319.5 L 494.5 288.4 L 492.0 268.8 L 493.9 268.8 Z" class="state-path"/>
+    <path d="M 752.4 210.4 L 751.1 212.5 L 749.7 213.7 L 750.0 216.5 L 752.0 219.1 L 752.5 223.5 L 755.4 228.0 L 756.7 228.2 L 757.3 234.3 L 748.6 234.1 L 747.3 211.8 L 749.6 209.9 L 752.4 210.4 Z" class="state-path"/>
+    <path d="M 730.4 224.7 L 732.1 226.5 L 730.3 228.3 L 729.3 225.8 L 730.4 224.7 Z" class="state-path"/>
+    <path d="M 615.6 366.2 L 622.3 366.1 L 624.2 371.2 L 642.7 372.4 L 660.1 373.8 L 660.8 377.5 L 662.4 377.4 L 663.0 373.9 L 662.5 370.6 L 663.8 369.2 L 666.9 370.7 L 670.6 371.3 L 671.4 379.0 L 673.1 387.6 L 677.0 398.9 L 683.1 411.1 L 682.2 411.9 L 682.5 417.6 L 685.0 423.9 L 688.9 436.5 L 689.7 440.5 L 689.7 444.6 L 688.2 459.2 L 686.9 459.5 L 685.6 464.1 L 686.0 465.5 L 683.4 468.8 L 682.4 468.0 L 679.9 469.4 L 675.6 470.2 L 674.3 468.3 L 674.9 465.6 L 671.8 457.8 L 669.5 456.3 L 667.4 457.4 L 665.8 453.0 L 665.3 449.4 L 662.5 445.5 L 661.8 442.8 L 662.3 439.1 L 660.7 438.4 L 661.1 440.6 L 659.7 441.2 L 655.4 431.6 L 653.7 429.2 L 657.7 422.1 L 655.1 422.5 L 653.3 424.7 L 651.5 421.2 L 653.9 411.5 L 654.3 403.5 L 652.7 401.6 L 652.2 398.9 L 649.6 398.4 L 646.5 394.1 L 644.1 392.4 L 643.9 389.7 L 642.2 388.8 L 640.8 385.9 L 635.6 382.0 L 631.1 382.9 L 631.3 385.6 L 629.8 385.1 L 624.2 388.4 L 618.2 389.2 L 618.3 387.2 L 616.9 384.9 L 609.8 379.7 L 604.8 377.4 L 600.3 376.9 L 596.5 377.2 L 588.2 378.9 L 590.2 376.3 L 589.2 374.8 L 589.7 371.9 L 586.7 368.5 L 587.1 366.2 L 615.6 366.2 Z" class="state-path"/>
+    <path d="M 648.0 295.4 L 645.1 299.1 L 644.9 301.0 L 649.4 304.8 L 650.8 304.5 L 652.9 308.3 L 653.4 310.4 L 655.5 314.1 L 658.6 316.3 L 660.4 319.6 L 664.1 322.6 L 663.9 324.6 L 666.3 327.9 L 669.9 330.6 L 670.8 333.5 L 671.0 337.3 L 672.8 338.6 L 675.0 343.3 L 675.0 346.3 L 678.2 347.9 L 674.8 353.9 L 674.2 357.0 L 672.8 359.7 L 672.7 362.5 L 671.2 363.8 L 670.6 371.3 L 666.9 370.7 L 663.8 369.2 L 662.5 370.6 L 663.0 373.9 L 662.4 377.4 L 660.8 377.5 L 660.1 373.8 L 642.7 372.4 L 624.2 371.2 L 622.3 366.1 L 620.8 361.3 L 621.8 356.6 L 620.5 351.3 L 621.6 348.3 L 621.6 346.0 L 623.9 343.8 L 622.3 342.7 L 622.9 341.0 L 621.4 338.2 L 619.9 333.3 L 616.5 310.9 L 614.1 295.7 L 631.6 295.6 L 641.1 295.7 L 648.0 295.4 Z" class="state-path"/>
+    <path d="M 637.2 228.7 L 640.3 231.1 L 642.4 229.9 L 647.6 231.2 L 649.1 229.5 L 651.0 228.9 L 651.6 231.9 L 653.1 232.4 L 655.0 234.8 L 654.6 240.1 L 656.3 243.5 L 658.4 246.1 L 659.1 248.2 L 661.7 250.2 L 663.5 250.5 L 658.3 255.2 L 653.3 257.9 L 653.3 259.2 L 651.3 260.4 L 651.1 261.9 L 648.5 262.6 L 647.6 264.5 L 640.4 267.1 L 640.1 267.4 L 628.6 267.2 L 618.5 266.6 L 615.8 266.8 L 600.8 266.1 L 583.7 266.5 L 580.7 265.7 L 581.0 268.9 L 564.1 268.7 L 562.5 268.9 L 563.2 266.7 L 565.2 267.5 L 566.3 260.3 L 565.7 259.3 L 567.7 256.2 L 569.3 256.0 L 574.3 258.7 L 576.0 257.3 L 574.7 255.0 L 575.2 253.1 L 580.8 251.5 L 579.5 248.4 L 581.3 245.8 L 582.6 244.2 L 586.0 244.0 L 587.1 242.7 L 588.3 244.0 L 590.1 243.4 L 593.5 246.0 L 594.6 244.2 L 598.0 242.5 L 598.9 244.2 L 602.0 243.5 L 601.7 241.6 L 604.7 239.4 L 605.2 241.4 L 608.3 243.0 L 609.8 241.9 L 611.1 237.4 L 613.5 236.5 L 614.4 234.3 L 616.7 232.9 L 616.5 229.4 L 620.0 230.2 L 622.5 228.5 L 624.9 228.4 L 623.8 223.6 L 624.8 222.8 L 630.0 222.8 L 632.8 226.5 L 633.0 228.0 L 637.2 228.7 Z" class="state-path"/>
+    <path d="M 505.6 330.4 L 538.8 330.7 L 540.0 332.8 L 539.1 333.5 L 538.9 337.1 L 540.9 339.4 L 541.2 344.6 L 539.6 348.7 L 536.4 351.2 L 535.6 355.2 L 534.2 354.8 L 534.0 361.3 L 532.4 361.4 L 533.3 364.9 L 532.4 366.2 L 558.0 366.2 L 556.7 372.0 L 558.9 375.9 L 559.4 378.8 L 561.0 380.6 L 557.0 383.1 L 556.7 384.8 L 560.0 386.0 L 561.4 383.2 L 564.2 386.0 L 564.0 388.2 L 562.4 389.2 L 559.3 388.3 L 559.7 389.9 L 558.7 392.5 L 561.3 394.7 L 565.4 395.4 L 566.9 398.0 L 568.1 398.4 L 565.9 401.4 L 563.6 400.8 L 561.6 397.7 L 556.6 396.0 L 556.6 393.0 L 554.1 394.0 L 554.3 396.5 L 553.2 398.9 L 551.4 399.2 L 550.1 396.6 L 546.9 396.5 L 545.8 399.2 L 543.7 400.0 L 541.5 398.4 L 539.7 398.2 L 538.0 393.8 L 535.0 391.9 L 533.8 392.2 L 532.6 388.5 L 529.0 389.0 L 529.0 386.7 L 525.5 388.9 L 525.9 390.5 L 523.2 392.1 L 519.1 391.3 L 514.3 388.9 L 510.8 387.8 L 503.5 388.7 L 502.5 389.4 L 501.3 387.6 L 504.5 381.3 L 503.5 377.9 L 504.5 376.1 L 504.0 373.7 L 505.4 371.8 L 506.8 367.3 L 506.5 363.5 L 502.8 356.3 L 502.8 352.4 L 499.8 348.6 L 499.8 330.4 L 505.6 330.4 Z" class="state-path"/>
+    <path d="M 744.5 243.1 L 744.2 243.1 L 743.8 243.1 L 744.5 243.1 Z" class="state-path"/>
+    <path d="M 697.2 211.8 L 747.3 211.8 L 748.6 234.1 L 757.3 234.3 L 754.7 241.8 L 752.6 242.1 L 748.9 243.1 L 746.0 243.9 L 746.0 241.0 L 744.9 239.8 L 746.5 238.6 L 744.4 235.7 L 743.7 236.9 L 740.9 236.6 L 739.9 233.4 L 740.8 233.4 L 740.9 229.3 L 741.8 227.6 L 740.6 222.0 L 742.1 218.7 L 744.4 218.1 L 744.8 214.7 L 743.1 215.1 L 743.0 216.9 L 739.4 219.1 L 738.4 221.1 L 738.2 226.3 L 736.8 228.7 L 737.4 232.8 L 739.2 235.6 L 739.0 237.7 L 740.1 239.8 L 739.5 241.3 L 736.4 238.5 L 731.9 237.1 L 730.6 234.4 L 728.1 236.0 L 727.1 233.8 L 729.1 231.1 L 730.3 228.3 L 732.1 226.5 L 730.4 224.7 L 729.3 225.8 L 727.5 224.1 L 724.7 223.3 L 724.7 220.7 L 723.2 219.2 L 721.1 218.9 L 719.5 214.0 L 717.2 214.0 L 714.9 212.3 L 713.7 213.7 L 711.4 213.6 L 710.9 215.5 L 706.9 214.3 L 704.2 216.9 L 702.4 216.3 L 699.8 219.3 L 697.1 220.9 L 697.2 211.8 Z" class="state-path"/>
+    <path d="M 575.3 295.5 L 578.9 295.5 L 580.4 297.3 L 578.4 316.7 L 575.3 350.3 L 576.3 377.3 L 574.9 378.1 L 571.6 377.7 L 570.3 376.6 L 567.0 377.3 L 562.5 379.4 L 561.0 380.6 L 559.4 378.8 L 558.9 375.9 L 556.7 372.0 L 558.0 366.2 L 532.4 366.2 L 533.3 364.9 L 532.4 361.4 L 534.0 361.3 L 534.2 354.8 L 535.6 355.2 L 536.4 351.2 L 539.6 348.7 L 541.2 344.6 L 540.9 339.4 L 538.9 337.1 L 539.1 333.5 L 540.0 332.8 L 538.8 330.7 L 539.8 328.3 L 539.1 324.6 L 540.3 323.2 L 537.9 320.8 L 540.0 315.4 L 542.5 312.6 L 541.7 310.7 L 544.5 307.8 L 544.4 306.6 L 546.9 305.6 L 546.6 302.1 L 548.1 301.4 L 549.0 298.4 L 551.2 297.0 L 550.4 295.5 L 575.3 295.5 Z" class="state-path"/>
+    <path d="M 676.9 267.7 L 686.2 268.0 L 696.8 268.1 L 746.2 267.9 L 747.7 275.0 L 744.0 274.3 L 743.4 275.2 L 738.8 276.3 L 738.2 277.2 L 735.1 277.5 L 735.3 278.8 L 739.0 277.9 L 739.5 278.7 L 743.6 277.8 L 744.9 279.5 L 747.4 278.8 L 748.3 283.1 L 747.4 285.1 L 745.8 285.3 L 742.4 289.6 L 737.9 289.8 L 737.1 292.8 L 739.1 295.8 L 740.6 296.4 L 737.7 301.4 L 735.3 300.8 L 731.0 301.3 L 728.0 302.3 L 723.3 305.7 L 719.6 310.2 L 717.7 315.8 L 714.8 314.5 L 709.9 315.7 L 694.6 298.9 L 679.4 298.6 L 679.6 296.5 L 677.5 293.5 L 676.1 294.6 L 676.0 292.7 L 659.3 291.9 L 655.6 292.6 L 652.7 294.2 L 648.0 295.4 L 641.1 295.7 L 631.6 295.6 L 632.0 291.4 L 634.6 291.0 L 635.7 288.1 L 639.0 285.5 L 642.7 285.4 L 646.1 282.7 L 649.6 281.7 L 652.5 277.7 L 654.4 276.6 L 654.8 278.3 L 660.1 274.9 L 662.6 275.6 L 664.3 272.3 L 666.8 271.4 L 667.4 267.3 L 676.9 267.7 Z" class="state-path"/>
+    <path d="M 652.7 294.2 L 655.6 292.6 L 659.3 291.9 L 676.0 292.7 L 676.1 294.6 L 677.5 293.5 L 679.6 296.5 L 679.4 298.6 L 694.6 298.9 L 709.9 315.7 L 707.6 316.6 L 704.6 319.5 L 701.7 324.0 L 701.2 327.7 L 698.9 330.6 L 695.8 330.6 L 695.2 332.8 L 692.0 335.1 L 690.2 337.6 L 687.4 338.7 L 684.3 341.4 L 684.0 342.7 L 681.2 344.1 L 678.2 347.9 L 675.0 346.3 L 675.0 343.3 L 672.8 338.6 L 671.0 337.3 L 670.8 333.5 L 669.9 330.6 L 666.3 327.9 L 663.9 324.6 L 664.1 322.6 L 660.4 319.6 L 658.6 316.3 L 655.5 314.1 L 653.4 310.4 L 652.9 308.3 L 650.8 304.5 L 649.4 304.8 L 644.9 301.0 L 645.1 299.1 L 648.0 295.4 L 652.7 294.2 Z" class="state-path"/>
+    <path d="M 581.0 268.9 L 580.7 265.7 L 583.7 266.5 L 600.8 266.1 L 615.8 266.8 L 618.5 266.6 L 628.6 267.2 L 640.1 267.4 L 640.4 267.1 L 667.4 267.3 L 666.8 271.4 L 664.3 272.3 L 662.6 275.6 L 660.1 274.9 L 654.8 278.3 L 654.4 276.6 L 652.5 277.7 L 649.6 281.7 L 646.1 282.7 L 642.7 285.4 L 639.0 285.5 L 635.7 288.1 L 634.6 291.0 L 632.0 291.4 L 631.6 295.6 L 614.1 295.7 L 590.4 295.4 L 578.9 295.5 L 575.3 295.5 L 550.4 295.5 L 551.7 295.0 L 553.0 291.9 L 552.8 287.6 L 555.3 284.7 L 555.8 282.0 L 557.8 281.0 L 558.2 277.7 L 560.9 273.3 L 560.8 268.9 L 561.6 268.9 L 562.5 268.9 L 564.1 268.7 L 581.0 268.9 Z" class="state-path"/>
+    <path d="M 752.6 242.1 L 754.7 241.8 L 752.9 244.8 L 751.0 245.8 L 749.9 249.9 L 747.1 256.5 L 744.8 257.9 L 744.0 255.4 L 745.2 250.0 L 748.9 243.1 L 752.6 242.1 Z" class="state-path"/>
+    <path d="M 744.2 243.1 L 744.5 243.1 L 743.8 243.1 L 744.2 243.1 Z" class="state-path"/>
+    <path d="M 712.5 216.4 L 719.6 222.3 L 721.1 218.9 L 723.2 219.2 L 724.7 220.7 L 724.7 223.3 L 727.5 224.1 L 729.3 225.8 L 730.3 228.3 L 729.1 231.1 L 727.5 231.9 L 726.4 234.4 L 727.0 236.3 L 730.7 235.7 L 731.3 238.5 L 736.1 239.6 L 737.4 241.9 L 741.2 244.3 L 739.5 249.2 L 741.1 253.1 L 739.2 255.0 L 739.0 257.2 L 740.7 258.5 L 738.8 260.7 L 736.0 257.9 L 735.3 258.8 L 737.8 260.9 L 744.5 261.4 L 746.2 267.9 L 696.8 268.1 L 686.2 268.0 L 676.9 267.7 L 667.4 267.3 L 640.4 267.1 L 647.6 264.5 L 648.5 262.6 L 651.1 261.9 L 651.3 260.4 L 653.3 259.2 L 653.3 257.9 L 658.3 255.2 L 663.5 250.5 L 663.2 252.0 L 665.1 255.0 L 667.4 256.4 L 669.1 256.3 L 671.7 254.0 L 673.6 255.8 L 677.0 254.9 L 683.2 251.5 L 683.7 252.5 L 686.1 251.0 L 686.2 247.8 L 687.7 245.0 L 690.2 242.4 L 691.2 239.2 L 693.9 235.9 L 694.9 231.8 L 697.2 234.2 L 699.5 235.0 L 700.9 233.5 L 703.8 227.2 L 705.5 228.8 L 711.8 221.6 L 712.5 216.4 Z" class="state-path"/>
+    <path d="M 683.1 195.7 L 683.1 211.8 L 697.2 211.8 L 697.1 220.9 L 699.8 219.3 L 702.4 216.3 L 704.2 216.9 L 706.9 214.3 L 710.9 215.5 L 711.4 213.6 L 713.7 213.7 L 714.9 212.3 L 717.2 214.0 L 719.5 214.0 L 721.1 218.9 L 719.6 222.3 L 712.5 216.4 L 711.8 221.6 L 705.5 228.8 L 703.8 227.2 L 700.9 233.5 L 699.5 235.0 L 697.2 234.2 L 694.9 231.8 L 693.9 235.9 L 691.2 239.2 L 690.2 242.4 L 687.7 245.0 L 686.2 247.8 L 686.1 251.0 L 683.7 252.5 L 683.2 251.5 L 677.0 254.9 L 673.6 255.8 L 671.7 254.0 L 669.1 256.3 L 667.4 256.4 L 665.1 255.0 L 663.2 252.0 L 663.5 250.5 L 661.7 250.2 L 659.1 248.2 L 658.4 246.1 L 656.3 243.5 L 654.6 240.1 L 655.0 234.8 L 658.6 234.4 L 659.1 232.1 L 660.7 231.1 L 660.0 228.4 L 662.6 224.1 L 664.6 226.9 L 666.0 225.2 L 665.6 223.2 L 667.3 219.8 L 668.9 219.9 L 670.4 217.4 L 671.9 218.5 L 673.6 217.7 L 678.9 212.0 L 680.2 205.5 L 682.0 201.3 L 682.1 198.6 L 681.1 196.6 L 683.1 195.7 Z" class="state-path"/>
+    <rect x="488" y="192" width="273" height="282" fill="transparent" class="region-hit-area"/>
+    <text x="670" y="370" class="map-region-label">Southeast</text>
+  </g>
+  <g class="map-region" data-region="Northeast" id="region-northeast" role="button" tabindex="0" aria-label="Northeast region">
+    <path d="M 784.4 170.8 L 801.4 171.1 L 801.4 171.4 L 801.4 181.9 L 800.5 183.5 L 799.4 183.3 L 793.4 184.6 L 786.4 184.2 L 783.3 186.6 L 780.1 187.4 L 776.2 189.5 L 775.2 187.4 L 778.6 185.5 L 777.6 184.0 L 778.5 170.7 L 784.4 170.8 Z" class="state-path"/>
+    <path d="M 816.2 152.8 L 814.6 151.6 L 814.8 149.8 L 812.7 147.8 L 811.8 124.5 L 811.1 113.1 L 817.0 110.7 L 816.0 109.4 L 818.2 106.7 L 820.5 105.4 L 820.1 104.4 L 822.2 102.7 L 821.6 99.6 L 822.9 95.0 L 825.0 93.4 L 825.8 88.5 L 836.3 74.9 L 838.7 75.5 L 838.9 78.8 L 840.7 80.0 L 845.0 78.0 L 847.8 78.0 L 849.7 76.8 L 853.5 79.6 L 855.7 81.9 L 855.9 101.8 L 855.6 106.5 L 860.3 107.8 L 859.6 109.8 L 860.8 111.7 L 859.8 113.5 L 861.7 116.2 L 864.3 115.6 L 866.7 121.9 L 863.9 124.7 L 862.3 123.7 L 860.9 125.6 L 859.0 125.1 L 858.8 126.8 L 856.2 126.6 L 852.2 130.3 L 851.3 127.7 L 849.9 127.5 L 850.5 130.3 L 847.4 131.7 L 846.7 129.5 L 845.2 130.6 L 841.7 130.6 L 841.6 128.0 L 839.5 128.6 L 839.9 130.4 L 838.0 134.3 L 838.3 135.4 L 835.8 137.5 L 833.3 136.7 L 831.8 139.0 L 829.7 139.3 L 828.0 141.1 L 825.9 140.7 L 825.4 138.8 L 822.3 141.9 L 823.1 143.8 L 820.9 144.5 L 820.7 146.1 L 818.2 148.2 L 816.2 152.8 Z" class="state-path"/>
+    <path d="M 813.3 155.8 L 814.7 156.1 L 815.2 159.2 L 814.6 161.7 L 812.4 164.1 L 812.4 166.8 L 815.3 167.2 L 817.1 170.0 L 816.8 172.2 L 818.3 172.8 L 818.4 174.8 L 822.2 176.6 L 826.6 174.9 L 825.6 177.3 L 819.2 179.5 L 816.8 179.6 L 815.4 177.9 L 813.2 178.4 L 813.1 179.7 L 810.6 180.4 L 809.5 177.2 L 809.2 176.7 L 807.8 175.4 L 807.0 171.2 L 805.0 171.2 L 801.4 171.4 L 801.4 171.1 L 784.4 170.8 L 778.5 170.7 L 778.2 170.0 L 781.5 158.3 L 792.5 158.6 L 808.2 159.2 L 809.7 157.6 L 813.3 155.8 Z" class="state-path"/>
+    <path d="M 811.1 113.1 L 811.8 124.5 L 812.7 147.8 L 814.8 149.8 L 814.6 151.6 L 816.2 152.8 L 814.7 156.1 L 813.3 155.8 L 809.7 157.6 L 808.2 159.2 L 792.5 158.6 L 791.3 157.3 L 791.4 154.7 L 792.6 153.7 L 792.5 151.2 L 793.5 143.7 L 795.9 140.2 L 797.1 136.3 L 798.2 134.8 L 798.2 130.4 L 802.7 128.8 L 804.9 125.8 L 803.7 122.9 L 805.5 120.0 L 805.4 118.2 L 807.3 113.7 L 810.4 114.2 L 811.1 113.1 Z" class="state-path"/>
+    <path d="M 768.3 186.7 L 772.8 189.3 L 771.2 194.4 L 769.0 195.6 L 767.8 198.3 L 771.5 199.6 L 771.8 201.7 L 770.2 211.2 L 765.9 218.2 L 763.2 220.3 L 760.7 224.7 L 759.5 221.8 L 755.5 220.4 L 750.7 216.5 L 750.4 213.9 L 750.3 213.5 L 751.1 212.5 L 752.4 210.4 L 756.0 208.9 L 756.2 207.6 L 760.4 204.7 L 761.0 203.1 L 757.2 199.5 L 757.0 197.3 L 755.3 196.7 L 755.2 194.7 L 757.3 191.6 L 756.1 189.7 L 759.6 186.1 L 760.3 184.1 L 762.1 182.9 L 768.3 186.7 Z" class="state-path"/>
+    <path d="M 780.4 118.2 L 780.6 121.9 L 779.8 125.2 L 781.1 128.4 L 780.7 131.8 L 779.2 135.4 L 780.3 140.2 L 779.6 141.7 L 781.8 144.6 L 781.3 156.8 L 781.5 158.3 L 778.2 170.0 L 778.5 170.7 L 777.6 184.0 L 778.6 185.5 L 775.2 187.4 L 776.2 189.5 L 782.0 190.9 L 783.2 189.8 L 788.1 189.8 L 790.7 189.3 L 794.8 186.4 L 795.1 188.5 L 797.3 189.4 L 792.3 192.0 L 781.8 195.8 L 777.5 196.6 L 774.6 196.4 L 772.4 197.3 L 771.2 194.4 L 772.8 189.3 L 768.3 186.7 L 762.1 182.9 L 761.5 181.6 L 759.4 181.5 L 757.0 178.5 L 757.3 175.9 L 755.6 173.9 L 754.6 173.9 L 753.1 171.5 L 693.4 171.5 L 693.4 167.1 L 693.4 166.8 L 701.7 161.7 L 703.0 159.3 L 705.7 157.7 L 704.7 154.7 L 703.6 154.1 L 702.7 149.2 L 710.7 147.2 L 717.7 147.3 L 720.6 147.8 L 723.6 149.7 L 725.5 148.9 L 731.4 149.0 L 735.0 147.8 L 738.8 144.6 L 741.2 144.5 L 741.3 139.6 L 742.5 136.8 L 739.5 134.9 L 740.2 132.7 L 745.6 129.7 L 747.6 127.0 L 754.1 121.1 L 760.3 118.1 L 769.5 118.6 L 780.4 118.2 Z" class="state-path"/>
+    <path d="M 693.4 167.1 L 693.4 171.5 L 753.1 171.5 L 754.6 173.9 L 755.6 173.9 L 757.3 175.9 L 757.0 178.5 L 759.4 181.5 L 761.5 181.6 L 762.1 182.9 L 760.3 184.1 L 759.6 186.1 L 756.1 189.7 L 757.3 191.6 L 755.2 194.7 L 755.3 196.7 L 757.0 197.3 L 757.2 199.5 L 761.0 203.1 L 760.4 204.7 L 756.2 207.6 L 756.0 208.9 L 752.4 210.4 L 749.6 209.9 L 747.3 211.8 L 697.2 211.8 L 683.1 211.8 L 683.1 195.7 L 683.1 171.9 L 683.1 171.9 L 685.7 170.9 L 693.4 166.8 L 693.4 167.1 Z" class="state-path"/>
+    <path d="M 809.5 177.2 L 810.6 180.4 L 807.9 180.8 L 809.5 177.2 Z" class="state-path"/>
+    <path d="M 805.0 171.2 L 807.0 171.2 L 807.8 175.4 L 809.2 176.7 L 807.5 176.4 L 806.1 179.0 L 805.7 182.7 L 800.5 183.5 L 801.4 181.9 L 801.4 171.4 L 805.0 171.2 Z" class="state-path"/>
+    <path d="M 805.4 118.2 L 805.5 120.0 L 803.7 122.9 L 804.9 125.8 L 802.7 128.8 L 798.2 130.4 L 798.2 134.8 L 797.1 136.3 L 795.9 140.2 L 793.5 143.7 L 792.5 151.2 L 792.6 153.7 L 791.4 154.7 L 791.3 157.3 L 792.5 158.6 L 781.5 158.3 L 781.3 156.8 L 781.8 144.6 L 779.6 141.7 L 780.3 140.2 L 779.2 135.4 L 780.7 131.8 L 781.1 128.4 L 779.8 125.2 L 780.6 121.9 L 780.4 118.2 L 794.5 118.4 L 805.4 118.2 Z" class="state-path"/>
+    <rect x="679" y="71" width="192" height="158" fill="transparent" class="region-hit-area"/>
+    <text x="840" y="155" class="map-region-label">Northeast</text>
+  </g>
+  <g class="map-region" data-region="Alaska / Hawaii / Other" id="region-other" role="button" tabindex="0" aria-label="Alaska, Hawaii, or Other">
+    <rect x="30" y="440" width="110" height="65" rx="3" class="state-path"/>
+    <text x="85" y="466" class="map-sublabel">AK</text>
+    <rect x="148" y="460" width="80" height="45" rx="3" class="state-path"/>
+    <text x="188" y="487" class="map-sublabel">HI</text>
+    <text x="109" y="525" class="map-region-label">AK / HI / Other</text>
+  </g>
+</svg>
+      <div id="map-hover-label"><!-- map hover label --></div>
+          </div>
+          <div style="margin-top:16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <span style="color:rgba(255,255,255,.45); font-family:var(--font-cond); font-size:13px;">Or type your state:</span>
+            <input type="text" id="map-state-input" placeholder="e.g. New Jersey" style="background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.2); color:var(--white); font-family:var(--font-cond); font-size:14px; padding:8px 14px; border-radius:6px; outline:none; width:180px; transition:border-color .2s;" />
+            <button id="map-state-submit" style="background:var(--red); color:var(--white); border:none; padding:9px 18px; border-radius:6px; font-family:var(--font-btn); font-size:13px; font-weight:600; cursor:pointer; transition:background .2s;">Next &rarr;</button>
+          </div>
+        </div>
+
+      </div><!-- end intake-steps-map -->
+
+      <!-- Map progress bar -->
+      <div class="intake-progress-wrap" style="margin-top:10px;">
+        <div class="intake-progress-bar" id="intake-progress" style="width:20%;"></div>
+      </div>
+
+    </div><!-- end survey-map-panel -->
+
+  <!-- ── TWO-COLUMN PANEL: hidden until region selected ────────────── -->
+  <div id="survey-detail-panel" style="display:none; max-width:1200px; margin:0 auto; padding:0 24px; animation:fadeIn .4s ease; position:relative; z-index:1;">
+    <div style="display:grid; grid-template-columns:5fr 8fr; gap:56px; align-items:start;">
+      <!-- Left: photo + intro -->
+      <div style="position:sticky; top:100px;">
+        <span class="section-label-light" style="color:var(--teal);">How Can We Help?</span>
+        <h2 style="color:var(--white); margin:12px 0 16px; font-family:var(--font-main); font-size:28px; font-weight:700; line-height:1.2;">Good news &mdash; we have you covered.</h2>
+        <p style="color:rgba(255,255,255,.65); font-family:var(--font-cond); font-size:15px; line-height:1.7; margin-bottom:22px;">Answer these quick questions and we&rsquo;ll tailor what you see to your situation.</p>
+        <div class="photo-wrap photo-wrap-rounded" style="width:100%;">
+          <img src="images/consultation_meeting.jpg" alt="Consultation meeting" style="width:100%; height:220px; object-fit:cover; display:block;" />
+        </div>
+      </div>
+      <!-- Right: steps 1-5 + result -->
+      <div>
+        <div class="intake-steps" id="intake-steps-main">
+
+          <!-- Step 1: Industry -->
+          <div class="intake-step" id="step-1">
+            <div class="intake-step-label">Step 2 of 5 &mdash; Your Industry</div>
+            <div class="intake-question" style="color:var(--white);">Which industry best describes your organization?</div>
+            <div class="step-content-box">
+              <div class="intake-options" id="options-industry">
+                <button class="intake-option intake-option-dark" data-key="industry" data-value="Healthcare">Healthcare</button>
+                <button class="intake-option intake-option-dark" data-key="industry" data-value="Legal">Legal</button>
+                <button class="intake-option intake-option-dark" data-key="industry" data-value="Manufacturing">Manufacturing</button>
+                <button class="intake-option intake-option-dark" data-key="industry" data-value="Financial Services">Financial Services</button>
+                <button class="intake-option intake-option-dark" data-key="industry" data-value="Education">Education</button>
+                <button class="intake-option intake-option-dark" data-key="industry" data-value="Nonprofit">Nonprofit</button>
+                <button class="intake-option intake-option-dark" data-key="industry" data-value="Construction">Construction &amp; Real Estate</button>
+                <button class="intake-option intake-option-dark" data-key="industry" data-value="Professional Services">Professional Services</button>
+                <button class="intake-option intake-option-dark" data-key="industry" data-value="Government">Government</button>
+                <button class="intake-option intake-option-dark intake-option-other-trigger" data-key="industry" data-value="Other">Other</button>
+              </div>
+              <div class="intake-other-wrap" id="other-industry" style="display:none; margin-top:14px;">
+                <input type="text" class="intake-other-input" placeholder="Please describe your industry&hellip;" id="other-industry-input" />
+                <button class="intake-other-submit" data-key="industry" data-next="step-2" data-progress="60">Next &rarr;</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 2: Role -->
+          <div class="intake-step" id="step-2">
+            <div class="intake-step-label">Step 3 of 5 &mdash; Your Role</div>
+            <div class="intake-question" style="color:var(--white);">What best describes your role?</div>
+            <div class="step-content-box">
+              <div class="intake-options" id="options-role">
+                <button class="intake-option intake-option-dark" data-key="role" data-value="CEO / President / Owner">CEO / President / Owner</button>
+                <button class="intake-option intake-option-dark" data-key="role" data-value="COO">COO</button>
+                <button class="intake-option intake-option-dark" data-key="role" data-value="CFO">CFO</button>
+                <button class="intake-option intake-option-dark" data-key="role" data-value="CIO / CTO">CIO / CTO</button>
+                <button class="intake-option intake-option-dark" data-key="role" data-value="CISO">CISO</button>
+                <button class="intake-option intake-option-dark" data-key="role" data-value="IT Manager / Director">IT Manager / Director</button>
+                <button class="intake-option intake-option-dark" data-key="role" data-value="Operations">Operations</button>
+                <button class="intake-option intake-option-dark intake-option-other-trigger" data-key="role" data-value="Other">Other / Not Sure</button>
+              </div>
+              <div class="intake-other-wrap" id="other-role" style="display:none; margin-top:14px;">
+                <input type="text" class="intake-other-input" placeholder="Please describe your role&hellip;" id="other-role-input" />
+                <button class="intake-other-submit" data-key="role" data-next="step-3" data-progress="80">Next &rarr;</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 3: Challenge -->
+          <div class="intake-step" id="step-3">
+            <div class="intake-step-label">Step 4 of 5 &mdash; Your Challenge</div>
+            <div class="intake-question" style="color:var(--white);">What&rsquo;s your biggest technology concern right now?</div>
+            <div class="step-content-box">
+              <div class="intake-options" id="options-issue">
+                <button class="intake-option intake-option-dark" data-key="issue" data-value="Cybersecurity">Cybersecurity &amp; Threats</button>
+                <button class="intake-option intake-option-dark" data-key="issue" data-value="AI">AI &amp; Emerging Technology</button>
+                <button class="intake-option intake-option-dark" data-key="issue" data-value="Compliance">Compliance &amp; Risk</button>
+                <button class="intake-option intake-option-dark" data-key="issue" data-value="Cloud">Cloud &amp; Infrastructure</button>
+                <button class="intake-option intake-option-dark" data-key="issue" data-value="IT Management">Day-to-Day IT Management</button>
+                <button class="intake-option intake-option-dark" data-key="issue" data-value="Strategy">Long-Term Technology Strategy</button>
+                <button class="intake-option intake-option-dark intake-option-other-trigger" data-key="issue" data-value="Other">Something Else</button>
+              </div>
+              <div class="intake-other-wrap" id="other-issue" style="display:none; margin-top:14px;">
+                <input type="text" class="intake-other-input" placeholder="Briefly describe your concern&hellip;" id="other-issue-input" />
+                <button class="intake-other-submit" data-key="issue" data-next="step-4" data-progress="80">Next &rarr;</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 4: Open-ended situation -->
+          <div class="intake-step" id="step-4">
+            <div class="intake-step-label">Step 5 of 5 &mdash; Your Situation</div>
+            <div class="intake-question" style="color:var(--white);">In one sentence, describe where things stand.</div>
+            <div class="step-content-box">
+              <p style="color:rgba(255,255,255,.5); font-family:var(--font-cond); font-size:14px; margin-bottom:18px;">No need for technical detail &mdash; just tell us what&rsquo;s on your mind.</p>
+              <textarea id="situation-input" rows="3" placeholder="e.g. We&rsquo;re a healthcare company that recently had a security scare and we&rsquo;re not sure if we&rsquo;re protected&hellip;" style="width:100%; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.2); color:var(--white); font-family:var(--font-cond); font-size:15px; padding:14px 16px; border-radius:8px; outline:none; resize:vertical; line-height:1.6; transition:border-color .2s; box-sizing:border-box;"></textarea>
+              <div style="margin-top:16px; display:flex; gap:14px; align-items:center; flex-wrap:wrap;">
+                <button id="situation-submit" class="btn-primary" style="padding:13px 32px;">Show Me What We Can Do &rarr;</button>
+                <button id="situation-skip" style="background:none; border:none; color:rgba(255,255,255,.4); font-family:var(--font-cond); font-size:13px; cursor:pointer; text-decoration:underline;">Skip this step</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Result -->
+          <div class="intake-step" id="step-result">
+            <div class="step-content-box" style="text-align:center;">
+              <div style="font-size:52px; color:var(--teal); margin-bottom:16px;">&#10003;</div>
+              <div id="intake-result-msg" style="font-family:var(--font-main); font-size:20px; font-weight:600; color:var(--white); margin-bottom:8px; line-height:1.4;">Thanks &mdash; we know just where to start.</div>
+              <p id="intake-result-sub" style="font-family:var(--font-cond); font-size:15px; color:rgba(255,255,255,.55); margin-bottom:28px; line-height:1.6;"></p>
+              <div style="display:flex; gap:16px; justify-content:center; align-items:center; flex-wrap:wrap;">
+                <a href="recommended-path.html" class="btn-primary" id="intake-cta">See Your Recommended Path</a>
+                <button id="intake-restart" style="background:none; border:none; font-family:var(--font-cond); font-size:14px; color:rgba(255,255,255,.4); cursor:pointer; text-decoration:underline;">Start over</button>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- end intake-steps-main -->
+        <!-- Detail progress bar -->
+        <div class="intake-progress-wrap" style="margin-top:28px;">
+          <div class="intake-progress-bar" id="intake-progress-detail" style="width:40%;"></div>
+        </div>
+      </div><!-- end right col -->
+    </div><!-- end grid -->
+  </div><!-- end survey-detail-panel -->
+
+</section>
+
+
+<!-- ═══ PULSE OF TECHNOLOGY ═══════════════════════════════════════ -->
+<section class="radar-section">
+  <div class="radar-inner">
+    <div class="radar-header">
+      <div class="radar-header-text">
+        <span class="section-label">Pulse of Technology</span>
+        <h2>What Leaders Should Be Watching</h2>
+        <p>Our editorial team tracks the technology signals that matter most to business leaders — so you don't have to.</p>
+      </div>
+      <a href="#" class="radar-view-all">View Full Radar →</a>
+    </div>
+    <div class="photo-placeholder" style="width:100%; height:360px; border-radius:8px;"><span>Photo / Visual — Coming Soon</span></div>
+  </div>
+</section>
+
+<!-- ═══ INSIGHTS ═════════════════════════════════════════════════ -->
+<section class="insights-section">
+  <div class="insights-inner">
+    <div class="insights-header">
+      <div class="insights-header-left">
+        <span class="section-label">Our Insights</span>
+        <h2>What Leaders Are Reading</h2>
+        <p style="font-family:var(--font-cond); font-size:16px; color:var(--gray); max-width:600px; margin:12px auto 0; line-height:1.7;">Our team regularly publishes perspectives on the technology topics that matter most to business leaders.</p>
+      </div>
+    </div>
+
+    <!-- Job title filter strip -->
+    <div class="insights-filter">
+      <span class="insights-filter-label">Filter by role:</span>
+      <a href="#" class="filter-pill active">All</a>
+      <a href="#" class="filter-pill">CEO / Owner</a>
+      <a href="#" class="filter-pill">COO</a>
+      <a href="#" class="filter-pill">CFO</a>
+      <a href="#" class="filter-pill">CIO / CTO</a>
+      <a href="#" class="filter-pill">CISO</a>
+      <a href="#" class="filter-pill">IT Manager</a>
+      <a href="#" class="filter-pill">Operations</a>
+    </div>
+
+    <div class="insights-grid">
+      <div class="insight-card">
+        <div class="insight-card-body">
+          <span class="insight-card-tag tag-security">IT &amp; Security &middot; AI</span>
+          <h4>Employee Accountability in a Cybersecurity World: Leading Culture Before the Risk Leads You</h4>
+          <p>When employees adopt AI tools on their own, it's rarely because they're being reckless — it's because the organization hasn't yet provided a governed alternative.</p>
+          <a href="https://blog.pulseone.com/" target="_blank" class="insight-read-more">Read Article &rarr;</a>
+        </div>
+      </div>
+      <div class="insight-card">
+        <div class="insight-card-body">
+          <span class="insight-card-tag tag-cloud">Cloud &middot; IT &amp; Security</span>
+          <h4>CIOs: Make the Most of Cloud Infrastructure Without Creating New Security Gaps</h4>
+          <p>Migration tends to get significant attention in timelines and budgets. What often gets less attention is what happens to security posture on the other side of it.</p>
+          <a href="https://blog.pulseone.com/" target="_blank" class="insight-read-more">Read Article &rarr;</a>
+        </div>
+      </div>
+    </div>
+    <div class="insights-cta-row">
+      <a href="https://www.linkedin.com/company/pulseone/" target="_blank" class="btn-primary">Visit Our LinkedIn</a>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ NEWSLETTER (commented out — restore when ready) ══════════
+<section class="newsletter-section">
+  <div class="newsletter-inner">
+    <div class="newsletter-copy">
+      <div class="newsletter-badge">Executive Briefing</div>
+      <h3>Stay in rhythm with<br><span>technology change.</span></h3>
+      <p>The Pulse of Technology is our curated executive briefing — no noise, no vendor spin. Just the signals that matter to your business, delivered to your inbox.</p>
+      <div class="newsletter-features">
+        <div class="newsletter-feature">Monthly technology radar updates</div>
+        <div class="newsletter-feature">Urgent alerts when action is required</div>
+        <div class="newsletter-feature">Exclusive executive insights &amp; analysis</div>
+        <div class="newsletter-feature">No spam. Unsubscribe anytime.</div>
+      </div>
+    </div>
+    <div class="newsletter-right">
+      <h4>Get the Briefing</h4>
+      <p>Join executives who stay ahead of the curve.</p>
+      <div class="newsletter-form">
+        <input type="text" placeholder="Your name" />
+        <input type="email" placeholder="Your work email address" />
+        <a href="#" class="btn-teal-full">Subscribe to the Pulse</a>
+      </div>
+      <p class="newsletter-disclaimer">We respect your privacy. No spam, ever.</p>
+    </div>
+  </div>
+</section>
+═══════════════════════════════════════════════════════════════ -->
+
+<!-- ═══ TESTIMONIALS ══════════════════════════════════════════════ -->
+<section class="testimonials-section">
+  <div class="testimonials-inner">
+    <span class="section-label">Relationships in Action</span>
+    <h2 style="font-family:var(--font-main); font-size:34px; font-weight:700; color:var(--black); margin-bottom:4px; border-left:5px solid var(--red); padding-left:18px;">What Our Clients Say</h2>
+    <div class="testimonials-layout">
+      <div class="testimonial-card">
+        <blockquote><span class="quote-mark">"</span>PulseOne doesn't just solve problems — they help us see them coming. That shift from reactive to proactive has changed how our leadership team thinks about technology entirely.</blockquote>
+        <div class="testimonial-attr">Sarah M. <span>CEO, Regional Healthcare Group</span></div>
+      </div>
+      <div class="testimonial-card red-top">
+        <blockquote><span class="quote-mark">"</span>What sets them apart is the relationship. They understand our business goals, not just our IT environment. Every recommendation they make is tied to something we're actually trying to accomplish.</blockquote>
+        <div class="testimonial-attr">David K. <span>COO, Manufacturing Firm</span></div>
+      </div>
+      <div class="testimonial-card">
+        <blockquote><span class="quote-mark">"</span>The assessment process alone was worth it. We uncovered three significant gaps we didn't know existed. PulseOne walked us through each one and had a plan ready before we left the room.</blockquote>
+        <div class="testimonial-attr">James R. <span>CIO, Professional Services Company</span></div>
+      </div>
+    </div>
+    <div class="testimonials-photo-row">
+      <div class="photo-wrap photo-wrap-rounded"><img src="images/client_meeting.jpg" alt="Client meeting" style="width:100%; height:220px; object-fit:cover; display:block;" /></div>
+      <div class="photo-wrap photo-wrap-rounded"><img src="images/boardroom_presentation.jpg" alt="Executive boardroom presentation" style="width:100%; height:220px; object-fit:cover; display:block;" /></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ HOW TO ENGAGE US ══════════════════════════════════════════ -->
+<section class="engage-section">
+  <div class="engage-inner">
+    <!-- Left: steps -->
+    <div class="engage-left">
+      <span class="section-label-light">Get Started</span>
+      <h2>How to Engage Us</h2>
+      <p>Every relationship starts with a conversation. Here's what working with PulseOne looks like from day one.</p>
+      <div class="engage-steps">
+        <div class="engage-step">
+          <div class="engage-step-num">1</div>
+          <div class="engage-step-text">
+            <strong>Talk with an Expert</strong>
+            <span>Schedule a no-pressure call with one of our advisors. We listen first — no pitch, no agenda.</span>
+          </div>
+        </div>
+        <div class="engage-step">
+          <div class="engage-step-num">2</div>
+          <div class="engage-step-text">
+            <strong>We Learn Your Situation</strong>
+            <span>We take the time to understand your business, your team, and where technology fits into your goals.</span>
+          </div>
+        </div>
+        <div class="engage-step">
+          <div class="engage-step-num">3</div>
+          <div class="engage-step-text">
+            <strong>We Build a Path Forward</strong>
+            <span>Whether it's a single assessment or a long-term partnership, we tailor our approach to what you actually need.</span>
+          </div>
+        </div>
+        <div class="engage-step">
+          <div class="engage-step-num">4</div>
+          <div class="engage-step-text">
+            <strong>We Work Alongside You</strong>
+            <span>Our team becomes an extension of yours — available, accountable, and always aligned with your objectives.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Right: CTA card -->
+    <div class="engage-cta-card">
+      <h3>Ready to start the conversation?</h3>
+      <p>Our advisors are available to talk through your technology challenges — with no obligation and no jargon. Just an honest conversation about where you are and where you want to go.</p>
+      <a href="#" class="btn-primary">Talk with an Expert</a>
+      <a href="#" class="btn-outline">View Our Executive Assessments</a>
+      <p class="engage-note">Prefer email? Reach us at <a href="mailto:info@pulseone.com" style="color:rgba(255,255,255,.4); text-decoration:underline;">info@pulseone.com</a></p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ FOOTER ════════════════════════════════════════════════════ -->
+<footer>
+  <div class="footer-inner">
+    <div class="footer-top">
+      <div>
+        <div class="footer-logo"><img src="pulseone_logo_official.png" alt="PulseOne" /></div>
+        <p class="footer-brand-desc">A strategic technology advisory firm and managed service provider. Helping organizations stay ahead of change since 2002.</p>
+      </div>
+      <div class="footer-col">
+        <h5>Our Services</h5>
+        <a href="#">Cybersecurity</a>
+        <a href="#">AI &amp; Emerging Tech</a>
+        <a href="#">Compliance &amp; Risk</a>
+        <a href="#">Managed IT Services</a>
+        <a href="#">Strategic Advisory</a>
+      </div>
+      <div class="footer-col">
+        <h5>Pulse of Technology</h5>
+        <a href="#">Technology Radar</a>
+        <a href="#">Insights &amp; Articles</a>
+        <a href="#">Newsletter</a>
+        <a href="#">Assessments</a>
+      </div>
+      <div class="footer-col">
+        <h5>Company</h5>
+        <a href="#">Our Approach</a>
+        <a href="#">Industries We Serve</a>
+        <a href="#">Client Login</a>
+        <a href="#">Let's Talk</a>
+        <a href="#">Privacy Policy</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>© 2026 PulseOne Group. All rights reserved.</p>
+      <p>Ventura, CA &nbsp;·&nbsp; Los Angeles, CA &nbsp;·&nbsp; New Jersey &nbsp;·&nbsp; Nashville, TN &nbsp;·&nbsp; Bozeman, MT</p>
+    </div>
+  </div>
+</footer>
+
+<!-- ═══ INTAKE SURVEY SCRIPT ═══════════════════════════════════════════ -->
+<script>
+(function(){
+  var answers = {};
+  var progressBar = document.getElementById('intake-progress');
+  var progressBarDetail = document.getElementById('intake-progress-detail');
+  var allStepIds = ['step-0','step-1','step-2','step-3','step-4','step-result'];
+  var mapPanel = document.getElementById('survey-map-panel');
+  var detailPanel = document.getElementById('survey-detail-panel');
+
+  function setProgress(pct){
+    if(progressBar) progressBar.style.width = pct + '%';
+    if(progressBarDetail) progressBarDetail.style.width = pct + '%';
+  }
+
+  function showMapPanel(){
+    if(mapPanel) mapPanel.style.display = '';
+    if(detailPanel) detailPanel.style.display = 'none';
+  }
+
+  function showDetailPanel(){
+    if(mapPanel) mapPanel.style.display = 'none';
+    if(detailPanel) detailPanel.style.display = '';
+  }
+
+  function showStep(id){
+    allStepIds.forEach(function(s){
+      var el = document.getElementById(s);
+      if(el) el.classList.remove('active');
+    });
+    var t = document.getElementById(id);
+    if(t) t.classList.add('active');
+    // Switch panels based on which step is shown
+    if(id === 'step-0'){
+      showMapPanel();
+    } else {
+      showDetailPanel();
+    }
+  }
+
+  function advanceTo(nextId, progressPct){
+    setTimeout(function(){ setProgress(progressPct); showStep(nextId); }, 280);
+  }
+
+  // ── MAP region click ──────────────────────────────────────────────────────────────────────────
+  document.querySelectorAll('.map-region').forEach(function(g){
+    g.addEventListener('click', function(){
+      var self = this;
+      document.querySelectorAll('.map-region').forEach(function(r){ r.classList.remove('selected'); });
+      self.classList.add('selected');
+      answers.location = self.dataset.region;
+      setTimeout(function(){ setProgress(40); showStep('step-1'); }, 380);
+    });
+  });
+
+  // ── Map text input ──────────────────────────────────────────────────────────────────────────
+  var mapSubmit = document.getElementById('map-state-submit');
+  if(mapSubmit){
+    mapSubmit.addEventListener('click', function(){
+      var val = (document.getElementById('map-state-input').value || '').trim();
+      if(val){ answers.location = val; setProgress(40); showStep('step-1'); }
+    });
+  }
+  var mapInput = document.getElementById('map-state-input');
+  if(mapInput){
+    mapInput.addEventListener('keydown', function(e){
+      if(e.key === 'Enter'){ var val = this.value.trim(); if(val){ answers.location = val; advanceTo('step-1', 40); } }
+    });
+  }
+
+  // ── Multiple-choice options ───────────────────────────────────────────────
+  var stepFlow = {
+    industry: { next: 'step-2', progress: 60 },
+    role:     { next: 'step-3', progress: 80 },
+    issue:    { next: 'step-4', progress: 80 }
+  };
+
+  document.querySelectorAll('.intake-option').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var key = this.dataset.key;
+      var val = this.dataset.value;
+
+      // Highlight selection
+      var parent = this.closest('.intake-options');
+      if(parent) parent.querySelectorAll('.intake-option').forEach(function(b){ b.classList.remove('selected'); });
+      this.classList.add('selected');
+
+      // Show "Other" text input if needed
+      if(val === 'Other' || val === 'Something Else'){
+        var otherWrap = document.getElementById('other-' + key);
+        if(otherWrap){
+          otherWrap.style.display = 'flex';
+          var inp = otherWrap.querySelector('.intake-other-input');
+          if(inp) inp.focus();
+        }
+        return; // wait for text submit
+      }
+
+      answers[key] = val;
+      var flow = stepFlow[key];
+      if(flow) advanceTo(flow.next, flow.progress);
+    });
+  });
+
+  // ── "Other" text submit buttons ───────────────────────────────────────────
+  document.querySelectorAll('.intake-other-submit').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var key  = this.dataset.key;
+      var nextId = this.dataset.next;
+      var prog = parseInt(this.dataset.progress);
+      var inp  = document.getElementById('other-' + key + '-input');
+      var val  = inp ? inp.value.trim() : '';
+      if(!val) return;
+      answers[key] = val;
+      advanceTo(nextId, prog);
+    });
+  });
+
+  // ── Open-ended submit ─────────────────────────────────────────────────────
+  function showResult(){
+    setProgress(100);
+    var ctaMap = {
+      'Cybersecurity': 'our Cybersecurity Assessment',
+      'AI':            'our AI Readiness Assessment',
+      'Compliance':    'our Compliance Readiness Assessment',
+      'Cloud':         'our Cloud & Infrastructure solutions',
+      'IT Management': 'our Managed IT Services',
+      'Strategy':      'our Strategic Advisory services'
+    };
+    var cta = ctaMap[answers.issue] || 'our recommended solutions';
+    var sub = 'Based on what you shared, we\'d suggest starting with ' + cta + '.';
+    if(answers.location) sub += ' Our team serving the ' + answers.location + ' area is ready to help.';
+    var msgEl = document.getElementById('intake-result-msg');
+    var subEl = document.getElementById('intake-result-sub');
+    if(msgEl) msgEl.textContent = 'Thanks \u2014 we know just where to start.';
+    if(subEl) subEl.textContent = sub;
+    showStep('step-result');
+  }
+
+  var sitSubmit = document.getElementById('situation-submit');
+  if(sitSubmit){
+    sitSubmit.addEventListener('click', function(){
+      answers.situation = (document.getElementById('situation-input').value || '').trim();
+      showResult();
+    });
+  }
+  var sitSkip = document.getElementById('situation-skip');
+  if(sitSkip){ sitSkip.addEventListener('click', function(){ showResult(); }); }
+
+  // ── Restart ──────────────────────────────────────────────────────────────────────────
+  var restartBtn = document.getElementById('intake-restart');
+  if(restartBtn){
+    restartBtn.addEventListener('click', function(){
+      answers = {};
+      setProgress(20);
+      document.querySelectorAll('.intake-option').forEach(function(b){ b.classList.remove('selected'); });
+      document.querySelectorAll('.intake-other-wrap').forEach(function(w){ w.style.display = 'none'; });
+      document.querySelectorAll('.intake-other-input').forEach(function(i){ i.value = ''; });
+      document.querySelectorAll('.map-region').forEach(function(r){ r.classList.remove('selected'); });
+      var mapIn = document.getElementById('map-state-input'); if(mapIn) mapIn.value = '';
+      var sitIn = document.getElementById('situation-input'); if(sitIn) sitIn.value = '';
+      showMapPanel();
+      allStepIds.forEach(function(s){ var el = document.getElementById(s); if(el) el.classList.remove('active'); });
+      var s0 = document.getElementById('step-0'); if(s0) s0.classList.add('active');
+    });
+  }
+})();
+</script>
+
+
+<!-- ═══ CYCLING TOPIC SCRIPT ═══════════════════════════════════════════════ -->
+<script>
+  const topics = ['Cybersecurity','AI Readiness','Compliance','Cyber Insurance Readiness','Cloud Governance','Technology Strategy'];
+  let current = 0;
+  const el = document.getElementById('hero-cycling');
+  function cycleTopic() {
+    el.style.opacity = '0';
+    setTimeout(() => { current = (current + 1) % topics.length; el.textContent = topics[current]; el.style.opacity = '1'; }, 500);
+  }
+  setInterval(cycleTopic, 5000);
+</script>
+
+</body>
+</html>

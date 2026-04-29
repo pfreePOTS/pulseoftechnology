@@ -3,6 +3,7 @@
 **Goal:** Transform the Next.js frontend into the new PulseOne corporate website, moving the existing "Pulse of Technology" app to a dedicated `/radar` route, and building a dynamic `/recommended-path` experience.
 
 **Source Material:** All reference HTML, CSS, and images are in `docs/frontend-redesign/source/`.
+**Visual Specs:** Designer screenshots are in `docs/frontend-redesign/source/designer-screenshots/`.
 
 Please execute this redesign in the following 5 phases. Do not skip phases. Verify each phase works before moving to the next.
 
@@ -17,11 +18,11 @@ Please execute this redesign in the following 5 phases. Do not skip phases. Veri
 
 ## Phase 2: Core Corporate Components
 Create the following reusable React components in `frontend/src/components/`, using Tailwind CSS to match the styles in `docs/frontend-redesign/source/index_v3.0.html`:
-1. `<GlobalHeader />` (Sticky nav matching `index_v3.0.html`: Pulse of Technology, Our Approach, Assessments, Client Login, Let's Talk CTA)
-2. `<GlobalFooter />` (Four-column layout)
-3. `<HeroSection />` (Rotating text via `useEffect`, uses `FrontPage_SecurityImage.png` background)
-4. `<PhilosophySection />` (Three-column: We Listen / We Understand / We Deliver)
-5. `<IndustriesSection />` (The industry grid from `index_v3.0.html`)
+1. `<GlobalHeader />` (Sticky nav matching `index_v3.0.html`. MUST match designer spec `nav-top-menu.webp`: Pulse of Technology in teal, Our Approach/Assessments in light gray, Client Login in teal, Let's Talk as a red filled rounded button).
+2. `<GlobalFooter />` (Four-column layout).
+3. `<HeroSection />` (Rotating text via `useEffect`, uses `FrontPage_SecurityImage.png` background).
+4. `<PhilosophySection />` (Three-column: We Listen / We Understand / We Deliver. MUST match designer spec `philosophy-section-v2.webp`: Card images must fill the top half of the card without padding, text content sits below the image).
+5. `<IndustriesSection />` (The industry grid from `index_v3.0.html`).
 
 *Once built, wrap `/radar/page.tsx` in `<GlobalHeader>` and `<GlobalFooter>`.*
 
@@ -31,8 +32,9 @@ Create the following reusable React components in `frontend/src/components/`, us
 1. Create `frontend/src/components/ExecutiveIntakeForm.tsx` (must be `"use client"`).
 2. Reference `docs/frontend-redesign/source/survey_section.html` and `survey_js.txt`.
 3. Build the 5-step state machine: Region, Industry, Role, Challenge, Stage.
-4. **Step 1 (USA Map):** Convert `usa_map.html` into a React component (`<USAMap />`). Make the `<g class="map-region">` elements clickable to set the `region` state.
-5. On Step 5 completion, redirect to `/recommended-path` passing all 5 selections as URL search parameters (e.g., `?region=West&industry=Healthcare...`).
+4. **Step 1 (USA Map):** Convert `usa_map.html` into a React component (`<USAMap />`). Make the `<g class="map-region">` elements clickable to set the `region` state. MUST match designer spec `usa-map-survey-step1.webp`: Map lines are teal, background is dark, regions highlight on hover.
+5. **Step 2 (Industry):** MUST match designer spec `survey-step2-industry.webp`: Options are outlined buttons with rounded corners, text is white, active state is teal outline.
+6. On Step 5 completion, redirect to `/recommended-path` passing all 5 selections as URL search parameters (e.g., `?region=West&industry=Healthcare...`).
 
 ---
 

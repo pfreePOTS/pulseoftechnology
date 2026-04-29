@@ -9,19 +9,19 @@ Please execute this redesign in the following 5 phases. Do not skip phases. Veri
 ---
 
 ## Phase 1: Assets & App Migration
-1. **Assets:** Copy all `.png` and `.jpg` images from `docs/frontend-redesign/source/` to `frontend/public/`.
+1. **Assets:** Copy all `.png` and `.jpg` images from `docs/frontend-redesign/source/` and `docs/frontend-redesign/source/images/` to `frontend/public/`.
 2. **Tokens:** Update `frontend/src/app/globals.css` with the new brand colors: `--color-dark-bg: #1e1e1e`, `--color-light-bg: #f4f8fa`.
 3. **Migration:** Create `frontend/src/app/radar/`. Move the existing `frontend/src/app/page.tsx` into it (it becomes `/radar/page.tsx`). Do not change its logic.
 
 ---
 
 ## Phase 2: Core Corporate Components
-Create the following reusable React components in `frontend/src/components/`, using Tailwind CSS to match the styles in `docs/frontend-redesign/source/index-v3.html`:
-1. `<GlobalHeader />` (Sticky nav, logo, "Let's Talk" CTA)
+Create the following reusable React components in `frontend/src/components/`, using Tailwind CSS to match the styles in `docs/frontend-redesign/source/index_v3.0.html`:
+1. `<GlobalHeader />` (Sticky nav matching `index_v3.0.html`: Pulse of Technology, Our Approach, Assessments, Client Login, Let's Talk CTA)
 2. `<GlobalFooter />` (Four-column layout)
 3. `<HeroSection />` (Rotating text via `useEffect`, uses `FrontPage_SecurityImage.png` background)
 4. `<PhilosophySection />` (Three-column: We Listen / We Understand / We Deliver)
-5. `<IndustriesSection />` (The industry grid from `index-v3.html`)
+5. `<IndustriesSection />` (The industry grid from `index_v3.0.html`)
 
 *Once built, wrap `/radar/page.tsx` in `<GlobalHeader>` and `<GlobalFooter>`.*
 
@@ -56,5 +56,5 @@ Create the following reusable React components in `frontend/src/components/`, us
    - The top 4 ContentItems matching the `industry` or `issue` tags.
 3. **Frontend UI:** Create `frontend/src/app/recommended-path/page.tsx` as a Server Component.
 4. Fetch data from the new API using the URL search parameters.
-5. Using `docs/frontend-redesign/source/recommended-path.html` as the visual spec, render the Hero (AI headline), Context (AI synthesis), Radar Snapshot (3 topics), and Recommended Resources (4 content items).
+5. Using `docs/frontend-redesign/source/recommended-path_v3.0.html` as the visual spec, render the Hero (AI headline), Context (AI synthesis), Radar Snapshot (3 topics), and Recommended Resources (4 content items).
 6. Create a `loading.tsx` skeleton for this route since the AI call will take a few seconds.

@@ -2,7 +2,9 @@
 
 import { useMemo } from "react";
 
+import { filterByRadarDomain, normalizeRadarDomain } from "@/lib/radarFilters";
 import { scrollToSubscribe } from "@/lib/subscribeNavigation";
+import { useIsClient } from "@/lib/useIsClient";
 
 export type TrackedArticle = {
   id: number;
@@ -42,9 +44,18 @@ export default function TrackedStoriesSection({
    *  cadence reads consistently across the page. */
   lastUpdated?: string;
 }) {
+  const isClient = useIsClient();
+  const selectedDomain = useMemo(() => {
+    if (!isClient) return "";
+    return normalizeRadarDomain(new URLSearchParams(window.location.search).get("domain"));
+  }, [isClient]);
+  const filteredArticles = useMemo(
+    () => filterByRadarDomain(articles, selectedDomain),
+    [articles, selectedDomain],
+  );
   const teaserArticles = useMemo(
-    () => articles.slice(0, TEASER_COUNT),
-    [articles],
+    () => filteredArticles.slice(0, TEASER_COUNT),
+    [filteredArticles],
   );
 
   if (teaserArticles.length === 0) return null;

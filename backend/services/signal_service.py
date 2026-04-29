@@ -5,7 +5,7 @@ Calculates article velocity/acceleration per topic and uses Claude to generate
 watch | radar | remove recommendations when thresholds are met.
 
 Velocity/acceleration use a **coverage timestamp** per article:
-``GREATEST(ingested_at, published_at)`` for window membership (see ``_article_coverage_time``).
+``published_at`` when present, else ``ingested_at`` (see ``_article_coverage_time``).
 
 Velocity windows use SQL counts only until production embeddings exist (Pinecone path disabled).
 
@@ -28,16 +28,12 @@ logger = logging.getLogger(__name__)
 
 def _article_coverage_time():
     """
-    Effective time for trend windows: max(ingested_at, published_at).
+    Effective time for trend windows: published_at when present, else ingested_at.
 
-    RSS sets ingested_at when the row is created; published_at is the story date. Using only
-    ingested_at made velocity 0 for backlog processing and misaligned the table with
-    “latest article” dates users see in Collection.
+    Old RSS backlog should not drive current velocity just because Pulse stored the row today.
+    Stories with no usable publication date fall back to ingestion time.
     """
-    return func.greatest(
-        Article.ingested_at,
-        func.coalesce(Article.published_at, Article.ingested_at),
-    )
+    return func.coalesce(Article.published_at, Article.ingested_at)
 
 
 def _normalize_trend_action(raw: str | None) -> str:
@@ -64,9 +60,8 @@ def compute_topic_velocity_metrics(topic_id: int, db: Session) -> tuple[float, f
     """
     Live article velocity (count in primary window) and acceleration (ratio vs prior window).
 
-    Counts articles whose **coverage time** falls in each window: ``GREATEST(ingested_at,
-    published_at)`` so backlog processing and same-day publishes align with “latest article” in
-    the admin table. Windows come from ``MergedPipelineSettings.trend_window_days`` /
+    Counts articles whose **coverage time** falls in each window: ``published_at`` when
+    present, else ``ingested_at``. Windows come from ``MergedPipelineSettings.trend_window_days`` /
     ``trend_prior_window_days`` (Admin → Settings or env defaults).
 
     Intentionally does **not** use the Pinecone path for these headline numbers: semantic matches
@@ -430,14 +425,18 @@ def execute_full_signal_flow(db: Session, *, backfill_limit: int = 50) -> None:
     """
     Run the full signal pipeline in a fixed order:
 
-    1. ``cleanup_empty_topics`` — remove orphaned pending topics with no articles
-    2. ``run_signal_scorer`` — create recommendations for high-velocity topics
-    3. ``refresh_all_signals`` — refresh watched/selected and stale pending signals
-    4. ``backfill_missing_trend_suggestions`` — fill trend suggestions for topics still missing them
+    1. Archive articles outside the active evidence window
+    2. ``cleanup_empty_topics`` — remove orphaned pending topics with no articles
+    3. ``run_signal_scorer`` — create recommendations for high-velocity topics
+    4. ``refresh_all_signals`` — refresh watched/selected and stale pending signals
+    5. ``backfill_missing_trend_suggestions`` — fill trend suggestions for topics still missing them
 
     Used by the scheduled signal job and the admin ``/jobs/signals`` trigger.
     Steps 3–4 log and continue on failure so a single bad topic does not abort the run.
     """
+    from .archive_service import archive_outside_active_evidence_window
+
+    archive_outside_active_evidence_window(db)
     cleanup_empty_topics(db)
     run_signal_scorer(db)
     try:

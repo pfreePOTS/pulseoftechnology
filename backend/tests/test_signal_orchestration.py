@@ -20,6 +20,10 @@ def test_execute_full_signal_flow_calls_steps_in_order():
 
     with (
         patch(
+            "backend.services.archive_service.archive_outside_active_evidence_window",
+            side_effect=track("archive"),
+        ) as m_archive,
+        patch(
             "backend.services.signal_service.cleanup_empty_topics",
             side_effect=track("cleanup"),
         ) as m_cleanup,
@@ -38,7 +42,8 @@ def test_execute_full_signal_flow_calls_steps_in_order():
     ):
         execute_full_signal_flow(db)
 
-    assert order == ["cleanup", "scorer", "refresh", "backfill"]
+    assert order == ["archive", "cleanup", "scorer", "refresh", "backfill"]
+    m_archive.assert_called_once_with(db)
     m_cleanup.assert_called_once_with(db)
     m_scorer.assert_called_once_with(db)
     m_refresh.assert_called_once_with(db)
@@ -49,6 +54,10 @@ def test_execute_full_signal_flow_passes_backfill_limit():
     db = MagicMock()
 
     with (
+        patch(
+            "backend.services.archive_service.archive_outside_active_evidence_window",
+            return_value=0,
+        ),
         patch(
             "backend.services.signal_service.cleanup_empty_topics",
             return_value=0,

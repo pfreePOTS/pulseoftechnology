@@ -64,12 +64,12 @@ export default function IndustriesPage() {
 
         {/* SECONDARY CTA — for visitors whose industry isn't in the canonical 20. */}
         <section className="border-t border-[#e0e0e0] bg-white px-8 py-16">
-          <div className="mx-auto max-w-[820px] text-center">
+          <div className="mx-auto max-w-[820px] text-center lg:max-w-[min(100%,58rem)]">
             <span className="mb-3 block font-sans text-[13px] font-semibold tracking-[3px] text-pulse-teal uppercase">
               Don&rsquo;t see your industry?
             </span>
-            <h2 className="mb-3 font-sans text-[34px] font-bold tracking-tight text-[#111]">
-              We work with sectors outside the canonical twenty too.
+            <h2 className="mb-3 font-sans text-[clamp(1.5rem,2.75vw,2rem)] font-bold tracking-tight text-[#111] lg:whitespace-nowrap">
+              We work with sectors outside the canonical twenty{"\u00a0"}too.
             </h2>
             <p className="mx-auto mb-6 max-w-[620px] font-sans text-[15px] leading-relaxed text-[#555]">
               Take the full intake and choose &ldquo;Other&rdquo; on the industry step &mdash;

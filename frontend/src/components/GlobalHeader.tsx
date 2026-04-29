@@ -1,7 +1,16 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useState } from "react";
 
 export default function GlobalHeader() {
+  const pathname = usePathname();
+  const [pulseHover, setPulseHover] = useState(false);
+  const pulseSelected = pathname === "/radar" || pathname.startsWith("/radar/");
+  const showPulseCaret = pulseSelected || pulseHover;
+
   return (
     <header className="sticky top-0 z-[100] bg-white shadow-[0_2px_8px_rgba(0,0,0,0.08)]">
       <div className="mx-auto flex h-[72px] max-w-[1200px] items-center justify-between gap-4 px-6">
@@ -19,8 +28,18 @@ export default function GlobalHeader() {
           <Link
             href="/radar"
             className="rounded px-2.5 py-1.5 text-pulse-teal transition-colors hover:text-[#0fa09b]"
+            onMouseEnter={() => setPulseHover(true)}
+            onMouseLeave={() => setPulseHover(false)}
           >
-            Pulse of Technology <span className="ml-0.5 align-middle text-[9px] opacity-60">▼</span>
+            Pulse of Technology{" "}
+            <span
+              aria-hidden="true"
+              className={`inline-block min-w-[0.65rem] align-middle text-[9px] transition-opacity duration-150 ${
+                showPulseCaret ? "opacity-60" : "opacity-0"
+              }`}
+            >
+              ▼
+            </span>
           </Link>
           <a
             href="#"

@@ -156,7 +156,7 @@ def _posture_badge_colors(topic: Topic) -> tuple[str, str]:
 def _radar_explore_url(public_site_base: str, domain: str | None) -> str:
     base = (public_site_base or "http://localhost:3100").rstrip("/")
     dom = domain or "Other"
-    return f"{base}/?domain={quote(dom)}"
+    return f"{base}/radar?domain={quote(dom)}#radar"
 
 
 _TYPE_LABELS: dict[str, str] = {
@@ -351,6 +351,61 @@ def _subscriber_remediation_teaser(topic: Topic, subscriber: Subscriber | None) 
     return ""
 
 
+def _contextual_what_to_do_fallback(topic: Topic) -> str:
+    domain = (getattr(topic, "domain", "") or "Other").strip()
+    name = (getattr(topic, "name", "") or "this topic").strip()
+    urgency = float(getattr(topic, "urgency_score", 0.0) or 0.0)
+    posture_raw = getattr(topic, "adoption_state", None)
+    posture = posture_raw.value if hasattr(posture_raw, "value") else str(posture_raw or "")
+    cadence = "this week" if urgency >= 8 else "in the next planning cycle"
+
+    by_domain = {
+        "AI": (
+            f"Pick one workflow touched by {name} and decide whether it belongs in a pilot, policy review, "
+            f"or vendor watchlist {cadence}."
+        ),
+        "Security": (
+            f"Have security and IT owners compare current controls against {name}, then decide what needs "
+            f"patching, monitoring, or executive escalation {cadence}."
+        ),
+        "Cloud": (
+            f"Ask platform and finance owners where {name} could affect architecture, cost, or reliability, "
+            f"then turn the answer into one concrete backlog item {cadence}."
+        ),
+        "Finance": (
+            f"Have finance, risk, and technology owners test whether {name} changes payment, funding, "
+            f"compliance, or operating assumptions {cadence}."
+        ),
+        "Leadership": (
+            f"Use {name} as a leadership agenda item: clarify the owner, decision needed, and employee or "
+            f"customer impact {cadence}."
+        ),
+        "Regulation": (
+            f"Ask legal, compliance, and product owners whether {name} changes obligations, disclosures, "
+            f"or control evidence {cadence}."
+        ),
+        "Supply Chain": (
+            f"Have operations and technology owners map where {name} could affect suppliers, logistics, "
+            f"or system dependencies {cadence}."
+        ),
+    }
+    action = by_domain.get(
+        domain,
+        f"Name the business owner for {name}, identify the decision it may force, and set a follow-up {cadence}.",
+    )
+    if "Get Your Hands Around" in posture or "Get Prepared For" in posture:
+        return _clamp_brief_sentences(
+            f"{action} Treat it as a readiness check, not just background reading.",
+            2,
+        )
+    if "Make the Most" in posture or "Get Ahead" in posture:
+        return _clamp_brief_sentences(
+            f"{action} Look for one advantage you can capture before peers normalize it.",
+            2,
+        )
+    return _clamp_brief_sentences(action, 2)
+
+
 def _resolve_newsletter_briefing(
     topic: Topic,
     articles: list[Article],
@@ -394,12 +449,14 @@ def _resolve_newsletter_briefing(
             )
     if not out["what_to_do"]:
         out["what_to_do"] = _subscriber_remediation_teaser(topic, subscriber)
+    if not out["what_to_do"]:
+        out["what_to_do"] = _contextual_what_to_do_fallback(topic)
 
     fallbacks = {
         "what_is_it": "This theme remains on your executive radar — see linked sources below.",
         "what_changed": "Today’s briefing draws on the freshest sources attached to this topic.",
         "why_it_matters": "Monitor for operational, risk, and competitive implications for your sector.",
-        "what_to_do": "Assign an owner to scan the sources and decide what warrants a pilot or policy update.",
+        "what_to_do": "Name an owner, identify the decision this topic may force, and set a near-term follow-up.",
     }
     for k, fb in fallbacks.items():
         if not out[k]:
@@ -765,6 +822,18 @@ def _build_hot_topic_lead_html(hot_topic: dict, hot_article: dict) -> str:
               </a>
             </td></tr>
           </table>"""
+    summary_rows: list[str] = []
+    for label, key in (("What is it?", "what_is_it"), ("Why is it important?", "why_it_matters")):
+        body = _first_sentence(str(hot_article.get(key) or "").strip())
+        if not body:
+            continue
+        summary_rows.append(
+            f"""
+          <p style="margin:10px 0 0;font-size:12px;line-height:1.6;color:#374151;font-family:{_FF};">
+            <span style="font-weight:700;color:#111827;">{label}</span> {html.escape(body)}
+          </p>"""
+        )
+    summary_block = "".join(summary_rows)
     return f"""
 <tr>
   <td style="padding:0 32px 8px;">
@@ -782,6 +851,7 @@ def _build_hot_topic_lead_html(hot_topic: dict, hot_article: dict) -> str:
           <p style="margin:8px 0 0;font-size:12px;font-weight:600;font-family:{_FF};">
             <span style="color:#4A5F6D;">Topic: </span><span style="color:#111827;">{tname}</span>
           </p>
+          {summary_block}
         </td>
       </tr>
     </table>

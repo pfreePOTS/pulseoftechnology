@@ -384,6 +384,35 @@ def test_deep_dive_section_has_structured_briefing_and_trending():
     assert "<img" not in html
 
 
+def test_newsletter_what_to_do_fallback_is_contextual_not_generic():
+    from ..models.topic import AdoptionState
+
+    topic = SimpleNamespace(
+        id=43,
+        name="Identity Attack Automation",
+        domain="Security",
+        subdomain="Identity",
+        urgency_score=8.7,
+        summary="Attackers are automating identity abuse.",
+        newsletter_briefing={
+            "what_is_it": "Identity attacks are accelerating.",
+            "what_changed": "Automation is increasing the pace.",
+            "why_it_matters": "Account compromise can disrupt operations.",
+            "what_to_do": "",
+        },
+        industry_positions=None,
+        adoption_state=AdoptionState.get_prepared_for,
+    )
+
+    briefing = email_service._resolve_newsletter_briefing(topic, [], subscriber=None)
+
+    assert briefing["what_to_do"] != (
+        "Assign an owner to scan the sources and decide what warrants a pilot or policy update."
+    )
+    assert "identity" in briefing["what_to_do"].lower() or "security" in briefing["what_to_do"].lower()
+    assert len([s for s in briefing["what_to_do"].split(".") if s.strip()]) <= 2
+
+
 def test_build_html_hot_topic_lead_when_subscriber_includes_hot_topic():
     hot = {
         "hot_topic": {
@@ -478,6 +507,33 @@ def test_hot_topic_lead_uses_domain_image_fallback():
 
     assert "<img" in html
     assert "images.unsplash.com" in html
+
+
+def test_radar_explore_url_points_to_radar_page_with_domain_filter():
+    url = email_service._radar_explore_url("https://pulse.example.com", "Security")
+
+    assert url == "https://pulse.example.com/radar?domain=Security#radar"
+
+
+def test_hot_topic_lead_includes_short_article_summary_sections():
+    html = email_service._build_hot_topic_lead_html(
+        {"name": "AI Agents", "domain": "AI", "subdomain": "Deployment"},
+        {
+            "title": "AWS unveils AI deployment updates",
+            "url": "https://example.com/aws-ai",
+            "source_name": "Computerworld",
+            "ingested_at": None,
+            "image_url": None,
+            "what_is_it": "AWS announced a coordinated set of services for agent deployment. Extra detail should not appear.",
+            "why_it_matters": "Executives get a clearer signal that agent infrastructure is moving into production buying cycles. Extra detail should not appear.",
+        },
+    )
+
+    assert "What is it?" in html
+    assert "Why is it important?" in html
+    assert "AWS announced a coordinated set of services for agent deployment." in html
+    assert "Executives get a clearer signal" in html
+    assert "Extra detail should not appear" not in html
 
 
 def test_newsletter_footer_has_signed_preferences_links():

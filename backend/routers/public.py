@@ -10,7 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
-from ..models.article import Article
+from ..models.article import Article, ArticleStatus
 from ..models.content import ContentItem
 from ..models.newsletter_issue import NewsletterIssue
 from ..models.role import Role
@@ -18,7 +18,12 @@ from ..models.subscriber import Subscriber, validate_industries_and_role_ids
 from ..models.survey_response import SurveyResponse
 from ..models.topic import Topic
 from ..rate_limits import limiter
-from ..services.ai_service import generate_everyone_overview, generate_path_synthesis
+from ..services.ai_service import (
+    _coerce_synthesis_cards,
+    fallback_story_teaser,
+    generate_everyone_overview,
+    generate_path_synthesis,
+)
 from ..services.hubspot_sync import sync_subscriber_to_hubspot
 from ..services.newsletter_selection import (
     RECOMMENDED_PATH_ARTICLE_LOOKBACK,
@@ -26,6 +31,7 @@ from ..services.newsletter_selection import (
     topic_peak_newsletter_signal_for_recommended,
 )
 from ..services.subscriber_tokens import decode_subscriber_preferences_token
+from ..services.tracked_article_filter import article_qualifies_pulse_tracked_surface
 
 logger = logging.getLogger(__name__)
 
@@ -217,13 +223,34 @@ class ExperienceItem(BaseModel):
     description: str
 
 
+class RecommendedWatchStoryOut(BaseModel):
+    """Ingested radar story plus a one-line hook tying it to this reader."""
+
+    title: str
+    url: str
+    hook: str
+    radar_topic_name: str
+    domain: str
+
+
+class SynthesisCardOut(BaseModel):
+    """Scannable 'What We Think' sub-cards derived from synthesis (titles + bullets)."""
+
+    title: str
+    bullets: list[str]
+
+
 class RecommendedPathOut(BaseModel):
     headline: str
     synthesis: str
     synthesis_html: str
+    synthesis_cards: list[SynthesisCardOut]
     experience_items: list[ExperienceItem]
     topics: list[RecommendedTopicOut]
     content_items: list[RecommendedContentOut]
+    watch_brief: str
+    watch_posture: str
+    watch_stories: list[RecommendedWatchStoryOut]
 
 
 class EveryoneOverviewStats(BaseModel):
@@ -310,29 +337,39 @@ def list_tracked_articles_public(
     limit: int = Query(default=12, ge=1, le=50),
 ):
     """Recent articles tied to published topics — underlying sources for radar + daily digest."""
+    fetch_cap = min(limit * 8, 200)
     rows = (
         db.query(Article)
         .join(Topic, Article.topic_id == Topic.id)
-        .filter(Topic.is_published == True)  # noqa: E712
+        .filter(
+            Topic.is_published == True,  # noqa: E712
+            Article.archived_at.is_(None),
+        )
         .options(joinedload(Article.source), joinedload(Article.topic))
         .order_by(Article.ingested_at.desc())
-        .limit(limit)
+        .limit(fetch_cap)
         .all()
     )
-    return [
-        ArticleTrackedPublic(
-            id=a.id,
-            title=a.title,
-            url=a.url,
-            published_at=a.published_at,
-            ingested_at=a.ingested_at,
-            domain=a.topic.domain if a.topic else "Other",
-            source_name=a.source.name if a.source else None,
-            image_url=a.image_url,
-            summary=_public_article_teaser_summary(a),
+    out: list[ArticleTrackedPublic] = []
+    for a in rows:
+        if not article_qualifies_pulse_tracked_surface(a):
+            continue
+        out.append(
+            ArticleTrackedPublic(
+                id=a.id,
+                title=a.title,
+                url=a.url,
+                published_at=a.published_at,
+                ingested_at=a.ingested_at,
+                domain=a.topic.domain if a.topic else "Other",
+                source_name=a.source.name if a.source else None,
+                image_url=a.image_url,
+                summary=_public_article_teaser_summary(a),
+            )
         )
-        for a in rows
-    ]
+        if len(out) >= limit:
+            break
+    return out
 
 
 def _subscriber_from_preferences_token(token: str, db: Session) -> Subscriber:
@@ -606,63 +643,157 @@ def _recommended_topic_rank_value(
     return score + _NEWSLETTER_SIGNAL_BLEND * peak
 
 
+def _domains_for_intake(issue: str, stage: str) -> list[str]:
+    """
+    Extend wizard issue→domain mapping with **stage** hints ("planning for AI",
+    "cyber", …) so the radar slice stays anchored to domains the visitor cares about.
+    """
+    base = list(_domains_for_intake_issue(issue))
+    st = (stage or "").lower()
+    injections: list[str] = []
+
+    ai_tokens = (
+        "gpt",
+        "llm",
+        "genai",
+        "generative",
+        "copilot",
+        "assistant",
+        " machine learning",
+    )
+    padded = f" {st} "
+    if (
+        (" ai " in padded)
+        or st.strip() == "ai"
+        or st.startswith("ai ")
+        or any(x in st for x in ai_tokens)
+    ):
+        injections.append("AI")
+
+    sec_tokens = ("security", "cyber", "ransom", "breach")
+    if any(x in st for x in sec_tokens):
+        injections.append("Security")
+
+    merged: list[str] = []
+    seen: set[str] = set()
+    for d in injections + base:
+        if d and d not in seen:
+            seen.add(d)
+            merged.append(d)
+    return merged
+
+
+def _industry_radar_bonus(topic: Topic, industry: str) -> float:
+    """Boost topics whose title/summary co-mentions sector language."""
+    ind = industry.strip().lower()
+    if len(ind) < 3:
+        return 0.0
+    blob = f"{topic.name} {(topic.summary or '')}".lower()
+    bonus = 0.0
+    if ind in blob:
+        bonus += 2.8
+    if "transport" in ind:
+        for kw in (
+            "transport",
+            "transportation",
+            "logistics",
+            "freight",
+            "fleet",
+            "supply chain",
+            "shipping",
+            "mobility",
+        ):
+            if kw in blob:
+                bonus += 2.6
+                break
+    if "health" in ind:
+        for kw in ("health", "clinical", "hospital", "patient"):
+            if kw in blob:
+                bonus += 2.4
+                break
+    return min(bonus, 6.0)
+
+
+def _articles_for_watch_stories(
+    db: Session, topics: list[Topic], *, limit: int = 2
+) -> list[tuple[Topic, Article]]:
+    """Most recent published articles per prioritized topic."""
+    if limit < 1 or not topics:
+        return []
+
+    pairs: list[tuple[Topic, Article]] = []
+    used_article_ids: set[int] = set()
+
+    for round_idx in range(4):
+        for t in topics:
+            if len(pairs) >= limit:
+                break
+            hit = (
+                db.query(Article)
+                .filter(
+                    Article.topic_id == t.id,
+                    Article.status == ArticleStatus.published,
+                    Article.archived_at.is_(None),
+                )
+                .order_by(Article.published_at.desc().nullslast(), Article.ingested_at.desc())
+                .offset(round_idx)
+                .limit(1)
+                .first()
+            )
+            if hit is None or hit.id in used_article_ids:
+                continue
+            used_article_ids.add(hit.id)
+            pairs.append((t, hit))
+
+    return pairs[:limit]
+
+
 def _topics_for_recommended(
-    db: Session, issue: str, industry: str, role: str, limit: int = 3
+    db: Session, issue: str, industry: str, role: str, stage: str, limit: int = 4
 ) -> list[Topic]:
     """
-    Published topics gated by intake issue→domain mapping, filled globally when thin.
-
-    Ordering adds the same newsletter article signals used for ranking deep dives —
-    persona/role relevance, recency, topic urgency — plus substring match of the reader’s
-    industry (``Insurance``, etc.) inside recent article prose.
+    Published radar themes aligned to intake **issue domains** + **stage**.
+    We avoid cross-domain back-fill (reads as generic). If filtering is sparse,
+    widen once to global urgency order so the personalised page still resolves.
     """
     role_names = resolve_role_names_from_intake(role, db)
     now = datetime.now(UTC)
     since = now - RECOMMENDED_PATH_ARTICLE_LOOKBACK
 
-    domains = _domains_for_intake_issue(issue)
-    q = db.query(Topic).filter(Topic.is_published == True)  # noqa: E712
+    domains = _domains_for_intake(issue, stage)
+    base_q = db.query(Topic).filter(Topic.is_published == True)  # noqa: E712
+
+    scoped_q = base_q
     if domains:
-        q = q.filter(Topic.domain.in_(domains))
-    candidates = q.order_by(Topic.urgency_score.desc()).limit(max(limit * 8, 24)).all()
+        scoped_q = scoped_q.filter(Topic.domain.in_(domains))
 
-    scored: list[tuple[float, Topic]] = [
-        (
-            _recommended_topic_rank_value(
-                db, t, industry=industry, role_names=role_names, since=since, now=now
-            ),
-            t,
-        )
-        for t in candidates
-    ]
-    in_domain_ids = {t.id for t in candidates}
+    candidates = scoped_q.order_by(Topic.urgency_score.desc()).limit(max(limit * 28, 36)).all()
 
-    fill_q = (
-        db.query(Topic)
-        .filter(Topic.is_published == True)  # noqa: E712
-        .order_by(Topic.urgency_score.desc())
-        .limit(limit + 48)
-        .all()
-    )
-    for t in fill_q:
-        if t.id in in_domain_ids:
-            continue
-        scored.append(
-            (
-                _recommended_topic_rank_value(
-                    db, t, industry=industry, role_names=role_names, since=since, now=now
-                ),
-                t,
-            )
+    fallback_pool: list[Topic] = []
+    if domains and len(candidates) < limit:
+        fallback_pool = (
+            base_q.order_by(Topic.urgency_score.desc()).limit(max(limit + 24, 32)).all()
         )
+
+    cand_ids = {c.id for c in candidates}
+    pool = candidates + [t for t in fallback_pool if t.id not in cand_ids]
+
+    scored: list[tuple[float, Topic]] = []
+    for t in pool:
+        score = _recommended_topic_rank_value(
+            db, t, industry=industry, role_names=role_names, since=since, now=now
+        )
+        score += _industry_radar_bonus(t, industry)
+        scored.append((score, t))
 
     scored.sort(key=lambda x: -x[0])
     out: list[Topic] = []
     seen: set[int] = set()
     for _, t in scored:
-        if t.id not in seen:
-            seen.add(t.id)
-            out.append(t)
+        if t.id in seen:
+            continue
+        seen.add(t.id)
+        out.append(t)
         if len(out) >= limit:
             break
     return out[:limit]
@@ -731,10 +862,19 @@ def recommended_path(
             status_code=400,
             detail="Provide at least one intake field among region, industry, role, issue, stage.",
         )
-    syn = generate_path_synthesis(db, region, industry, role, issue, stage)
-    # Bumped from 3→6 so the "What we're watching" teaser strip has enough
-    # depth to feel like a slice-of-iceberg, not the catalog itself.
-    topics = _topics_for_recommended(db, issue, industry, role, limit=6)
+    stg = (stage or "").strip()
+    topics = _topics_for_recommended(db, issue, industry, role, stg, limit=4)
+    watch_pairs = _articles_for_watch_stories(db, topics, limit=2)
+    syn = generate_path_synthesis(
+        db,
+        region,
+        industry,
+        role,
+        issue,
+        stage,
+        radar_topics=topics,
+        radar_story_pairs=watch_pairs,
+    )
     items = _content_for_recommended(db, industry, issue, limit=4)
     raw_experience = syn.get("experience_items", []) or []
     experience_items = [
@@ -742,10 +882,59 @@ def recommended_path(
         for e in raw_experience
         if isinstance(e, dict) and e.get("title") and e.get("description")
     ]
+    hooks = syn.get("watch_story_hooks") or []
+    hooks_list = hooks if isinstance(hooks, list) else []
+    watch_stories_out: list[RecommendedWatchStoryOut] = []
+    for idx, pair in enumerate(watch_pairs):
+        topic_o, article_o = pair
+        hook_txt = ""
+        if idx < len(hooks_list) and str(hooks_list[idx]).strip():
+            hook_txt = str(hooks_list[idx]).strip()
+        else:
+            hook_txt = fallback_story_teaser(article_o)
+        watch_stories_out.append(
+            RecommendedWatchStoryOut(
+                title=article_o.title,
+                url=article_o.url,
+                hook=hook_txt[:720],
+                radar_topic_name=topic_o.name,
+                domain=topic_o.domain,
+            )
+        )
+    raw_cards = syn.get("synthesis_cards") or []
+    synthesis_cards_out: list[SynthesisCardOut] = []
+    if isinstance(raw_cards, list):
+        for row in raw_cards:
+            if not isinstance(row, dict):
+                continue
+            t = str(row.get("title", "")).strip()
+            bulls = row.get("bullets")
+            if not t or not isinstance(bulls, list):
+                continue
+            blist = [str(b).strip() for b in bulls if str(b).strip()]
+            if len(blist) < 2:
+                continue
+            synthesis_cards_out.append(SynthesisCardOut(title=t[:200], bullets=blist[:8]))
+
+    if not synthesis_cards_out and str(syn.get("synthesis", "")).strip():
+        healed = _coerce_synthesis_cards(None, str(syn["synthesis"]))
+        for row in healed:
+            if not isinstance(row, dict):
+                continue
+            t = str(row.get("title", "")).strip()
+            bulls = row.get("bullets")
+            if not t or not isinstance(bulls, list):
+                continue
+            blist = [str(b).strip() for b in bulls if str(b).strip()]
+            if len(blist) < 2:
+                continue
+            synthesis_cards_out.append(SynthesisCardOut(title=t[:200], bullets=blist[:8]))
+
     return RecommendedPathOut(
         headline=str(syn["headline"]),
         synthesis=str(syn["synthesis"]),
         synthesis_html=str(syn.get("synthesis_html", "")),
+        synthesis_cards=synthesis_cards_out,
         experience_items=experience_items,
         topics=[
             RecommendedTopicOut(
@@ -757,6 +946,9 @@ def recommended_path(
             )
             for t in topics
         ],
+        watch_brief=str(syn.get("watch_brief", "") or ""),
+        watch_posture=str(syn.get("watch_posture", "") or ""),
+        watch_stories=watch_stories_out,
         content_items=[
             RecommendedContentOut(
                 id=str(ci.id),

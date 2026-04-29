@@ -322,6 +322,8 @@ def build_hot_of_day(db: Session) -> dict[str, Any]:
             "ingested_at": hot_art.ingested_at,
             "source_name": hot_art.source.name if hot_art.source else None,
             "image_url": img_u or None,
+            "what_is_it": hot_art.what_is_it,
+            "why_it_matters": hot_art.why_it_matters,
         }
 
     return {

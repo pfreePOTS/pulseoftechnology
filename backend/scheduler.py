@@ -42,14 +42,20 @@ def _newsletter_job() -> None:
 
 
 def _archive_job() -> None:
-    """Daily soft-archive of articles past retention (05:00 UTC)."""
-    from .services.archive_service import archive_old_articles
+    """Daily soft-archive of articles past retention/evidence windows (05:00 UTC)."""
+    from .services.archive_service import (
+        archive_old_articles,
+        archive_outside_active_evidence_window,
+    )
 
     db = SessionLocal()
     try:
         n = archive_old_articles(db)
         if n:
             logger.info("Article archive job: archived %d row(s)", n)
+        evidence_n = archive_outside_active_evidence_window(db)
+        if evidence_n:
+            logger.info("Evidence archive job: archived %d row(s)", evidence_n)
     except Exception:
         logger.exception("Unhandled error in article archive job")
     finally:

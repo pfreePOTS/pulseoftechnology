@@ -1,9 +1,11 @@
+import Image from "next/image";
+
 import BookingCalendar from "@/components/BookingCalendar";
 import GlobalFooter from "@/components/GlobalFooter";
 import GlobalHeader from "@/components/GlobalHeader";
-import { API_BASE } from "@/lib/api";
-
-const SSR_API_BASE = process.env.SERVER_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? API_BASE;
+import RecommendedPathCaseStudies from "@/components/RecommendedPathCaseStudies";
+import { resolveRecommendedPathHeroBackground } from "@/lib/recommendedPathHero";
+import { SSR_PUBLIC_API_BASE, ssrFetchJson } from "@/lib/ssrPublicApi";
 
 function hasAnyRecommendedIntake(
   sp: Record<string, string | string[] | undefined>,
@@ -36,14 +38,31 @@ export type ExperienceItemPayload = {
   description: string;
 };
 
+export type RecommendedWatchStoryPayload = {
+  title: string;
+  url: string;
+  hook: string;
+  radar_topic_name: string;
+  domain: string;
+};
+
+export type SynthesisCardPayload = {
+  title: string;
+  bullets: string[];
+};
+
 export type RecommendedPathPayload = {
   headline: string;
   synthesis: string;
   /** Server-escaped HTML (paragraph wrap) — safe for dangerouslySetInnerHTML. */
   synthesis_html: string;
+  synthesis_cards?: SynthesisCardPayload[];
   experience_items: ExperienceItemPayload[];
   topics: RecommendedTopicPayload[];
   content_items: RecommendedContentPayload[];
+  watch_brief: string;
+  watch_posture: string;
+  watch_stories: RecommendedWatchStoryPayload[];
 };
 
 const ENGAGEMENT_STEPS: Array<{ title: string; body: string }> = [
@@ -77,15 +96,13 @@ async function fetchRecommended(
 ): Promise<RecommendedPathPayload | null> {
   if (!hasAnyRecommendedIntake(sp)) return null;
 
-  const u = new URL(`${SSR_API_BASE}/api/recommended-path`);
+  const u = new URL(`${SSR_PUBLIC_API_BASE}/api/recommended-path`);
   const keys = ["region", "industry", "role", "issue", "stage"] as const;
   for (const k of keys) {
     u.searchParams.set(k, firstParam(sp, k).trim());
   }
 
-  const res = await fetch(u.toString(), { cache: "no-store" });
-  if (!res.ok) return null;
-  return res.json() as Promise<RecommendedPathPayload>;
+  return ssrFetchJson<RecommendedPathPayload>(u.toString());
 }
 
 export default async function RecommendedPathPage({
@@ -103,21 +120,43 @@ export default async function RecommendedPathPage({
   const stageForDisplay = firstParam(sp, "stage").trim();
 
   const synthesisHtml = data?.synthesis_html ?? "";
+  const synthesisCards = data?.synthesis_cards ?? [];
   const experienceItems = data?.experience_items ?? [];
-  const topics = data?.topics ?? [];
+  const watchBrief = data?.watch_brief ?? "";
+  const watchPosture = data?.watch_posture ?? "";
+  const watchStories = data?.watch_stories ?? [];
   const contentItems = data?.content_items ?? [];
+
+  const heroBg = resolveRecommendedPathHeroBackground(industry, issue, stageForDisplay);
 
   return (
     <div className="flex min-h-screen flex-col bg-white">
       <GlobalHeader />
       <main className="flex-1">
-        {/* HERO — AI headline + profile tags. */}
-        <section className="relative overflow-hidden border-b-4 border-pulse-teal bg-[#111] px-8 py-16">
+        {/* HERO — thematic image (AI / sector) + Pulse red–teal wash aligned with radar/home */}
+        <section className="relative min-h-[520px] overflow-hidden border-b-4 border-pulse-teal px-8 py-16">
+          <Image
+            src={heroBg.src}
+            alt=""
+            fill
+            priority
+            sizes="100vw"
+            className="object-cover"
+            style={{ objectPosition: heroBg.objectPosition }}
+          />
           <div
-            className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[rgba(10,10,15,0.82)] via-[rgba(10,10,15,0.65)] to-[rgba(10,10,15,0.45)]"
+            className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-b from-black/76 via-black/62 to-black/76"
             aria-hidden
           />
-          <div className="relative z-[1] mx-auto max-w-[1100px]">
+          <div
+            className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-r from-pulse-red/32 via-transparent to-pulse-teal/18"
+            aria-hidden
+          />
+          <div
+            className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-t from-black/45 via-transparent to-black/55"
+            aria-hidden
+          />
+          <div className="relative z-[2] mx-auto max-w-[1100px]">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-pulse-teal/30 bg-pulse-teal/10 px-4 py-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-pulse-teal" aria-hidden />
               <span className="font-sans text-[13px] font-semibold tracking-[2px] text-pulse-teal uppercase">
@@ -228,7 +267,40 @@ export default async function RecommendedPathPage({
                 Strategic context for your leadership team
               </h2>
             </div>
-            {synthesisHtml ? (
+            {synthesisCards.length > 0 ? (
+              <div
+                className={
+                  synthesisCards.length >= 3
+                    ? "grid gap-6 sm:grid-cols-2 lg:grid-cols-3"
+                    : "mx-auto grid max-w-[940px] gap-6 md:grid-cols-2"
+                }
+              >
+                {synthesisCards.map((card, idx) => (
+                  <article
+                    key={`${card.title}-${idx}`}
+                    className="rounded-lg border border-[#e0e0e0] border-l-4 border-l-pulse-teal bg-light-bg px-6 py-5"
+                  >
+                    <h3 className="mb-3 font-sans text-[16px] font-bold leading-snug text-[#111]">
+                      {card.title}
+                    </h3>
+                    <ul className="space-y-2.5">
+                      {(card.bullets ?? []).map((bullet, bi) => (
+                        <li
+                          key={`${idx}-${bi}`}
+                          className="flex gap-3 font-sans text-[14.5px] leading-relaxed text-[#555]"
+                        >
+                          <span
+                            className="mt-[0.42em] h-1.5 w-1.5 shrink-0 rounded-full bg-pulse-teal"
+                            aria-hidden
+                          />
+                          <span>{bullet}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
+                ))}
+              </div>
+            ) : synthesisHtml ? (
               <div className="mx-auto max-w-[820px] rounded-lg border border-[#e0e0e0] border-l-4 border-l-pulse-teal bg-light-bg px-7 py-6">
                 <div
                   className="font-sans text-[15px] leading-relaxed text-[#555] [&>p]:mb-4 [&>p:last-child]:mb-0"
@@ -244,9 +316,9 @@ export default async function RecommendedPathPage({
           </div>
         </section>
 
-        {/* WHAT WE'RE WATCHING — teaser strip on the left, enroll CTA on the
-            right. Intentionally a SLICE of the radar, not the catalog: the
-            framing is "here's what our Pulse tells you — you should enroll." */}
+        <RecommendedPathCaseStudies industry={industry || undefined} />
+
+        {/* WHAT WE'RE WATCHING — intake-grounded radar analysis, posture line, and ingested stories. */}
         <section className="border-b border-[#e8e8e8] bg-dark-bg px-8 py-16 md:py-20">
           <div className="mx-auto max-w-[1100px]">
             <div className="mb-10">
@@ -254,56 +326,80 @@ export default async function RecommendedPathPage({
                 What We&rsquo;re Watching
               </span>
               <h2 className="font-sans text-[38px] font-bold tracking-tight text-white">
-                Here&rsquo;s a slice of what our Pulse is telling you
+                Radar signal tuned to what you shared
               </h2>
-              <p className="mt-3 max-w-[680px] font-sans text-[15px] leading-relaxed text-white/55">
-                A fraction of the live signal flowing through PulseOne every day &mdash; tuned to
-                your industry and focus. Enroll to get the full briefing in your inbox.
+              <p className="mt-3 max-w-[720px] font-sans text-[15px] leading-relaxed text-white/55">
+                A short analysis and posture read based on your profile, anchored to themes and ingested briefing
+                lines from the Pulse — not an abstract technology laundry list.
               </p>
             </div>
 
             <div className="grid gap-6 lg:grid-cols-5 lg:gap-8">
-              {/* LEFT (3/5) — teaser list. Domain pill + topic name ONLY; no
-                  summaries, no urgency scores. The point is intrigue, not the
-                  full read. */}
-              <div className="lg:col-span-3">
-                <h3 className="mb-4 font-sans text-[12px] font-semibold tracking-[2px] text-white/45 uppercase">
-                  On the radar this week
-                </h3>
-                {topics.length > 0 ? (
-                  <ol className="divide-y divide-white/[0.06] overflow-hidden rounded-[10px] border border-white/[0.08] bg-white/[0.03]">
-                    {topics.map((t) => (
-                      <li
-                        key={t.id}
-                        className="flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-white/[0.05]"
-                      >
-                        <span className="inline-block w-[110px] shrink-0 rounded bg-pulse-teal/15 px-2 py-0.5 text-center font-sans text-[10px] font-bold tracking-wider text-pulse-teal uppercase">
-                          {t.domain}
-                        </span>
-                        <span className="flex-1 font-sans text-[14.5px] font-semibold text-white">
-                          {t.name}
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
+              <div className="lg:col-span-3 space-y-5">
+                {watchBrief.trim() ? (
+                  <p className="font-sans text-[15px] leading-relaxed text-white/82">{watchBrief}</p>
                 ) : (
-                  <p className="rounded-[10px] border border-white/[0.08] bg-white/[0.03] px-5 py-6 font-sans text-sm text-white/45">
-                    No matching published topics yet &mdash; explore the full radar for live signals.
+                  <p className="rounded-[10px] border border-white/[0.08] bg-white/[0.03] px-5 py-4 font-sans text-sm text-white/45">
+                    We don&rsquo;t have enough personalised narrative yet — widen your intake answers or revisit in a moment
+                    while the radar refreshes.
                   </p>
                 )}
+
+                {watchPosture.trim() ? (
+                  <div className="rounded-xl border border-pulse-teal/35 bg-pulse-teal/[0.07] px-5 py-4">
+                    <p className="mb-2 font-sans text-[11px] font-semibold tracking-[2px] text-pulse-teal uppercase">
+                      Your posture snapshot
+                    </p>
+                    <p className="font-sans text-[15px] leading-relaxed text-white/88">{watchPosture}</p>
+                  </div>
+                ) : null}
+
+                <div>
+                  <h3 className="mb-3 font-sans text-[12px] font-semibold tracking-[2px] text-white/45 uppercase">
+                    Stories tied to those themes on the Pulse
+                  </h3>
+                  {watchStories.length > 0 ? (
+                    <ul className="space-y-3">
+                      {watchStories.map((s) => (
+                        <li key={`${s.url}-${s.title}`}>
+                          <a
+                            href={s.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="group block rounded-[10px] border border-white/[0.1] bg-white/[0.03] px-4 py-3.5 transition-colors hover:border-pulse-teal/40 hover:bg-white/[0.05]"
+                          >
+                            <div className="mb-2 flex flex-wrap items-center gap-2">
+                              <span className="inline-block rounded bg-pulse-teal/15 px-2 py-0.5 font-sans text-[10px] font-bold tracking-wider text-pulse-teal uppercase">
+                                {s.domain}
+                              </span>
+                              <span className="font-sans text-[12px] text-white/40">
+                                Radar: {s.radar_topic_name}
+                              </span>
+                            </div>
+                            <p className="mb-1.5 font-sans text-[15px] font-semibold leading-snug text-white underline-offset-4 group-hover:text-pulse-teal group-hover:underline">
+                              {s.title}
+                            </p>
+                            <p className="font-sans text-[13px] leading-relaxed text-white/62">{s.hook}</p>
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="rounded-[10px] border border-white/[0.08] bg-white/[0.03] px-4 py-3 font-sans text-sm text-white/45">
+                      Fresh ingested briefing lines are syncing for these radar themes — open the explorer for everything
+                      that&rsquo;s live right now.
+                    </p>
+                  )}
+                </div>
+
                 <a
                   href="/radar#radar"
-                  className="mt-4 inline-flex items-center gap-1.5 font-sans text-[13px] font-semibold text-pulse-teal hover:underline"
+                  className="inline-flex items-center gap-1.5 font-sans text-[13px] font-semibold text-pulse-teal hover:underline"
                 >
                   See the full radar →
                 </a>
               </div>
 
-              {/* RIGHT (2/5) — enrollment card. Article titles act as a "this
-                  is what you'd have read this morning" proof point, then the
-                  CTA hands the visitor off to the existing /radar subscribe
-                  wizard. Card style intentionally pops against the dark bg
-                  (teal border, soft glow) so the eye lands here. */}
               <aside className="lg:col-span-2">
                 <div className="relative overflow-hidden rounded-[14px] border border-pulse-teal/40 bg-gradient-to-b from-pulse-teal/[0.12] to-pulse-teal/[0.04] p-7 shadow-[0_8px_28px_rgba(1,158,124,0.18)]">
                   <span className="mb-2 block font-sans text-[13px] font-semibold tracking-[3px] text-pulse-teal uppercase">

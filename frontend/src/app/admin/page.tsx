@@ -142,7 +142,7 @@ function velocityTooltipText(row: TopicRow, w: PipelineTrendWindows): string {
   const tw = w.trend_window_days;
   const v = row.velocity_score;
   const n = typeof v === "number" && !Number.isNaN(v) ? v : 0;
-  const base = `Velocity is how many linked articles have coverage time in the last ${tw} days. Coverage time is the later of publication date and when Pulse stored the RSS row (UTC). Archived articles are excluded.`;
+  const base = `Velocity is how many linked articles have coverage time in the last ${tw} days. Coverage time is publication date when available, otherwise when Pulse stored the RSS row (UTC). Archived articles are excluded.`;
   if (n === 0) {
     return `${base} This shows 0.0 because nothing falls in that window—stories may be older than ${tw} days, or there are no linked articles yet. Total linked articles on this topic: ${row.article_count}.`;
   }
@@ -224,14 +224,14 @@ function ArticleProofList({ articles }: { articles: TopicDetailArticle[] }) {
 
   if (sorted.length === 0) {
     return (
-      <p className="px-1 py-2 text-xs text-gray-500">No articles linked to this topic yet.</p>
+      <p className="px-1 py-2 text-xs text-gray-500">No active evidence articles in this window.</p>
     );
   }
 
   return (
     <div className="rounded-lg border border-gray-800/90 bg-gray-950/90">
       <p className="border-b border-gray-800 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-        Supporting articles ({sorted.length})
+        Active evidence articles ({sorted.length})
       </p>
       <ul className="max-h-[min(400px,55vh)] divide-y divide-gray-800/80 overflow-y-auto">
         {sorted.map((a) => (
@@ -488,12 +488,13 @@ function TrendDiscoveryInner() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [pipelineWindows, setPipelineWindows] =
     useState<PipelineTrendWindows>(DEFAULT_TREND_WINDOWS);
-  /** Expanded topic rows → show supporting articles */
+  /** Expanded topic rows → show active evidence articles */
   const [expandedRows, setExpandedRows] = useState<Record<number, boolean>>({});
   const [topicArticles, setTopicArticles] = useState<Record<number, TopicDetailArticle[]>>({});
   const [topicArticlesLoadingId, setTopicArticlesLoadingId] = useState<number | null>(null);
   const articleFetchInflight = useRef<Set<number>>(new Set());
   const articlesLoadedRef = useRef<Set<number>>(new Set());
+  const loadTopicsRequestRef = useRef(0);
   const selectedTopicIdRef = useRef<number | null>(null);
   selectedTopicIdRef.current = selectedTopicId;
 
@@ -502,12 +503,15 @@ function TrendDiscoveryInner() {
 
   const loadTopics = useCallback(async (opts?: { quiet?: boolean }) => {
     const quiet = opts?.quiet === true;
+    const requestId = loadTopicsRequestRef.current + 1;
+    loadTopicsRequestRef.current = requestId;
     if (!quiet) {
       setLoading(true);
       setError(null);
     }
     try {
       const res = await adminFetch(`${API_BASE}/api/admin/topics?status=${statusParam}`);
+      if (loadTopicsRequestRef.current !== requestId) return;
       if (!res.ok) {
         if (!quiet) {
           setError(await res.text().catch(() => res.statusText));
@@ -516,13 +520,16 @@ function TrendDiscoveryInner() {
         return;
       }
       const data = (await res.json()) as TopicRow[];
+      if (loadTopicsRequestRef.current !== requestId) return;
       setTopics(Array.isArray(data) ? data : []);
     } catch (e) {
+      if (loadTopicsRequestRef.current !== requestId) return;
       if (!quiet) {
         setError(e instanceof Error ? e.message : "Request failed");
         setTopics([]);
       }
     } finally {
+      if (loadTopicsRequestRef.current !== requestId) return;
       if (!quiet) setLoading(false);
     }
   }, [statusParam]);
@@ -658,6 +665,7 @@ function TrendDiscoveryInner() {
 
   const displayedTopics = useMemo(() => {
     const list = topics.filter((t) => {
+      if (t.status !== statusParam) return false;
       if (filterDomain && t.domain !== filterDomain) return false;
       const sub = (t.subdomain || "").trim();
       if (filterSubdomain) {
@@ -698,7 +706,7 @@ function TrendDiscoveryInner() {
       return a.name.localeCompare(b.name);
     };
     return [...list].sort(cmp);
-  }, [topics, filterDomain, filterSubdomain, filterAction, sortColumn, sortDir]);
+  }, [topics, statusParam, filterDomain, filterSubdomain, filterAction, sortColumn, sortDir]);
 
   const domainOptions = useMemo(() => {
     const s = new Set(topics.map((t) => t.domain));
@@ -815,6 +823,12 @@ function TrendDiscoveryInner() {
   }
 
   async function demoteTopic(id: number) {
+    const row = topics.find((t) => t.id === id);
+    if (row && row.status !== "selected") {
+      setError("Only topics that are actually on radar can be demoted. Refreshing the list.");
+      await loadTopics();
+      return;
+    }
     setDemotingId(id);
     setError(null);
     try {
@@ -1010,8 +1024,8 @@ function TrendDiscoveryInner() {
 
   const velocityHeaderHint = useMemo(
     () =>
-      `Sort by primary-window article count (last ${pipelineWindows.trend_window_days} days, coverage time). Hover a cell for details.`,
-    [pipelineWindows.trend_window_days],
+      `Sort by active evidence article count (primary + prior window, coverage time). Hover a cell for details.`,
+    [],
   );
   const accelerationHeaderHint = useMemo(
     () =>
@@ -1024,20 +1038,21 @@ function TrendDiscoveryInner() {
       <header className="mb-8">
         <h1 className="text-3xl font-bold tracking-tight text-white">Trend Discovery</h1>
         <p className="mt-1 max-w-3xl text-sm text-gray-400">
-          Each row is one topic cluster: domain and sub-domain on the first line with velocity, acceleration, and article
-          count. Use the chevron to expand and see all supporting articles. Sort the table by velocity, acceleration, or
-          article count. Sub-domains are{" "}
+          Each row is one topic cluster: domain and sub-domain on the first line with velocity, acceleration, and active
+          evidence count. Use the chevron to expand and see evidence-window articles. Sort the table by velocity,
+          acceleration, or evidence count. Sub-domains are{" "}
           <strong className="text-gray-300">filled automatically</strong> when articles are processed (ingestion); use{" "}
           <span className="text-gray-300">Refresh sub-domain</span> or <span className="text-gray-300">AI sub-domains (group)</span>{" "}
           only if you need a manual retry. If rows stay under <span className="text-gray-300">General</span>, run{" "}
           <span className="text-gray-300">System Jobs → Process Raw Articles</span> (or RSS Ingestion); labeling needs{" "}
           <span className="text-gray-300">DEEPSEEK_API_KEY</span>.{" "}
           <strong className="text-gray-300">Velocity</strong> counts articles in the rolling window using{" "}
-          <strong className="text-gray-300">coverage time</strong> — the later of publish date or when Pulse
-          stored the RSS row (UTC). That matches backlog processing and the{" "}
+          <strong className="text-gray-300">coverage time</strong> — publish date when available, otherwise when Pulse
+          stored the RSS row (UTC). That keeps old RSS backlog out of current velocity and the{" "}
           <strong className="text-gray-300">Latest article</strong> column better than ingest-only. Window length
-          comes from <span className="text-gray-300">Admin → Settings</span> (defaults: 7 + 7 days). It can still be{" "}
-          <strong className="text-gray-300">0</strong> when all linked stories fall outside the window.{" "}
+          comes from <span className="text-gray-300">Admin → Settings</span> (defaults: 7 + 7 days). Evidence older than
+          the active window is archived, not deleted. It can still be{" "}
+          <strong className="text-gray-300">0</strong> when no stories fall inside the window.{" "}
           <strong className="text-gray-300">Acceleration</strong> is velocity divided by
           the prior window&apos;s count.{" "}
           <strong className="text-gray-300">Suggestion</strong> is <strong className="text-gray-300">Watch</strong> /{" "}
@@ -1261,7 +1276,7 @@ function TrendDiscoveryInner() {
                     headerTitle={accelerationHeaderHint}
                   />
                   <SortHeader
-                    label="Articles"
+                    label="Evidence"
                     column="articles"
                     sortColumn={sortColumn}
                     sortDir={sortDir}
@@ -1300,7 +1315,7 @@ function TrendDiscoveryInner() {
                             onClick={() => toggleTopicExpanded(row.id)}
                             className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-white"
                             aria-expanded={expanded}
-                            aria-label={expanded ? "Hide supporting articles" : "Show supporting articles"}
+                            aria-label={expanded ? "Hide evidence articles" : "Show evidence articles"}
                           >
                             <IconChevronDown className="h-4 w-4" expanded={expanded} />
                           </button>
@@ -1450,7 +1465,7 @@ function TrendDiscoveryInner() {
                     headerTitle={accelerationHeaderHint}
                   />
                   <SortHeader
-                    label="Articles"
+                    label="Evidence"
                     column="articles"
                     sortColumn={sortColumn}
                     sortDir={sortDir}
@@ -1488,7 +1503,7 @@ function TrendDiscoveryInner() {
                             onClick={() => toggleTopicExpanded(row.id)}
                             className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-white"
                             aria-expanded={expanded}
-                            aria-label={expanded ? "Hide supporting articles" : "Show supporting articles"}
+                            aria-label={expanded ? "Hide evidence articles" : "Show evidence articles"}
                           >
                             <IconChevronDown className="h-4 w-4" expanded={expanded} />
                           </button>
@@ -1624,7 +1639,7 @@ function TrendDiscoveryInner() {
                   headerTitle={accelerationHeaderHint}
                 />
                 <SortHeader
-                  label="Articles"
+                  label="Evidence"
                   column="articles"
                   sortColumn={sortColumn}
                   sortDir={sortDir}
@@ -1669,7 +1684,7 @@ function TrendDiscoveryInner() {
                           onClick={() => toggleTopicExpanded(row.id)}
                           className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-white"
                           aria-expanded={expanded}
-                          aria-label={expanded ? "Hide supporting articles" : "Show supporting articles"}
+                          aria-label={expanded ? "Hide evidence articles" : "Show evidence articles"}
                         >
                           <IconChevronDown className="h-4 w-4" expanded={expanded} />
                         </button>

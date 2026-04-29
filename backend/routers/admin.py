@@ -708,7 +708,8 @@ def list_topics(
 ):
     from sqlalchemy.orm import aliased
 
-    from ..services.signal_service import compute_topic_velocity_metrics
+    from ..services.archive_service import active_evidence_window_days
+    from ..services.signal_service import _article_coverage_time, compute_topic_velocity_metrics
 
     q = db.query(Topic)
     if radar_pipeline:
@@ -737,6 +738,24 @@ def list_topics(
     signal_rows = db.query(SigAlias).join(latest_sq, SigAlias.id == latest_sq.c.max_id).all()
     sig_map: dict[int, SignalRecommendation] = {s.topic_id: s for s in signal_rows}
 
+    evidence_days = active_evidence_window_days(db)
+    evidence_cutoff = datetime.now(UTC) - timedelta(days=evidence_days)
+    ct = _article_coverage_time()
+
+    evidence_article_rows = (
+        db.query(Article.topic_id, func.count(Article.id).label("article_count"))
+        .filter(
+            Article.topic_id.in_(topic_ids),
+            Article.archived_at.is_(None),
+            ct >= evidence_cutoff,
+        )
+        .group_by(Article.topic_id)
+        .all()
+    )
+    evidence_article_map: dict[int, int] = {
+        row.topic_id: int(row.article_count) for row in evidence_article_rows
+    }
+
     latest_article_rows = (
         db.query(
             Article.topic_id,
@@ -746,6 +765,7 @@ def list_topics(
         )
         .filter(Article.topic_id.in_(topic_ids))
         .filter(Article.archived_at.is_(None))
+        .filter(ct >= evidence_cutoff)
         .group_by(Article.topic_id)
         .all()
     )
@@ -772,7 +792,7 @@ def list_topics(
                 else str(t.adoption_state),
                 industry_positions=t.industry_positions,
                 persona_by_role=t.persona_by_role,
-                article_count=t.article_count,
+                article_count=evidence_article_map.get(t.id, 0),
                 is_published=t.is_published,
                 velocity_score=vel,
                 acceleration_score=accel,
@@ -895,15 +915,75 @@ def get_topic(
     db: Session = Depends(get_db),
     _: AdminUser = Depends(require_admin),
 ):
+    from sqlalchemy.orm import aliased
+
+    from ..services.archive_service import active_evidence_window_days
+    from ..services.signal_service import _article_coverage_time, compute_topic_velocity_metrics
+
     topic = (
         db.query(Topic)
-        .options(joinedload(Topic.articles).joinedload(Article.source))
         .filter(Topic.id == topic_id)
         .first()
     )
     if topic is None:
         raise HTTPException(status_code=404, detail="Topic not found")
-    return topic
+
+    evidence_cutoff = datetime.now(UTC) - timedelta(days=active_evidence_window_days(db))
+    ct = _article_coverage_time()
+    articles = (
+        db.query(Article)
+        .options(joinedload(Article.source))
+        .filter(
+            Article.topic_id == topic_id,
+            Article.archived_at.is_(None),
+            ct >= evidence_cutoff,
+        )
+        .order_by(ct.desc())
+        .all()
+    )
+
+    latest_sq = (
+        db.query(
+            SignalRecommendation.topic_id,
+            func.max(SignalRecommendation.id).label("max_id"),
+        )
+        .filter(SignalRecommendation.topic_id == topic_id)
+        .group_by(SignalRecommendation.topic_id)
+        .subquery()
+    )
+    SigAlias = aliased(SignalRecommendation)
+    sig = db.query(SigAlias).join(latest_sq, SigAlias.id == latest_sq.c.max_id).first()
+    vel, accel = compute_topic_velocity_metrics(topic.id, db)
+    latest_article_at = max(
+        (a.published_at or a.ingested_at for a in articles),
+        default=None,
+    )
+
+    return TopicDetail(
+        id=topic.id,
+        name=topic.name,
+        domain=topic.domain,
+        subdomain=getattr(topic, "subdomain", None) or "",
+        summary=topic.summary,
+        newsletter_briefing=topic.newsletter_briefing,
+        urgency_score=topic.urgency_score,
+        status=topic.status.value if hasattr(topic.status, "value") else str(topic.status),
+        adoption_state=topic.adoption_state.value
+        if hasattr(topic.adoption_state, "value")
+        else str(topic.adoption_state),
+        industry_positions=topic.industry_positions,
+        persona_by_role=topic.persona_by_role,
+        article_count=len(articles),
+        is_published=topic.is_published,
+        velocity_score=vel,
+        acceleration_score=accel,
+        signal_rationale=sig.rationale if sig else None,
+        signal_suggested_action=sig.suggested_action if sig else None,
+        signal_id=sig.id if sig else None,
+        latest_article_at=latest_article_at,
+        selected_at=topic.selected_at,
+        articles=articles,
+    )
 
 
 @router.put("/topics/{topic_id}", response_model=TopicOut)

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import IndustryCardIcon from "@/components/IndustryCardIcon";
 import IndustryIntakeModal from "@/components/IndustryIntakeModal";
 import {
   INDUSTRY_DESCRIPTIONS,
@@ -39,6 +40,16 @@ export default function IndustriesGrid() {
                 style={{ backgroundColor: color }}
                 aria-hidden
               />
+              <div
+                className="mb-4 flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-xl"
+                style={{
+                  color,
+                  backgroundColor: color.length === 7 ? `${color}1f` : "#f3f4f6",
+                }}
+                aria-hidden
+              >
+                <IndustryCardIcon industryName={name} className="h-[38px] w-[38px]" />
+              </div>
               <h3 className="mb-2 font-sans text-[18px] font-bold text-[#111]">{name}</h3>
               <p className="mb-5 flex-1 font-sans text-[14px] leading-relaxed text-[#555]">
                 {INDUSTRY_DESCRIPTIONS[name]}

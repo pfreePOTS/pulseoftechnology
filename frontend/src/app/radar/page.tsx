@@ -7,44 +7,26 @@ import SubscribeWizard from "@/components/SubscribeWizard";
 import GlobalFooter from "@/components/GlobalFooter";
 import GlobalHeader from "@/components/GlobalHeader";
 import { type RadarTopic } from "@/components/RadarChart";
-import { API_BASE } from "@/lib/api";
 import { formatStoryDateUtc } from "@/lib/formatStoryDateUtc";
-
-/** Server-side only: URL the Next.js server uses to call the API (browser still uses NEXT_PUBLIC_API_URL). In Docker, must be http://backend:8000 — localhost would point at this container, not the API. */
-const SSR_API_BASE =
-  process.env.SERVER_API_URL ??
-  process.env.NEXT_PUBLIC_API_URL ??
-  API_BASE;
-
-async function getPublishedTopics(): Promise<RadarTopic[]> {
-  try {
-    const res = await fetch(`${SSR_API_BASE}/api/topics/published`, {
-      cache: "no-store",
-    });
-    if (!res.ok) return [];
-    return res.json();
-  } catch {
-    return [];
-  }
-}
+import { ssrFetchJson } from "@/lib/ssrPublicApi";
+import { API_BASE } from "@/lib/api";
 
 type TrackedArticleApi = Omit<TrackedArticle, "displayDate">;
 
+async function getPublishedTopics(): Promise<RadarTopic[]> {
+  const data = await ssrFetchJson<RadarTopic[]>("/api/topics/published");
+  return data ?? [];
+}
+
 async function getTrackedArticles(): Promise<TrackedArticle[]> {
-  try {
-    const res = await fetch(`${SSR_API_BASE}/api/articles/tracked?limit=12`, {
-      cache: "no-store",
-    });
-    if (!res.ok) return [];
-    const data: unknown = await res.json();
-    if (!Array.isArray(data)) return [];
-    return (data as TrackedArticleApi[]).map((row) => ({
-      ...row,
-      displayDate: formatStoryDateUtc(row.published_at ?? row.ingested_at),
-    }));
-  } catch {
-    return [];
-  }
+  const data = await ssrFetchJson<TrackedArticleApi[]>(
+    "/api/articles/tracked?limit=12",
+  );
+  if (!data) return [];
+  return data.map((row) => ({
+    ...row,
+    displayDate: formatStoryDateUtc(row.published_at ?? row.ingested_at),
+  }));
 }
 
 /** Server-formatted "Updated" date for the radar title. Computed once per

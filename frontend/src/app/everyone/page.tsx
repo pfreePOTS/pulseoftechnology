@@ -3,9 +3,7 @@ import Link from "next/link";
 import BookingCalendar from "@/components/BookingCalendar";
 import GlobalFooter from "@/components/GlobalFooter";
 import GlobalHeader from "@/components/GlobalHeader";
-import { API_BASE } from "@/lib/api";
-
-const SSR_API_BASE = process.env.SERVER_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? API_BASE;
+import { ssrFetchJson } from "@/lib/ssrPublicApi";
 
 // Server-formatted date so SSR/CSR markup matches and we never hydration-mismatch.
 const OVERVIEW_DATE_FORMAT = new Intl.DateTimeFormat("en-US", {
@@ -68,13 +66,7 @@ const ENGAGEMENT_STEPS: Array<{ title: string; body: string }> = [
 ];
 
 async function fetchOverview(): Promise<OverviewPayload | null> {
-  try {
-    const res = await fetch(`${SSR_API_BASE}/api/everyone-overview`, { cache: "no-store" });
-    if (!res.ok) return null;
-    return (await res.json()) as OverviewPayload;
-  } catch {
-    return null;
-  }
+  return ssrFetchJson<OverviewPayload>("/api/everyone-overview");
 }
 
 export default async function EveryonePage() {

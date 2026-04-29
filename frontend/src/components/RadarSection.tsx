@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { useIsClient } from "@/lib/useIsClient";
+import { normalizeRadarDomain, RADAR_DOMAINS } from "@/lib/radarFilters";
 import RadarChart, { type RadarTopic, INDUSTRY_COLORS } from "./RadarChart";
 
-const DOMAINS = ["AI", "Security", "Cloud", "Finance", "Leadership", "Other"];
 const INDUSTRY_LIST = Object.keys(INDUSTRY_COLORS);
 
 export default function RadarSection({
@@ -31,8 +31,8 @@ export default function RadarSection({
   useEffect(() => {
     if (!isClient) return;
     const params = new URLSearchParams(window.location.search);
-    const d = params.get("domain");
-    if (d && DOMAINS.includes(d)) {
+    const d = normalizeRadarDomain(params.get("domain"));
+    if (d) {
       setSelectedDomain(d);
     }
   }, [isClient]);
@@ -142,7 +142,7 @@ export default function RadarSection({
                   className="min-w-[155px] rounded-lg border border-pulse-teal bg-white px-3 py-2 text-sm text-pulse-teal focus:outline-none focus:ring-2 focus:ring-pulse-teal/40"
                 >
                   <option value="">All Domains</option>
-                  {DOMAINS.map((d) => (
+                  {RADAR_DOMAINS.map((d) => (
                     <option key={d} value={d}>
                       {d}
                     </option>

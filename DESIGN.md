@@ -28,7 +28,7 @@ This design system aligns the Pulse of Technology platform with the parent brand
 
 ## Color
 - **Approach:** High-contrast white background, dark text, with highly intentional use of brand colors for accents and CTAs.
-- **Primary Red:** `#E91D24` (PulseOne Red) — Used strictly for primary calls to action (e.g., "Subscribe", "Explore the Radar") and the logo accent.
+- **Primary Red:** `#D5171E` (PulseOne Red, rebranding prototype) — Used strictly for primary calls to action (e.g., "Subscribe", "Explore the Radar") and the logo accent.
 - **Primary Teal:** `#019E7C` (PulseOne Teal) — Used for secondary accents, active states, links, and the radar chart's core theme color. Replaces the off-brand `#425B76`.
 - **Neutrals:**
   - Background: `#FFFFFF` (White)

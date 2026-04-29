@@ -136,15 +136,12 @@ export default function SubscribeWizard({ apiBase }: Props) {
     setErrors((prev) => ({ ...prev, [key]: undefined }));
   }
 
-  function setAllDomains() {
-    setForm((prev) => ({ ...prev, domains: [] }));
-  }
-
   function toggleDomain(d: string) {
     setForm((prev) => ({
       ...prev,
       domains: prev.domains.includes(d) ? prev.domains.filter((x) => x !== d) : [...prev.domains, d],
     }));
+    setErrors((prev) => ({ ...prev, domains: undefined }));
   }
 
   function toggleRoleId(id: number) {
@@ -181,9 +178,8 @@ export default function SubscribeWizard({ apiBase }: Props) {
   }
 
   function validateStep2(): boolean {
-    if (roles.length === 0) return true;
     if (form.role_ids.length === 0) {
-      setErrors({ role_ids: "Select at least one role" });
+      setErrors({ role_ids: "Select at least one title" });
       return false;
     }
     return true;
@@ -197,10 +193,19 @@ export default function SubscribeWizard({ apiBase }: Props) {
     return true;
   }
 
+  function validateStep4(): boolean {
+    if (form.domains.length === 0) {
+      setErrors({ domains: "Select at least one topic domain" });
+      return false;
+    }
+    return true;
+  }
+
   function handleNext() {
     if (step === 1 && !validateStep1()) return;
     if (step === 2 && !validateStep2()) return;
     if (step === 3 && !validateStep3()) return;
+    if (step === 4 && !validateStep4()) return;
     setStep((prev) => (prev < 5 ? ((prev + 1) as Step) : prev));
   }
 
@@ -236,9 +241,9 @@ export default function SubscribeWizard({ apiBase }: Props) {
           email: form.email.trim().toLowerCase(),
           first_name: form.first_name.trim(),
           last_name: form.last_name.trim(),
-          role_ids: form.role_ids.length > 0 ? form.role_ids : null,
-          industries: form.industries.length > 0 ? form.industries : null,
-          domains: form.domains.length > 0 ? form.domains : null,
+          role_ids: form.role_ids,
+          industries: form.industries,
+          domains: form.domains,
         }),
       });
       if (res.status === 409) {
@@ -297,12 +302,10 @@ export default function SubscribeWizard({ apiBase }: Props) {
 
   if (done) {
     const roleLabel =
-      form.role_ids.length > 0
-        ? form.role_ids
-            .map((id) => roles.find((r) => r.id === id)?.name)
-            .filter(Boolean)
-            .join(", ") || "your role"
-        : "your role";
+      form.role_ids
+        .map((id) => roles.find((r) => r.id === id)?.name)
+        .filter(Boolean)
+        .join(", ") || "your title";
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-pulse-teal/10">
@@ -314,19 +317,13 @@ export default function SubscribeWizard({ apiBase }: Props) {
         <p className="mt-2 text-sm text-gray-600">
           Welcome, {form.first_name}. We&apos;ll tailor the Pulse for{" "}
           <strong className="font-semibold text-gray-900">{roleLabel}</strong>
-          {form.domains.length > 0 ? (
-            <>
-              {" "}
-              across <strong className="font-semibold text-gray-900">{form.domains.join(", ")}</strong>
-            </>
-          ) : null}
+          {" "}
+          across <strong className="font-semibold text-gray-900">{form.domains.join(", ")}</strong>
           .
         </p>
       </div>
     );
   }
-
-  const allDomainsMode = form.domains.length === 0;
 
   const roleLabel =
     form.role_ids.length > 0
@@ -346,7 +343,7 @@ export default function SubscribeWizard({ apiBase }: Props) {
     <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
       <h2 className="mb-1 text-xl font-bold text-pulse-teal">Subscribe to the Pulse</h2>
       <p className="mb-6 text-sm text-gray-600">
-        Get a weekly C-level briefing tailored to your role, industry, and interests.
+        Get a daily C-level briefing tailored to your role, industry, and interests.
       </p>
 
       {!isClient ? (
@@ -366,7 +363,6 @@ export default function SubscribeWizard({ apiBase }: Props) {
                     value={form.first_name}
                     onChange={(e) => set("first_name", e.target.value)}
                     className={inputCls}
-                    autoFocus
                   />
                   {errors.first_name && <p className={errorCls}>{errors.first_name}</p>}
                 </div>
@@ -400,12 +396,11 @@ export default function SubscribeWizard({ apiBase }: Props) {
           {step === 2 && (
             <div>
               <label className="mb-2 block text-xs font-medium text-gray-700">
-                Your role (select one or more)
+                Your title (select one or more)
               </label>
               {!rolesError && roles.length === 0 && (
                 <p className="mb-2 text-sm text-gray-600">
-                  Role options are not available yet; you can continue and we&apos;ll still personalize your briefing by
-                  industry and domains.
+                  Loading title options...
                 </p>
               )}
               {rolesError ? (
@@ -466,64 +461,26 @@ export default function SubscribeWizard({ apiBase }: Props) {
           {step === 4 && (
             <div>
               <p className="mb-3 text-xs text-gray-600">
-                Choose the full briefing across all domains, or pick specific topics below:
+                Choose at least one topic domain for your briefing.
               </p>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                <button
-                  type="button"
-                  aria-pressed={allDomainsMode}
-                  onClick={() => {
-                    if (!allDomainsMode) setAllDomains();
-                  }}
-                  className={`col-span-2 flex items-start gap-3 rounded-lg border-2 px-3 py-3 text-left text-xs transition-all sm:col-span-3 ${
-                    allDomainsMode
-                      ? "border-pulse-teal bg-pulse-teal/5 ring-1 ring-pulse-teal/20"
-                      : "border-gray-200 bg-white hover:border-gray-300"
-                  }`}
-                >
-                  <span
-                    className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${
-                      allDomainsMode
-                        ? "border-pulse-teal bg-pulse-teal/10 text-pulse-teal"
-                        : "border-gray-300 bg-white text-transparent"
-                    }`}
-                    aria-hidden
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                    </svg>
-                  </span>
-                  <span className="min-w-0">
-                    <span className={`block font-semibold ${allDomainsMode ? "text-pulse-teal" : "text-gray-700"}`}>
-                      All Domains — get the full briefing
-                    </span>
-                    <span className="mt-0.5 block text-[11px] leading-snug text-gray-600">
-                      {allDomainsMode
-                        ? "You'll receive coverage across every topic we track."
-                        : "Switch back to include all topics in your Pulse."}
-                    </span>
-                  </span>
-                </button>
                 {DOMAIN_OPTIONS.map(({ value, label, color }) => {
                   const active = form.domains.includes(value);
-                  const dimmed = allDomainsMode;
                   return (
                     <button
                       key={value}
                       type="button"
                       onClick={() => toggleDomain(value)}
                       className={`flex flex-col items-start rounded-lg border px-3 py-2.5 text-left text-xs transition-all ${
-                        dimmed
-                          ? "cursor-pointer border-gray-200 bg-white opacity-45 hover:border-gray-300 hover:opacity-70"
-                          : active
-                            ? "border-pulse-teal bg-pulse-teal/5 opacity-100"
-                            : "border-gray-200 bg-white text-gray-700 opacity-100 hover:border-gray-300"
+                        active
+                          ? "border-pulse-teal bg-pulse-teal/5 opacity-100"
+                          : "border-gray-200 bg-white text-gray-700 opacity-100 hover:border-gray-300"
                       }`}
                     >
                       <span className="mb-1 h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
                       <span
                         className={`font-semibold ${
-                          !dimmed && active ? "text-pulse-teal" : "text-gray-700"
+                          active ? "text-pulse-teal" : "text-gray-700"
                         }`}
                       >
                         {value}
@@ -533,6 +490,7 @@ export default function SubscribeWizard({ apiBase }: Props) {
                   );
                 })}
               </div>
+              {errors.domains && <p className={errorCls}>{errors.domains}</p>}
             </div>
           )}
 
@@ -603,9 +561,7 @@ export default function SubscribeWizard({ apiBase }: Props) {
                     <div className="min-w-0 flex-1">
                       <dt className="text-xs font-medium text-gray-500">Domains</dt>
                       <dd className="mt-0.5 text-sm text-gray-900">
-                        {form.domains.length === 0
-                          ? "All Domains"
-                          : form.domains.join(", ")}
+                        {form.domains.length > 0 ? form.domains.join(", ") : "—"}
                       </dd>
                     </div>
                     <button

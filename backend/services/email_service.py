@@ -667,6 +667,7 @@ def _build_top_stories_block(
     subscriber: Subscriber | None = None,
     role_objs: list | None = None,
     article_ingested_after: datetime | None = None,
+    include_lead_image: bool = True,
 ) -> str:
     role_names: list[str] | None = None
     if role_objs:
@@ -702,7 +703,7 @@ def _build_top_stories_block(
                 f"Read more</a>"
             )
         lead_img = ""
-        if idx == 0 and first_art is not None:
+        if include_lead_image and idx == 0 and first_art is not None:
             src = _newsletter_image_url_for_article(first_art, t.domain)
             lead_img = (
                 f'<table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 12px;border-radius:8px;overflow:hidden;">'
@@ -804,8 +805,6 @@ def _build_deep_dive_section(
     posture_label = _adoption_label(topic)
     posture = html.escape(posture_label)
     badge_bg, badge_fg = _posture_badge_colors(topic)
-    first_article = articles[0] if articles else None
-    hero_src = html.escape(_newsletter_image_url_for_article(first_article, dom))
     explore_href = html.escape(_radar_explore_url(public_site_url, dom))
 
     persona = _persona_text_for_topic(topic, articles, role_objs)
@@ -876,13 +875,6 @@ def _build_deep_dive_section(
     <p style="margin:0 0 6px;font-size:10px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;
               color:{color};font-family:{_FF};">{html.escape(dom.upper())}</p>
     <p style="margin:0 0 12px;font-size:20px;font-weight:700;color:#111827;font-family:{_FF};line-height:1.25;">{html.escape(topic.name)}</p>
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 14px;border-radius:8px;overflow:hidden;">
-      <tr>
-        <td style="padding:0;line-height:0;background:#E5E7EB;">
-          <img src="{hero_src}" width="560" alt="{html.escape(topic.name)}" style="display:block;width:100%;max-width:560px;height:auto;border:0;" />
-        </td>
-      </tr>
-    </table>
     <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 18px;font-family:{_FF};">
       <tr>
         <td style="padding:0 10px 0 0;vertical-align:middle;width:1%;white-space:nowrap;">
@@ -1101,6 +1093,7 @@ def _build_html(
         subscriber=subscriber,
         role_objs=role_objs,
         article_ingested_after=article_ingested_after,
+        include_lead_image=not bool(hot_lead_html),
     )
 
     deep_parts = []
@@ -1306,26 +1299,17 @@ def _resolve_subscriber_role(subscriber: Subscriber, db: Session | None) -> Role
     return roles[0] if roles else None
 
 
-def _domain_allow_for_newsletter(
-    subscriber: Subscriber, roles: list[Role] | None
-) -> set[str] | None:
+def _domain_allow_for_newsletter(subscriber: Subscriber) -> set[str] | None:
     """
     Which topic domains to include for this subscriber.
 
-    Explicit `subscriber.domains` (from the subscribe wizard) wins. If the subscriber
-    left domains empty, fall back to their job titles' `Role.tags` (unioned; same vocabulary as
-    topic.domain: AI, Security, etc.). If neither applies, return None (all eligible topics).
+    Explicit `subscriber.domains` (from the subscribe wizard/preferences) controls content.
+    Titles/roles are deliberately not used here; they personalize context and article framing.
+    Legacy subscribers with empty domains receive all eligible topics until they choose domains.
     """
     domains = getattr(subscriber, "domains", None)
     if domains:
         return {d for d in domains if d}
-    if roles:
-        tags: list[str] = []
-        for role in roles:
-            if role and getattr(role, "tags", None):
-                tags.extend(str(t).strip() for t in role.tags if t and str(t).strip())
-        if tags:
-            return set(tags)
     return None
 
 
@@ -1375,36 +1359,29 @@ def assemble_newsletter_topics(
 
     - If the subscriber chose specific domains in the wizard, only those topic domains
       are included (case-insensitive match on ``topic.domain``).
-    - If they left domains empty but have a job title (Role) with ``tags``, those tags
-      are treated as domain filters (case-insensitive match to ``topic.domain``).
-    - If neither applies, all approved topics are returned.
+    - Titles/roles never narrow the topic pool; they only personalize context and framing.
+    - If no domains are present (legacy rows), all approved topics are returned.
 
-    ``skip_domain_filter=True`` (admin newsletter preview only): ignore domain / role-tag
-    narrowing so the sandbox shows the full eligible topic pool while still using roles
-    for persona scoring in article picks.
+    ``skip_domain_filter=True`` (admin newsletter preview only): ignore domain narrowing so
+    the sandbox shows the full eligible topic pool while still using roles for persona scoring.
 
     Topics are sorted by descending urgency score.
     """
     if skip_domain_filter:
         return sorted(all_approved, key=lambda t: t.urgency_score, reverse=True)
 
-    roles = _resolve_subscriber_roles(subscriber, db)
-    allow = _domain_allow_for_newsletter(subscriber, roles)
+    allow = _domain_allow_for_newsletter(subscriber)
 
     if allow is None:
         return sorted(all_approved, key=lambda t: t.urgency_score, reverse=True)
 
-    if getattr(subscriber, "domains", None):
-        # Case-insensitive match so wizard/sandbox chips align with DB casing (e.g. "finance" vs "Finance").
-        allow_l = {x.lower() for x in allow}
-        matched = [
-            t
-            for t in all_approved
-            if (t.domain or "").strip() and (t.domain or "").strip().lower() in allow_l
-        ]
-    else:
-        allow_l = {x.lower() for x in allow}
-        matched = [t for t in all_approved if (t.domain or "").lower() in allow_l]
+    # Case-insensitive match so wizard/sandbox chips align with DB casing (e.g. "finance" vs "Finance").
+    allow_l = {x.lower() for x in allow}
+    matched = [
+        t
+        for t in all_approved
+        if (t.domain or "").strip() and (t.domain or "").strip().lower() in allow_l
+    ]
 
     return sorted(matched, key=lambda t: t.urgency_score, reverse=True)
 

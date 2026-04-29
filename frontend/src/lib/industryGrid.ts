@@ -70,3 +70,55 @@ const LEGACY_ALIASES: Record<string, string> = {
 export function industryColor(name: string): string {
   return LEGACY_ALIASES[name] ?? INDUSTRY_COLORS[name] ?? DEFAULT_HEX;
 }
+
+/**
+ * Short executive-tone descriptions used on the `/industries` feeder page.
+ * One to two sentences each, vendor-neutral, calling out the dominant tech
+ * tension a CEO/CIO/COO in that sector is most likely re-checking right now.
+ */
+export const INDUSTRY_DESCRIPTIONS: Record<IndustryOption, string> = {
+  Healthcare:
+    "HIPAA, ePHI security, AI-assisted clinical workflows, and the operational reality of running 24/7 critical-care systems on aging infrastructure.",
+  "Financial Services":
+    "Regulator-grade controls, fraud and AML automation, and the speed-versus-compliance tradeoff as AI moves into underwriting and customer-facing channels.",
+  Technology:
+    "Securing your own dogfood, governing internal AI adoption, and proving operational maturity to enterprise customers and auditors.",
+  Manufacturing:
+    "OT/IT convergence, ransomware exposure on the shop floor, and using AI for predictive maintenance and supply-chain visibility.",
+  Energy:
+    "Critical-infrastructure security (NERC/CIP), grid modernisation, and the operational risk of geographically distributed assets.",
+  Retail:
+    "PCI scope reduction, fraud at scale, and AI-driven personalisation that respects consumer-privacy laws.",
+  Government:
+    "FedRAMP, StateRAMP and CJIS compliance, legacy-system modernisation, and the procurement realities of public-sector IT.",
+  Education:
+    "FERPA, student-data privacy, classroom AI policy, and stretching constrained IT budgets across rapidly growing demand.",
+  Telecommunications:
+    "Network resilience, customer-data protection at scale, and the AI/automation play in NOC and customer-support operations.",
+  Transportation:
+    "Operational technology risk in fleets and depots, telematics-data governance, and AI-enabled routing and safety systems.",
+  "Media & Entertainment":
+    "Content-pipeline security, generative-AI rights management, and cost discipline on streaming infrastructure at scale.",
+  "Real Estate":
+    "Smart-building security, tenant-data privacy, and the operational tech stack across distributed property portfolios.",
+  Agriculture:
+    "AgTech IoT security, supply-chain traceability, and applying AI to yield, weather, and equipment-health data.",
+  "Pharma & Biotech":
+    "GxP compliance, IP protection across research and clinical pipelines, and the AI-in-discovery governance question regulators are starting to ask.",
+  "Legal Services":
+    "Privileged-data security, generative-AI risk in matter management, and the compliance posture clients are increasingly pricing into RFPs.",
+  Hospitality:
+    "PCI compliance, guest-data privacy, and using AI to operate leaner across distributed properties without losing service quality.",
+  Nonprofit:
+    "Donor-data security, mission-cost discipline, and squeezing real value out of AI without enterprise-scale budgets.",
+  "Defense & Aerospace":
+    "CMMC, ITAR, supply-chain provenance, and the operational security of long-lifecycle classified and dual-use systems.",
+  Insurance:
+    "Underwriting AI governance, claims-fraud automation, and the regulatory scrutiny that follows model-driven decisions.",
+  "Professional Services":
+    "Client-data security, AI productivity gains in delivery work, and demonstrating SOC 2 / ISO posture as a sales enabler.",
+};
+
+export function industryDescription(name: string): string {
+  return (INDUSTRY_DESCRIPTIONS as Record<string, string>)[name] ?? "";
+}

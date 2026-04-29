@@ -10,17 +10,15 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from ..config import settings
 from ..database import SessionLocal
 from ..models.agent_run import AgentRun
 from ..models.prompt import PromptProposal, PromptTemplate
 from .ai_service import (
     _FALLBACK_PROMPTS,
     SONNET_MODEL,
-    _get_client,
-    _strip_fences,
     default_model_for_agent,
 )
+from .llm_client import chat_completion, is_llm_configured
 
 logger = logging.getLogger(__name__)
 
@@ -115,8 +113,10 @@ def generate_prompt_improvement(db: Session, agent_name: str) -> PromptProposal 
     Ask Sonnet to rewrite the active system prompt using up to 20 recent failed runs as context.
     Stores a pending PromptProposal.
     """
-    if not settings.anthropic_api_key:
-        logger.warning("generate_prompt_improvement: ANTHROPIC_API_KEY not set")
+    if not is_llm_configured():
+        logger.warning(
+            "generate_prompt_improvement: no DEEPSEEK_API_KEY / ANTHROPIC_API_KEY — skipping"
+        )
         return None
 
     tpl = _active_template_row(db, agent_name)
@@ -163,16 +163,15 @@ def generate_prompt_improvement(db: Session, agent_name: str) -> PromptProposal 
 {examples_text}
 """
 
-    response = _get_client().messages.create(
-        model=SONNET_MODEL,
-        max_tokens=8192,
+    proposed = chat_completion(
+        SONNET_MODEL,
         system=(
             "You are an expert AI prompt engineer. "
             "Follow the user instructions exactly. Output only the new system prompt text, no preamble."
         ),
-        messages=[{"role": "user", "content": user_message}],
-    )
-    proposed = _strip_fences(response.content[0].text).strip()
+        user=user_message,
+        max_tokens=8192,
+    ).strip()
     if not proposed:
         logger.warning("generate_prompt_improvement: empty model response")
         return None

@@ -1,0 +1,157 @@
+import Image from "next/image";
+import RadarSection from "@/components/RadarSection";
+import TrackedStoriesSection, {
+  type TrackedArticle,
+} from "@/components/TrackedStoriesSection";
+import SubscribeWizard from "@/components/SubscribeWizard";
+import GlobalFooter from "@/components/GlobalFooter";
+import GlobalHeader from "@/components/GlobalHeader";
+import { type RadarTopic } from "@/components/RadarChart";
+import { API_BASE } from "@/lib/api";
+import { formatStoryDateUtc } from "@/lib/formatStoryDateUtc";
+
+/** Server-side only: URL the Next.js server uses to call the API (browser still uses NEXT_PUBLIC_API_URL). In Docker, must be http://backend:8000 — localhost would point at this container, not the API. */
+const SSR_API_BASE =
+  process.env.SERVER_API_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  API_BASE;
+
+async function getPublishedTopics(): Promise<RadarTopic[]> {
+  try {
+    const res = await fetch(`${SSR_API_BASE}/api/topics/published`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
+}
+
+type TrackedArticleApi = Omit<TrackedArticle, "displayDate">;
+
+async function getTrackedArticles(): Promise<TrackedArticle[]> {
+  try {
+    const res = await fetch(`${SSR_API_BASE}/api/articles/tracked?limit=12`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return [];
+    const data: unknown = await res.json();
+    if (!Array.isArray(data)) return [];
+    return (data as TrackedArticleApi[]).map((row) => ({
+      ...row,
+      displayDate: formatStoryDateUtc(row.published_at ?? row.ingested_at),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/** Server-formatted "Updated" date for the radar title. Computed once per
+ *  request (page is `cache: "no-store"` upstream) and passed to the client
+ *  RadarSection as a string so SSR/CSR rendering stays identical. */
+const RADAR_UPDATED_FORMAT = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+
+export default async function RadarPage() {
+  const [topics, trackedArticles] = await Promise.all([
+    getPublishedTopics(),
+    getTrackedArticles(),
+  ]);
+  const lastUpdated = RADAR_UPDATED_FORMAT.format(new Date());
+
+  return (
+    <div className="flex min-h-screen flex-col bg-white text-gray-900">
+      <GlobalHeader />
+      <main className="flex-1">
+        {/* HERO — sizing/padding/gradient kept identical to HeroSection.tsx so
+            the homepage and /radar heroes feel like one design system. Update
+            both together. */}
+        <section className="relative flex min-h-[560px] items-center justify-center overflow-hidden text-center">
+          <Image
+            src="/FrontPage_SecurityImage.png"
+            alt=""
+            fill
+            priority
+            className="object-cover object-[center_30%]"
+            sizes="100vw"
+          />
+          <div
+            className="absolute inset-0 bg-gradient-to-b from-[rgba(10,10,10,0.72)] via-[rgba(10,10,10,0.55)] to-[rgba(10,10,10,0.75)]"
+            aria-hidden
+          />
+          <div className="relative z-[2] mx-auto w-full max-w-[1100px] px-6 py-16">
+            <div className="mb-4 inline-block rounded-full border border-pulse-teal/35 bg-pulse-teal/12 px-3.5 py-1.5 font-sans text-[13px] font-semibold tracking-[4px] text-pulse-teal uppercase">
+              Pulse of Technology Radar
+            </div>
+            <h1 className="mb-5 font-sans text-[clamp(1.875rem,4.6vw,52px)] leading-[1.1] font-bold tracking-tight text-white">
+              Technology Intelligence for{" "}
+              <span className="text-pulse-red [text-shadow:0_0_40px_rgba(213,23,30,0.4)]">
+                C-Suite Leaders
+              </span>
+              .
+            </h1>
+            <p className="mx-auto mb-7 max-w-[640px] font-sans text-lg leading-relaxed text-white/78">
+              Cut through the noise. Know exactly which emerging technologies matter to your
+              industry, what your posture should be, and when to act.
+            </p>
+            <div className="flex flex-wrap justify-center gap-3.5">
+              <a
+                href="#radar"
+                className="inline-block rounded bg-pulse-red px-[26px] py-[13px] font-sans text-sm font-semibold text-white transition-colors hover:bg-[#a81117]"
+              >
+                Explore the Radar
+              </a>
+              <a
+                href="#subscribe"
+                className="inline-block rounded border-2 border-white/50 bg-transparent px-[26px] py-[11px] font-sans text-sm font-semibold text-white transition-colors hover:border-white"
+              >
+                Get Our Daily Briefing
+              </a>
+            </div>
+          </div>
+        </section>
+        {/* `#radar` wraps the red→teal accent strip AND the radar so the
+            "Explore the Radar" CTA scrolls to a clean, framed view (gradient
+            strip just below the sticky header, "Key Trending Topics" control
+            bar + full radar visible below) instead of jumping past the
+            gradient and clipping it.
+
+            `scroll-mt-[72px]` matches the `h-[72px]` `sticky top-0 z-[100]`
+            `GlobalHeader`, so the anchor target clears the floating header
+            exactly. Update both numbers together if header height changes. */}
+        <div id="radar" className="scroll-mt-[72px]">
+          <div
+            className="h-[5px] w-full bg-gradient-to-r from-pulse-red to-pulse-teal"
+            aria-hidden
+          />
+          <RadarSection topics={topics} lastUpdated={lastUpdated} />
+        </div>
+
+        {trackedArticles.length > 0 && (
+          <TrackedStoriesSection
+            articles={trackedArticles}
+            lastUpdated={lastUpdated}
+          />
+        )}
+
+        <section id="subscribe" className="scroll-mt-4 bg-white px-6 py-14">
+          <div className="mx-auto max-w-2xl">
+            <h2 className="mb-2 text-center font-sans text-[38px] leading-tight font-bold tracking-tight text-pulse-teal">
+              Get Personalised Intelligence
+            </h2>
+            <p className="mb-8 text-center text-gray-600">
+              Receive curated radar briefings tailored to your industry and domains — delivered
+              daily to your inbox.
+            </p>
+            <SubscribeWizard apiBase={API_BASE} />
+          </div>
+        </section>
+      </main>
+      <GlobalFooter />
+    </div>
+  );
+}

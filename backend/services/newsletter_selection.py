@@ -21,11 +21,12 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
 from ..models.article import Article
+from ..models.role import Role
 from ..models.topic import Topic
 from .article_language import title_contains_hangul
 
@@ -202,3 +203,112 @@ def select_articles_for_newsletter_topic(
         len(with_persona),
     )
     return out
+
+
+# ── Recommended-path / “Today’s topics” (reuse newsletter scoring) ───────────
+
+# Recent window for ranking topics by their best in-window article (aligns with teaser).
+RECOMMENDED_PATH_ARTICLE_LOOKBACK = timedelta(hours=96)
+_INDSTRY_TEXT_BONUS = 35.0  # boosts when intake industry appears in article prose
+
+
+def article_industry_bonus(article: Article, industry_needle: str) -> float:
+    """Match intake industry (e.g. ``Insurance``) against article text — business-sense fit."""
+    needle = (industry_needle or "").strip().lower()
+    if len(needle) < 2:
+        return 0.0
+    parts: list[str] = [
+        (article.title or ""),
+        (article.what_is_it or ""),
+        (article.why_it_matters or ""),
+        (article.content or "")[:4000],
+    ]
+    pi = article.persona_impacts
+    if isinstance(pi, dict):
+        parts.extend(str(v) for v in pi.values() if v)
+    blob = " ".join(parts).lower()
+    if needle in blob:
+        return _INDSTRY_TEXT_BONUS
+    tags = article.tags
+    if isinstance(tags, list):
+        t_join = " ".join(str(x).lower() for x in tags)
+        if needle in t_join:
+            return _INDSTRY_TEXT_BONUS * 0.6
+    return 0.0
+
+
+def topic_peak_newsletter_signal_for_recommended(
+    db: Session,
+    topic: Topic,
+    *,
+    role_names: list[str] | None,
+    industry_needle: str,
+    reference_time: datetime,
+    article_after: datetime,
+    sample_cap: int = 56,
+) -> float:
+    """Max (newsletter score + industry text bonus) among recent articles under this topic."""
+    ctx = NewsletterArticleContext(
+        role_names=role_names,
+        topic_urgency=float(topic.urgency_score or 0.0),
+        reference_time=reference_time,
+    )
+    q = (
+        db.query(Article)
+        .filter(
+            Article.topic_id == topic.id,
+            Article.archived_at.is_(None),
+            Article.ingested_at >= article_after,
+        )
+        .order_by(Article.ingested_at.desc())
+        .limit(sample_cap)
+    )
+    best = 0.0
+    for a in q.all():
+        if title_contains_hangul(getattr(a, "title", None)):
+            continue
+        line = score_article_for_newsletter(a, ctx) + article_industry_bonus(a, industry_needle)
+        if line > best:
+            best = line
+    return best
+
+
+def resolve_role_names_from_intake(intake_role: str, db: Session) -> list[str] | None:
+    """
+    Map free-text intake titles (``ExecutiveIntakeForm``) to ``Role.name`` values
+    so persona_impacts keys line up with newsletter scoring.
+    """
+    raw = (intake_role or "").strip()
+    if not raw:
+        return None
+    s_low = raw.lower()
+    rows = db.query(Role.name).order_by(Role.name).all()
+    names = [r[0] for r in rows if r[0]]
+    for n in names:
+        if n.strip().lower() == s_low:
+            return [n]
+    out: list[str] = []
+    for n in names:
+        nl = n.lower()
+        if nl and (nl in s_low or s_low in nl):
+            out.append(n)
+    if out:
+        return list(dict.fromkeys(out))
+    # Token hints when labels differ (intake "CIO / CTO" vs Role "Chief Technology Officer").
+    token_hits: dict[str, str] = {}
+    for n in names:
+        nl = n.lower()
+        for needle in (
+            "ciso",
+            "cio",
+            "cto",
+            "cfo",
+            "ceo",
+            "coo",
+            "chief risk",
+            "risk officer",
+        ):
+            if needle in s_low and needle in nl:
+                token_hits[n] = n
+                break
+    return list(token_hits.values()) or None

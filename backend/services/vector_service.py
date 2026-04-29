@@ -5,8 +5,7 @@ This module provides a graceful placeholder: all operations are no-ops when
 PINECONE_API_KEY is not configured, allowing the rest of the application to
 run without Pinecone credentials.
 
-Embeddings are generated using Claude (Anthropic) via a keyword-extraction
-prompt that produces a deterministic float vector representation suitable for
+Embeddings currently use deterministic keyword hashing placeholders suitable for
 approximate similarity search. When Pinecone keys are present, vectors are
 upserted on each article ingestion and queried by the signal scorer.
 

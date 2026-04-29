@@ -1,5 +1,5 @@
 """
-Topic positioning trends: article velocity (configurable windows) + optional Haiku synthesis.
+Topic positioning trends: article velocity (configurable windows) + optional DeepSeek synthesis.
 """
 
 import json
@@ -7,37 +7,17 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-import anthropic
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
-from ..config import settings
 from ..models.article import Article
 from ..models.topic import Topic, TopicStatus
 from ..services.signal_service import _article_coverage_time
+from .ai_service import HAIKU_MODEL
+from .llm_client import LLMAPIError, chat_completion, is_llm_configured
 from .pipeline_settings import merge_pipeline_settings
 
 logger = logging.getLogger(__name__)
-
-HAIKU_MODEL = "claude-haiku-4-5-20251001"
-
-_client: anthropic.Anthropic | None = None
-
-
-def _get_client() -> anthropic.Anthropic:
-    global _client
-    if _client is None:
-        _client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-    return _client
-
-
-def _strip_fences(text: str) -> str:
-    text = text.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[-1]
-        text = text.rsplit("```", 1)[0].strip()
-    return text
-
 
 Trend = Literal["up", "down", "flat"]
 
@@ -130,18 +110,17 @@ def _call_ai_insights(
     trend_window_days: int,
     trend_prior_window_days: int,
 ) -> dict[int, dict[str, str]] | None:
-    if not settings.anthropic_api_key or not payload_topics:
+    if not is_llm_configured() or not payload_topics:
         return None
     user = json.dumps({"topics": payload_topics}, indent=2)
     system = _trend_system_prompt(trend_window_days, trend_prior_window_days)
     try:
-        raw = _get_client().messages.create(
-            model=HAIKU_MODEL,
-            max_tokens=2048,
+        text = chat_completion(
+            HAIKU_MODEL,
             system=system,
-            messages=[{"role": "user", "content": user}],
+            user=user,
+            max_tokens=2048,
         )
-        text = _strip_fences(raw.content[0].text)
         data = json.loads(text)
         out: dict[int, dict[str, str]] = {}
         for row in data.get("insights", []):
@@ -157,7 +136,7 @@ def _call_ai_insights(
                 "note": str(row.get("note", ""))[:400],
             }
         return out if out else None
-    except (anthropic.APIError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+    except (LLMAPIError, json.JSONDecodeError, KeyError, TypeError, ValueError):
         logger.exception("Positioning trend AI call failed")
         return None
 

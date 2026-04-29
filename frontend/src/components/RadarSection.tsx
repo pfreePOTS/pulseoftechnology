@@ -12,11 +12,15 @@ export default function RadarSection({
   topics,
   emptyMessage,
   layout = "default",
+  lastUpdated,
 }: {
   topics: RadarTopic[];
   emptyMessage?: string;
   /** `compact`: less padding, wider radar (admin preview). */
   layout?: "default" | "compact";
+  /** Pre-formatted date string (e.g. "Apr 28, 2026") computed in the parent
+   *  Server Component to avoid SSR/CSR Date hydration mismatches. */
+  lastUpdated?: string;
 }) {
   const compact = layout === "compact";
   const isClient = useIsClient();
@@ -72,29 +76,25 @@ export default function RadarSection({
       >
         <div
           className={
-            "mx-auto flex flex-wrap items-end justify-between gap-3 " +
+            "mx-auto flex flex-wrap items-center justify-between gap-3 " +
             (compact ? "max-w-none gap-x-4 gap-y-2" : "max-w-7xl gap-4")
           }
         >
-          {/* Title block */}
-          <div className="min-w-0">
+          {/* Title — adoption-stage explanations live in the hover tooltip on each radar pill */}
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
             <h1
               className={
-                "font-bold text-pulse-teal " +
-                (compact ? "text-xl leading-snug" : "text-2xl")
+                "font-sans font-bold tracking-tight text-pulse-teal " +
+                (compact ? "text-xl leading-snug" : "text-3xl")
               }
             >
-              C-Level Technology Intelligence Radar
+              Key Trending Topics
             </h1>
-            <p
-              className={
-                "text-gray-600 " +
-                (compact ? "mt-0.5 text-xs leading-snug" : "mt-1 text-sm")
-              }
-            >
-              Wedge = adoption stage · Distance = impact band (9+ toward centre, ≤5 on the outer ring) · Click a star to
-              lock details · Updated daily
-            </p>
+            {lastUpdated ? (
+              <span className="text-[13px] font-medium text-gray-500">
+                Updated {lastUpdated}
+              </span>
+            ) : null}
           </div>
 
           {/* Filters — render after mount so password-manager extensions cannot inject fdprocessedid during hydration */}

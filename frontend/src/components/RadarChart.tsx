@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { industryColor, INDUSTRY_COLORS, INDUSTRY_OPTIONS } from "@/lib/industryGrid";
-import { clampRadarRationaleParagraph } from "@/lib/sentences";
+import { clampRadarRationaleParagraph, structureRationale } from "@/lib/sentences";
 import { scrollToSubscribe } from "@/lib/subscribeNavigation";
 
 export { INDUSTRY_COLORS };
@@ -119,30 +119,67 @@ const ADOPTION_AXES = [
   "Make the Most Of",
 ] as const;
 
-/** Native SVG title tooltips (shown on hover) — pills render above the full-chart clear-rect hit layer. */
+/** Pre-compute each pill centre as a percentage of the SVG viewBox so the
+ *  HTML tooltip overlay (layered on top of the SVG inside the same `relative`
+ *  container) can position itself next to its own pill — not always at
+ *  top-centre. Mirrors the polar→XY math used to draw the pill itself. */
+const ADOPTION_AXIS_TOOLTIP_GEOM: Record<
+  (typeof ADOPTION_AXES)[number],
+  { xPct: number; yPct: number }
+> = ADOPTION_AXES.reduce(
+  (acc, label, i) => {
+    const angle = (270 + i * 72) % 360;
+    const lx = CX + LABEL_R * Math.cos((angle * Math.PI) / 180);
+    const ly = CY + LABEL_R * Math.sin((angle * Math.PI) / 180);
+    acc[label] = {
+      xPct: (lx / SIZE) * 100,
+      yPct: ((ly - (CY - LABEL_R - PILL_H / 2 - RADAR_VIEW_PAD)) /
+        RADAR_VIEW_HEIGHT) *
+        100,
+    };
+    return acc;
+  },
+  {} as Record<(typeof ADOPTION_AXES)[number], { xPct: number; yPct: number }>,
+);
+
+/** Hover-tooltip copy for adoption-stage pills — short, scannable, matches the
+ *  graphical card overlay rendered next to the radar. The previous longer
+ *  prose lived in the "How to Read the Radar" section that this overlay replaced. */
 const ADOPTION_STAGE_TOOLTIPS: Record<(typeof ADOPTION_AXES)[number], string> = {
-  "Learn About":
-    "This wedge is for emerging signals worth monitoring before they demand action. " +
-    "If your star sits here: treat it as early intelligence—invest in awareness and horizon scanning; " +
-    "no urgent deployment is implied.",
-  "Get Ahead Of":
-    "This wedge is for trends that are accelerating—time to build strategy before they become urgent. " +
-    "If your star sits here: prioritise understanding, pilots, and roadmaps so you are not surprised when adoption spikes.",
-  "Get Prepared For":
-    "This wedge is for near-term impact—planning and resources should be lining up. " +
-    "If your star sits here: assign ownership, budget, and timelines; execution is approaching.",
-  "Get Your Hands Around":
-    "This wedge is for active adoption—your organisation should be implementing, not just exploring. " +
-    "If your star sits here: programme delivery, change management, and measurable outcomes matter now.",
-  "Make the Most Of":
-    "This wedge is for high-urgency extraction—maximise value and competitive position from technologies already in play. " +
-    "If your star sits here: optimise, scale, and defend advantage; this is a core execution priority.",
+  "Learn About": "Emerging signals worth monitoring. No immediate action required.",
+  "Get Ahead Of": "Trends accelerating fast. Start building awareness and strategy.",
+  "Get Prepared For": "Near-term impact expected. Develop plans and allocate resources.",
+  "Get Your Hands Around": "Active adoption needed. Engage teams and begin implementation.",
+  "Make the Most Of": "Highest urgency. Maximise value extraction and competitive advantage.",
+};
+
+/** Per-pill placement for the adoption-stage hover tooltip:
+ *  - `vDir`: "above" floats the card upward from the pill; the only top-edge
+ *    pill ("Learn About") instead floats "below" since "above" would spill
+ *    out of the chart container.
+ *  - `hAnchor`: edge pills tilt the card toward the chart centre so it stays
+ *    on-screen without runtime measurement. "leftOfPill" anchors the card's
+ *    right side to the pill (card extends to its left). */
+type AxisTooltipPlacement = {
+  vDir: "above" | "below";
+  hAnchor: "center" | "leftOfPill" | "rightOfPill";
+};
+
+const ADOPTION_TOOLTIP_PLACEMENT: Record<
+  (typeof ADOPTION_AXES)[number],
+  AxisTooltipPlacement
+> = {
+  "Learn About": { vDir: "below", hAnchor: "center" },
+  "Get Ahead Of": { vDir: "above", hAnchor: "leftOfPill" },
+  "Get Prepared For": { vDir: "above", hAnchor: "leftOfPill" },
+  "Get Your Hands Around": { vDir: "above", hAnchor: "rightOfPill" },
+  "Make the Most Of": { vDir: "above", hAnchor: "rightOfPill" },
 };
 
 // Domain accent colours (fallback when no industry_positions are set)
 const DOMAIN_COLORS: Record<string, string> = {
   AI: "#7C3AED",
-  Security: "#E91D24",
+  Security: "#D5171E",
   Cloud: "#0284C7",
   Finance: "#019E7C",
   Leadership: "#D97706",
@@ -460,6 +497,9 @@ export default function RadarChart({
   const compact = layout === "compact";
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [lockedKey, setLockedKey] = useState<string | null>(null);
+  const [hoveredAxis, setHoveredAxis] = useState<
+    (typeof ADOPTION_AXES)[number] | null
+  >(null);
   const positions = useMemo(() => computePositions(topics), [topics]);
   const hoverEnterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hoverLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -529,7 +569,10 @@ export default function RadarChart({
         "[overflow-anchor:none] " +
         (compact
           ? "max-w-none gap-3 lg:gap-4"
-          : "max-w-[min(100%,96rem)] gap-6 lg:gap-5")
+          : // Default layout: tighter `lg:gap-3` (was gap-5) trades 16px of inter-
+            // column padding for 16px of legend width — the radar SVG keeps its
+            // pixel width while the larger legend nudges it closer to centre.
+            "max-w-[min(100%,96rem)] gap-6 lg:gap-3")
       }
       style={
         {
@@ -537,16 +580,84 @@ export default function RadarChart({
         } as React.CSSProperties
       }
     >
-      <div className="flex w-full min-w-0 shrink-0 flex-col lg:w-auto lg:max-w-[13.5rem]">
+      {/* Legend column — top padding mirrors the right detail panel so the
+          legend's top edge aligns with the radar's "Learn About" pill /
+          "PulseOne Technology Radar" header (instead of sitting up at the SVG
+          bounding-box top). Default-layout `max-w` widened in two notches
+          (13.5rem → 17rem → 18rem) to push the radar toward visual centre.
+          The accompanying `lg:gap-3` (down from `lg:gap-5`) on the parent
+          flex row gives the SVG back the 16px the legend takes, so the chart
+          column does not shrink with each notch. Centering offset is
+          `(panel − legend) / 2` = (328 − 288) / 2 ≈ 20px residual left-shift. */}
+      <div
+        className={
+          "flex w-full min-w-0 shrink-0 flex-col max-lg:pt-0 lg:w-auto " +
+          (compact ? "lg:max-w-[13.5rem] " : "lg:max-w-[18rem] ") +
+          (compact
+            ? "lg:pt-[calc(var(--radar-top-pill-offset)*min(1520px,calc(100vw-3rem)))]"
+            : "lg:pt-[calc(var(--radar-top-pill-offset)*min(1163px,calc(100vw-3rem)))]")
+        }
+      >
         <IndustryPaletteLegend compact={compact} />
       </div>
 
       <div
         className={
-          "mx-auto w-full min-w-0 shrink-0 lg:mx-0 lg:flex-1 " +
+          "relative mx-auto w-full min-w-0 shrink-0 lg:mx-0 lg:flex-1 " +
           (compact ? "max-w-[min(100%,1520px)]" : "max-w-[1163px]")
         }
       >
+        {/* Adoption-stage tooltip — replaces the old single-line native SVG <title>
+            and the "How to Read the Radar" section below the chart. Positioned
+            next to the hovered pill (not always top-centre) using the pre-
+            computed pill percentages + per-axis placement table. Translucent
+            background so any stars beneath stay partly visible. */}
+        {hoveredAxis
+          ? (() => {
+              const geom = ADOPTION_AXIS_TOOLTIP_GEOM[hoveredAxis];
+              const placement = ADOPTION_TOOLTIP_PLACEMENT[hoveredAxis];
+              /** Distance between the pill edge and the tooltip card. */
+              const TIP_GAP_PX = 28;
+              /** How far the tooltip extends past the pill centre when anchored
+               *  to one side — keeps the card slightly past the pill so the eye
+               *  reads them as a paired unit rather than a free-floating card. */
+              const HORIZ_OFFSET_PX = 36;
+
+              const verticalStyle: React.CSSProperties =
+                placement.vDir === "above"
+                  ? { bottom: `calc(${100 - geom.yPct}% + ${TIP_GAP_PX}px)` }
+                  : { top: `calc(${geom.yPct}% + ${TIP_GAP_PX}px)` };
+
+              const horizontalStyle: React.CSSProperties =
+                placement.hAnchor === "center"
+                  ? {
+                      left: `${geom.xPct}%`,
+                      transform: "translateX(-50%)",
+                    }
+                  : placement.hAnchor === "leftOfPill"
+                    ? {
+                        right: `calc(${100 - geom.xPct}% - ${HORIZ_OFFSET_PX}px)`,
+                      }
+                    : {
+                        left: `calc(${geom.xPct}% - ${HORIZ_OFFSET_PX}px)`,
+                      };
+
+              return (
+                <div
+                  role="tooltip"
+                  className="pointer-events-none absolute z-20 w-[260px] max-w-[88%] rounded-xl border border-pulse-teal/30 bg-white/95 px-4 py-3 shadow-lg ring-1 ring-pulse-teal/10 backdrop-blur-sm"
+                  style={{ ...verticalStyle, ...horizontalStyle }}
+                >
+                  <div className="inline-block rounded-full bg-pulse-teal px-3 py-0.5 font-sans text-xs font-semibold text-white">
+                    {(ADOPTION_STATE_INDEX[hoveredAxis] ?? 0) + 1}. {hoveredAxis}
+                  </div>
+                  <p className="mt-2 font-sans text-sm leading-relaxed text-gray-600">
+                    {ADOPTION_STAGE_TOOLTIPS[hoveredAxis]}
+                  </p>
+                </div>
+              );
+            })()
+          : null}
       <svg
         viewBox={`0 ${svgCoord(RADAR_VIEW_TOP)} ${SIZE} ${svgCoord(RADAR_VIEW_HEIGHT)}`}
         className="w-full h-auto"
@@ -696,8 +807,17 @@ export default function RadarChart({
             const pillLeft = svgCoord(lx - pillW / 2);
             const pillTop = svgCoord(ly - pillH / 2);
             return (
-              <g key={`pill-${label}`} pointerEvents="all">
-                <title>{ADOPTION_STAGE_TOOLTIPS[label]}</title>
+              <g
+                key={`pill-${label}`}
+                pointerEvents="all"
+                onPointerEnter={() => setHoveredAxis(label)}
+                onPointerLeave={() => setHoveredAxis(null)}
+                onFocus={() => setHoveredAxis(label)}
+                onBlur={() => setHoveredAxis(null)}
+                tabIndex={0}
+                role="button"
+                aria-label={`${label}: ${ADOPTION_STAGE_TOOLTIPS[label]}`}
+              >
                 <rect
                   x={pillLeft}
                   y={pillTop}
@@ -754,11 +874,15 @@ export default function RadarChart({
       </svg>
       </div>
 
-      {/* ── Detail panel: lg top padding matches SVG “Learn About” pill (not the raw SVG box top) ── */}
+      {/* ── Detail panel: lg top padding matches SVG "Learn About" pill (not the raw SVG box top) ──
+          Default-layout width narrowed by ~120px (28rem → 20.5rem) so the radar
+          column sits closer to the visual centre between the 13.5rem legend
+          (left) and this panel (right). Admin compact preview keeps its wider
+          `max-w-sm` since that layout already has more horizontal room. */}
       <aside
         className={
           "w-full min-w-0 shrink-0 max-lg:pt-0 [overflow-anchor:none] " +
-          (compact ? "lg:max-w-sm " : "lg:max-w-md ") +
+          (compact ? "lg:max-w-sm " : "lg:max-w-[20.5rem] ") +
           (compact
             ? "lg:pt-[calc(var(--radar-top-pill-offset)*min(1520px,calc(100vw-3rem)))]"
             : "lg:pt-[calc(var(--radar-top-pill-offset)*min(1163px,calc(100vw-3rem)))]")
@@ -834,32 +958,58 @@ function RadarDefaultPanel({
                         {topicRankScore(t).toFixed(1)} {sidebarScoreLabel(t)}
                       </span>
                     </div>
-                    <div className="mt-1.5 flex flex-wrap gap-1">
-                      {approvedIndustries.length === 0 ? (
+                    {approvedIndustries.length === 0 ? (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
                         <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-500">
                           All Industries
                         </span>
-                      ) : (
-                        approvedIndustries.map(({ name, color }) => (
-                          <span
-                            key={name}
-                            className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium"
-                            style={{
-                              borderColor: `${color}30`,
-                              backgroundColor: `${color}0D`,
-                              color,
-                            }}
+                      </div>
+                    ) : (
+                      <details
+                        className="group mt-1.5 [&_summary::-webkit-details-marker]:hidden [&_summary::marker]:hidden"
+                      >
+                        <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[11px] font-medium text-gray-500 hover:text-gray-700">
+                          <svg
+                            className="h-3 w-3 shrink-0 transition-transform group-open:rotate-90"
+                            viewBox="0 0 12 12"
+                            aria-hidden
                           >
-                            <span
-                              className="inline-block h-1.5 w-1.5 rounded-full"
-                              style={{ backgroundColor: color }}
-                              aria-hidden
+                            <path
+                              d="M4 2 L8 6 L4 10"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              fill="none"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
                             />
-                            {name}
+                          </svg>
+                          <span>
+                            {approvedIndustries.length} impacted{" "}
+                            {approvedIndustries.length === 1 ? "industry" : "industries"}
                           </span>
-                        ))
-                      )}
-                    </div>
+                        </summary>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {approvedIndustries.map(({ name, color }) => (
+                            <span
+                              key={name}
+                              className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium"
+                              style={{
+                                borderColor: `${color}30`,
+                                backgroundColor: `${color}0D`,
+                                color,
+                              }}
+                            >
+                              <span
+                                className="inline-block h-1.5 w-1.5 rounded-full"
+                                style={{ backgroundColor: color }}
+                                aria-hidden
+                              />
+                              {name}
+                            </span>
+                          ))}
+                        </div>
+                      </details>
+                    )}
                   </li>
                 );
               })}
@@ -921,8 +1071,43 @@ function RadarTooltipPanel({ point: pt }: { point: PlotPointXY }) {
       </p>
       {narrative ? (
         <div className="mt-4 border-t border-gray-200 pt-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{narrativeLabel}</p>
-          <p className="mt-2 text-sm leading-relaxed text-gray-600">{narrative}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+            {narrativeLabel}
+          </p>
+          {(() => {
+            // Long rationales (3+ sentences) become "lead + bullets" so the
+            // panel scans quickly instead of presenting a wall of prose.
+            // Shorter rationales fall back to the single paragraph below.
+            const structured = structureRationale(narrative);
+            if (structured.bullets.length === 0) {
+              return (
+                <p className="mt-2 text-sm leading-relaxed text-gray-600">
+                  {narrative}
+                </p>
+              );
+            }
+            return (
+              <>
+                <p className="mt-2 text-sm leading-relaxed font-medium text-gray-800">
+                  {structured.lead}
+                </p>
+                <ul className="mt-3 space-y-1.5">
+                  {structured.bullets.map((b, i) => (
+                    <li
+                      key={i}
+                      className="flex gap-2 text-sm leading-relaxed text-gray-600"
+                    >
+                      <span
+                        className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-pulse-teal/80"
+                        aria-hidden
+                      />
+                      <span>{b}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            );
+          })()}
         </div>
       ) : null}
       <button

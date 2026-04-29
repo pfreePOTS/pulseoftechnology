@@ -1,5 +1,20 @@
+from pathlib import Path
+
 from pydantic import Field, field_validator, model_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Load repo-root `.env` first, then `backend/.env` (later file wins on duplicate keys).
+# This avoids depending on process CWD (pytest/uvicorn from `backend/` could miss pulseoftechnology/.env).
+_BACKEND_DIR = Path(__file__).resolve().parent
+_REPO_ROOT_DIR = _BACKEND_DIR.parent
+
+
+def _discovered_env_files() -> tuple[Path, ...]:
+    paths: list[Path] = []
+    for p in (_REPO_ROOT_DIR / ".env", _BACKEND_DIR / ".env"):
+        if p.is_file():
+            paths.append(p)
+    return tuple(paths)
 
 
 class Settings(BaseSettings):
@@ -12,7 +27,14 @@ class Settings(BaseSettings):
     admin_token_expire_minutes: int = 60 * 24  # 24 hours
     # Separate HS256 key for subscriber preference/unsubscribe magic links.
     subscriber_token_secret: str = "dev-only-set-SUBSCRIBER_TOKEN_SECRET-in-production"
+    # DeepSeek (OpenAI-compatible)
+    deepseek_api_key: str = ""
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_model: str = "deepseek-v4-pro"
+    # Anthropic Claude — optional fallback when DeepSeek fails or when only this key is set
     anthropic_api_key: str = ""
+    anthropic_haiku_model: str = "claude-haiku-4-5-20251001"
+    anthropic_sonnet_model: str = "claude-sonnet-4-6"
     # SendGrid
     sendgrid_api_key: str = ""
     sendgrid_from_email: str = "radar@pulseone.com"
@@ -83,8 +105,13 @@ class Settings(BaseSettings):
             "dev-only-set-SUBSCRIBER_TOKEN_SECRET-in-production",
         }
         if self.admin_jwt_secret in unsafe_admin_jwt or len(self.admin_jwt_secret) < 32:
-            errors.append("ADMIN_JWT_SECRET must be a non-default random value of at least 32 chars")
-        if self.subscriber_token_secret in unsafe_subscriber or len(self.subscriber_token_secret) < 32:
+            errors.append(
+                "ADMIN_JWT_SECRET must be a non-default random value of at least 32 chars"
+            )
+        if (
+            self.subscriber_token_secret in unsafe_subscriber
+            or len(self.subscriber_token_secret) < 32
+        ):
             errors.append(
                 "SUBSCRIBER_TOKEN_SECRET must be a non-default random value of at least 32 chars"
             )
@@ -96,7 +123,11 @@ class Settings(BaseSettings):
             raise ValueError("; ".join(errors))
         return self
 
-    model_config = {"env_file": ".env"}
+    model_config = SettingsConfigDict(
+        env_file=_discovered_env_files() or None,
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 settings = Settings()

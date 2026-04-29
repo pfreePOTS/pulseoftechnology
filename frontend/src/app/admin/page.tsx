@@ -291,7 +291,7 @@ function TopicClusterCell({
           disabled={rowBusy}
           onClick={() => void onSuggestSubdomain(row.id)}
           className="text-[10px] font-medium text-cyan-400/90 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
-          title="Optional: re-run sub-domain from this topic’s articles if auto-fill after ingest missed it (or to retry after API issues). Normal flow: Process raw articles fills sub-domains when ANTHROPIC_API_KEY is set."
+          title="Optional: re-run sub-domain from this topic’s articles if auto-fill after ingest missed it (or to retry after API issues). Normal flow: Process raw articles fills sub-domains when DEEPSEEK_API_KEY is set."
         >
           {rowBusy ? "…" : "Refresh sub-domain"}
         </button>
@@ -1031,7 +1031,7 @@ function TrendDiscoveryInner() {
           <span className="text-gray-300">Refresh sub-domain</span> or <span className="text-gray-300">AI sub-domains (group)</span>{" "}
           only if you need a manual retry. If rows stay under <span className="text-gray-300">General</span>, run{" "}
           <span className="text-gray-300">System Jobs → Process Raw Articles</span> (or RSS Ingestion); labeling needs{" "}
-          <span className="text-gray-300">ANTHROPIC_API_KEY</span>.{" "}
+          <span className="text-gray-300">DEEPSEEK_API_KEY</span>.{" "}
           <strong className="text-gray-300">Velocity</strong> counts articles in the rolling window using{" "}
           <strong className="text-gray-300">coverage time</strong> — the later of publish date or when Pulse
           stored the RSS row (UTC). That matches backlog processing and the{" "}
@@ -1350,7 +1350,7 @@ function TrendDiscoveryInner() {
                             <button
                               type="button"
                               disabled={rowBusy}
-                              title="Re-run Claude Haiku trend pick: fills Suggestion (Watch/Radar/Remove) and italic rationale. Needs ANTHROPIC_API_KEY."
+                              title="Re-run DeepSeek trend pick: fills Suggestion (Watch/Radar/Remove) and italic rationale. Needs DEEPSEEK_API_KEY."
                               onClick={() => void analyzeTopicTrend(row.id)}
                               className={`${topicToolbarBtn} border-indigo-500/40 text-indigo-200 hover:border-indigo-400`}
                             >
@@ -1530,7 +1530,7 @@ function TrendDiscoveryInner() {
                             <button
                               type="button"
                               disabled={rowBusy}
-                              title="Re-run Claude Haiku trend pick: fills Suggestion (Watch/Radar/Remove) and italic rationale. Needs ANTHROPIC_API_KEY."
+                              title="Re-run DeepSeek trend pick: fills Suggestion (Watch/Radar/Remove) and italic rationale. Needs DEEPSEEK_API_KEY."
                               onClick={() => void analyzeTopicTrend(row.id)}
                               className={`${topicToolbarBtn} border-indigo-500/40 text-indigo-200 hover:border-indigo-400`}
                             >
@@ -1732,7 +1732,7 @@ function TrendDiscoveryInner() {
                           <button
                             type="button"
                             disabled={rowBusy}
-                            title="Re-run Claude Haiku trend pick: fills Suggestion (Watch/Radar/Remove) and italic rationale. Needs ANTHROPIC_API_KEY."
+                            title="Re-run DeepSeek trend pick: fills Suggestion (Watch/Radar/Remove) and italic rationale. Needs DEEPSEEK_API_KEY."
                             onClick={() => void analyzeTopicTrend(row.id)}
                             className={`${topicToolbarBtn} border-indigo-500/40 text-indigo-200 hover:border-indigo-400`}
                           >

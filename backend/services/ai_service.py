@@ -1,13 +1,14 @@
 """
 AI service — agentic evaluation pipeline + topic/signal helpers.
 
-Article evaluation is a 5-node graph:
-  Gate (Haiku) → Classify (Haiku) → Score (Haiku) → Cluster (Sonnet) → Summarize (Sonnet)
+Article evaluation is a 5-node graph (models from ``DEEPSEEK_MODEL`` / DeepSeek API):
+  Gate → Classify → Score → Cluster → Summarize
 
 Each node is a focused, independently-testable function.  If a non-critical node
 fails the pipeline continues with a safe default so articles are never lost.
 """
 
+import html as _htmllib
 import json
 import logging
 import re
@@ -16,15 +17,14 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-import anthropic
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from ..config import settings
 from ..models.article import Article, ArticleStatus
 from ..models.prompt import PromptTemplate
 from ..models.role import Role
 from ..models.topic import Topic
+from . import llm_client
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +32,6 @@ logger = logging.getLogger(__name__)
 _PROMPT_CACHE_TTL_SEC = 30.0
 _prompt_cache: dict[str, tuple[float, str, str]] = {}
 _prompt_cache_lock = threading.Lock()
-
-_client: anthropic.Anthropic | None = None
 
 
 def _truncate_to_max_sentences(text: object | None, max_sentences: int) -> str:
@@ -50,8 +48,9 @@ def _truncate_to_max_sentences(text: object | None, max_sentences: int) -> str:
     return " ".join(parts[:max_sentences]).strip()
 
 
-HAIKU_MODEL = "claude-haiku-4-5-20251001"
-SONNET_MODEL = "claude-sonnet-4-6"
+# Pipeline / admin labels; DB model strings may still list legacy ids — ``llm_client.resolved_model()`` maps them.
+HAIKU_MODEL = "deepseek-v4-pro"
+SONNET_MODEL = "deepseek-v4-pro"
 
 _SONNET_DEFAULT_AGENTS = {
     "cluster",
@@ -636,22 +635,14 @@ def _strip_fences(text: str) -> str:
     return text
 
 
-def _get_client() -> anthropic.Anthropic:
-    global _client
-    if _client is None:
-        _client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-    return _client
-
-
 def _call(model: str, system: str, user: str, max_tokens: int) -> str:
-    """Single Claude API call; returns raw text content."""
-    response = _get_client().messages.create(
-        model=model,
-        max_tokens=max_tokens,
+    """Single DeepSeek chat completion; returns raw text content (fences stripped)."""
+    return llm_client.chat_completion(
+        model,
         system=system,
-        messages=[{"role": "user", "content": user}],
+        user=user,
+        max_tokens=max_tokens,
     )
-    return _strip_fences(response.content[0].text)
 
 
 def _parse(raw: str, node_name: str) -> dict | None:
@@ -715,7 +706,7 @@ def _node_gate(db: Session, content: str) -> bool:
         else:
             logger.debug("[gate] relevant=%s confidence=n/a", rel)
         return rel
-    except anthropic.APIError:
+    except llm_client.LLMAPIError:
         logger.warning("[gate] Transient API error — will retry article")
         raise
     except Exception:
@@ -747,7 +738,7 @@ def _node_classify(content: str, system_prompt: str, model: str) -> dict:
             "subdomain": sub_s,
             "tags": result.get("tags") or [],
         }
-    except anthropic.APIError:
+    except llm_client.LLMAPIError:
         logger.warning("[classify] Transient API error — will retry article")
         raise
     except Exception:
@@ -776,7 +767,7 @@ def _node_score(content: str, system_prompt: str, model: str) -> dict:
             "urgency_score": float(result.get("urgency_score") or 5.0),
             "reason": result.get("reason") or "",
         }
-    except anthropic.APIError:
+    except llm_client.LLMAPIError:
         logger.warning("[score] Transient API error — will retry article")
         raise
     except Exception:
@@ -818,7 +809,7 @@ def _node_cluster(
         if result is None:
             return ""
         return (result.get("suggested_topic_name") or "").strip()
-    except anthropic.APIError:
+    except llm_client.LLMAPIError:
         logger.warning("[cluster] Transient API error — will retry article")
         raise
     except Exception:
@@ -891,7 +882,7 @@ def _node_summarize(
             "why_it_matters": result.get("why_it_matters") or "",
             "persona_impacts": None,
         }
-    except anthropic.APIError:
+    except llm_client.LLMAPIError:
         logger.warning("[summarize] Transient API error — will retry article")
         raise
     except Exception:
@@ -988,8 +979,10 @@ def suggest_subdomain_for_topic(topic_id: int, db: Session) -> str:
     topic = db.query(Topic).filter(Topic.id == topic_id).first()
     if topic is None:
         raise ValueError("Topic not found")
-    if not settings.anthropic_api_key:
-        raise ValueError("ANTHROPIC_API_KEY is not configured")
+    if not llm_client.is_llm_configured():
+        raise ValueError(
+            "No LLM API key configured (set DEEPSEEK_API_KEY and/or ANTHROPIC_API_KEY)"
+        )
 
     domain_key = (topic.domain or "").strip() or "Other"
     sub_rows = (
@@ -1077,7 +1070,7 @@ def fill_missing_topic_subdomains(
     After that, older topics with empty subdomains are filled newest-first, at most
     ``max_backlog_calls`` Haiku invocations (safety valve for large DBs).
     """
-    if not settings.anthropic_api_key:
+    if not llm_client.is_llm_configured():
         return 0
 
     prefer_ids = prefer_ids or set()
@@ -1199,7 +1192,7 @@ def process_raw_articles(db: Session) -> int:
                 existing_topics=existing_topic_names,
                 role_names=role_names if role_names else None,
             )
-        except anthropic.APIError:
+        except llm_client.LLMAPIError:
             logger.warning(
                 "Transient API error evaluating article id=%d — marking for retry (will be requeued)",
                 article.id,
@@ -1485,3 +1478,387 @@ def evaluate_signal(
             "rationale": "Parse error",
         }
     return result
+
+
+_PATH_SYNTHESIS_SYSTEM = """\
+You are a PulseOne executive advisor. PulseOne is a strategic technology advisory and managed \
+services firm serving SMB and mid-market leaders.
+
+The reader may have shared **only some** intake fields (region, industry, role, primary concern, \
+stage). **Use only facts they gave** — never invent demographics. If ONLY one slice is known \
+(e.g. only Industry = Insurance), center the headline, synthesis, and **experience_items** tightly \
+on THAT fact. If the primary concern mentions **AI** (or equivalent), speak concretely to AI \
+adoption, governance, tooling, and risk; sharpen similarly for Security, Cloud, Compliance, etc.
+
+Respond with **valid JSON only** — no markdown fences, no commentary. Schema:
+{
+  "headline": "<string, max 120 characters, punchy and specific to the reader>",
+  "synthesis": "<exactly two paragraphs in plain text; separate paragraphs with \\n\\n; \
+executive tone; no bullet characters; concrete and reassuring>",
+  "experience_items": [
+    {"title": "<2-5 word capability label>",
+     "description": "<1-2 sentences, present tense, describing what PulseOne does (or has \
+done) to help companies in this exact situation; vendor-neutral; concrete>"}
+    /* repeat for 4 items total */
+  ]
+}
+
+The **headline** should preview why their situation matters.
+The **synthesis** should weave supplied fields into practical priorities — vendor-neutral (describe \
+categories of action, not products). It will be presented as "What we think".
+The **experience_items** are 4 capability-style cards for "Our Experience". Each must be a real \
+category of work PulseOne does (assessments, advisory, evaluations, governance, managed services). \
+When only one facet is known, align cards to it while avoiding near-duplicate wording.
+"""
+
+
+_EVERYONE_OVERVIEW_SYSTEM = """\
+You are a PulseOne executive advisor. PulseOne is a strategic technology advisory and managed \
+services firm serving SMB and mid-market leaders. The reader has skipped the personalised intake \
+and wants a broad, current C-suite overview of what is moving on the technology radar right now.
+
+Respond with **valid JSON only** — no markdown fences, no commentary. Schema:
+{"headline": "<string, max 120 characters, punchy and present-tense>",
+ "synthesis": "<exactly two paragraphs in plain text; separate paragraphs with \\n\\n; \
+ executive tone; no bullet characters; reference the live themes by name where useful, \
+ stay vendor-neutral (categories of action, not products)>"}
+
+The headline should preview the current centre of gravity across the radar (the dominant theme or \
+tension a CEO/CIO/COO would notice this week). The synthesis should connect the live themes you are \
+given to the priorities most leadership teams should be re-checking right now — frame it as guidance \
+that any executive can act on without first taking the survey. End the second paragraph with a clear \
+next step (e.g., "review", "align", "validate" — never a sales pitch).
+"""
+
+
+def _paragraphs_to_html(text: str) -> str:
+    """
+    Convert AI-generated plain-text paragraphs (separated by blank lines) into safe HTML.
+
+    Each paragraph is HTML-escaped before wrapping in ``<p>``, so even if the model returns
+    raw markup it cannot inject script or other dangerous tags into the rendered page.
+    """
+    if not text:
+        return ""
+    paras = [p.strip() for p in str(text).split("\n\n") if p.strip()]
+    return "".join(f"<p>{_htmllib.escape(p)}</p>" for p in paras)
+
+
+def _coerce_experience_items(raw_items: object) -> list[dict[str, str]]:
+    """Normalise the AI-returned ``experience_items`` array.
+
+    Defensive: enforces shape ``[{"title": str, "description": str}, ...]`` and
+    silently drops malformed entries so a single bad row from the model never
+    blanks out the whole "Our Experience" section on the page.
+    """
+    if not isinstance(raw_items, list):
+        return []
+    out: list[dict[str, str]] = []
+    for entry in raw_items:
+        if not isinstance(entry, dict):
+            continue
+        title = str(entry.get("title", "")).strip()
+        description = str(entry.get("description", "")).strip()
+        if not title or not description:
+            continue
+        out.append({"title": title[:80], "description": description[:480]})
+    return out[:6]  # hard cap so a chatty model can't blow up the layout
+
+
+def _path_intake_user_block(
+    region: str,
+    industry: str,
+    role: str,
+    issue: str,
+    stage: str,
+) -> str:
+    """Only lines explicitly supplied — supports sparse URLs (e.g. only ``industry=Insurance``)."""
+    pairs = (
+        ("Region", region.strip()),
+        ("Industry", industry.strip()),
+        ("Role / title", role.strip()),
+        ("Primary technology concern", issue.strip()),
+        ("Adoption stage or urgency framing", stage.strip()),
+    )
+    lines = [f"{label}: {val}" for label, val in pairs if val]
+    if not lines:
+        return ""
+    footer = (
+        "\nUse only the lines above — do not invent additional facts. "
+        "If exactly one facet is supplied, specialise on that facet."
+    )
+    return "\n".join(lines) + footer
+
+
+def _sparse_fallback_headline(region: str, industry: str, role: str, issue: str, stage: str) -> str:
+    ind = industry.strip()
+    rl = role.strip()
+    iss = issue.strip()
+    reg = region.strip()
+    stg = stage.strip()
+    if ind and rl:
+        return f"Technology priorities for {rl}s in {ind}"
+    if ind:
+        return f"Technology posture that fits {ind} leadership teams today"
+    if rl:
+        return f"Executive technology priorities most relevant for {rl}s now"
+    if iss:
+        return f"Perspective on {iss}"
+    if reg:
+        return f"What technology signals matter for leaders in {reg}"
+    if stg:
+        return "Aligning posture before the next tooling or programme milestone"
+    return "Technology clarity that serves your leadership cadence"
+
+
+def _sparse_fallback_synthesis(
+    region: str,
+    industry: str,
+    role: str,
+    issue: str,
+    stage: str,
+) -> str:
+    """Two paragraphs respecting whichever intake fields exist (offline / no Claude)."""
+    ind = industry.strip()
+    rl = role.strip()
+    iss = issue.strip()
+    reg = region.strip()
+    stg = stage.strip()
+
+    if ind and rl and iss:
+        p1 = (
+            f"As a {rl} in {ind}, aligning spend and resilience against {iss} pressures means "
+            f"risk appetite stays explicit — before vendors, dashboards, or roadmaps dominate the conversation."
+        )
+    elif iss:
+        lo = iss.lower()
+        ai_signals = (" llm" in f" {lo}") or (" gpt" in f" {lo}") or ("genai" in lo)
+        ai_signals = ai_signals or ("machine learning" in lo)
+        ai_signals = ai_signals or ("generative ai" in lo)
+        ai_signals = ai_signals or (
+            lo.startswith("ai ") or lo == "ai" or " ai " in lo or lo.endswith(" ai")
+        )
+
+        if ai_signals:
+            p1 = (
+                f"Executive teams probing {iss} need shared guardrails for data lineage, procurement, workforce "
+                "impact, and third-party reliance — not ad hoc pilot sprawl that later breaks audit narratives."
+            )
+        else:
+            p1 = (
+                f"Your focus — {iss} — is where ambiguity becomes expensive fastest. Teams that clarify "
+                f"ownership, decision rights, and proof points before accelerating change keep boards confident."
+            )
+    elif ind:
+        p1 = (
+            f"{ind} leaders face competing mandates — growth, resilience, customer trust, and regulator confidence. "
+            "Articulating posture first keeps programmes sequenced rather than parallel and conflicting."
+        )
+    elif rl:
+        p1 = (
+            f"{rl}s are often squeezed between mandates that misalign timelines and budgets. Making trade-offs "
+            "explicit avoids programmes that optimise one KPI while weakening another."
+        )
+    elif reg:
+        p1 = (
+            f"Operating realities in {reg} reward leadership teams who tighten governance loops — then authorise "
+            "changes grounded in repeatable cadence rather than hero projects."
+        )
+    elif stg:
+        p1 = (
+            f"Wherever you describe your situation ({stg}), the durable move is a short executive alignment on "
+            "risk appetite and pacing before spend or rollout hardens commitments you will revisit under scrutiny."
+        )
+    else:
+        p1 = (
+            "Leadership alignment on risk posture, pacing, and sequencing is what lets technology investments "
+            "compound instead of restarting every budget cycle."
+        )
+
+    p2 = (
+        "PulseOne advisers work beside executives through vendor-neutral evaluations, disciplined roadmapping, "
+        "and facilitation that keeps auditors, regulators, and boards grounded in coherent narratives — quarter "
+        "to quarter rather than heroic one-offs."
+    )
+    return f"{p1}\n\n{p2}"
+
+
+def _fallback_experience_items(industry: str, issue: str) -> list[dict[str, str]]:
+    """Hand-written capability list used whenever the AI call fails.
+
+    Stays deliberately generic when fields are omitted (sparse URLs).
+    """
+    ind = (industry or "").strip() or "Organisation-wide"
+    iss_note = (issue or "").strip() or "current technology posture"
+    return [
+        {
+            "title": f"{ind} maturity assessment",
+            "description": (
+                f"A vendor-neutral review of where you sit relative to peer practice on "
+                f"{iss_note} — framed for executive and board audiences, not a product pitch."
+            ),
+        },
+        {
+            "title": "Strategic technology advisory",
+            "description": (
+                "A standing PulseOne advisor for your leadership team — quarterly "
+                "deep-dives, monthly check-ins, and on-call sounding-board access "
+                "for the decisions that don't fit on a roadmap."
+            ),
+        },
+        {
+            "title": "Governance & risk build-out",
+            "description": (
+                "We design and stand up the policies, decision rights, and review "
+                "cadences your organisation needs so technology choices stay "
+                "defensible to auditors, regulators, and the board."
+            ),
+        },
+        {
+            "title": "Managed services & co-sourcing",
+            "description": (
+                "Where it makes sense, our team becomes an extension of yours — "
+                "running the day-to-day so your internal staff can focus on the "
+                "strategic work only they can do."
+            ),
+        },
+    ]
+
+
+def generate_path_synthesis(
+    db: Session,
+    region: str,
+    industry: str,
+    role: str,
+    issue: str,
+    stage: str,
+) -> dict[str, object]:
+    """
+    Call Claude for a personalized headline + two-paragraph executive synthesis +
+    a short list of capability-style "experience" cards, all in a single round-trip.
+
+    Returns keys:
+      - ``headline``         — short, punchy line (<= 240 chars).
+      - ``synthesis``        — plain text with paragraphs separated by ``\\n\\n``.
+      - ``synthesis_html``   — HTML-escaped, ``<p>``-wrapped variant safe for
+        ``dangerouslySetInnerHTML`` on the recommended-path page (rendered under
+        the "What we think" section).
+      - ``experience_items`` — list of ``{"title", "description"}`` dicts (4 items
+        in the happy path) rendered under the "Our experience" section.
+
+    Intake strings may be **sparse** — e.g. ``industry`` alone — caller must enforce at least one non-empty facet.
+    """
+    _ = db  # reserved for future context from Topic / Article retrieval
+    r = (region or "").strip()
+    i = (industry or "").strip()
+    ro = (role or "").strip()
+    issue_s = (issue or "").strip()
+    st = (stage or "").strip()
+
+    synthesis_fb = _sparse_fallback_synthesis(r, i, ro, issue_s, st)
+    fallback: dict[str, object] = {
+        "headline": _sparse_fallback_headline(r, i, ro, issue_s, st),
+        "synthesis": synthesis_fb,
+        "synthesis_html": _paragraphs_to_html(synthesis_fb),
+        "experience_items": _fallback_experience_items(i, issue_s),
+    }
+
+    intake_block = _path_intake_user_block(r, i, ro, issue_s, st)
+    reader_context = intake_block.strip() or (
+        "Minimal reader signal — produce evergreen PulseOne framing only; "
+        "do NOT invent demographics, region, sector, or title."
+    )
+
+    if not llm_client.is_llm_configured():
+        return fallback
+
+    try:
+        # max_tokens bumped from 900 → 1400 to fit the synthesis + 4 experience cards
+        raw = _call(SONNET_MODEL, _PATH_SYNTHESIS_SYSTEM, reader_context, max_tokens=1400)
+        data = json.loads(_strip_fences(raw))
+        headline = str(data.get("headline", "")).strip()
+        synthesis = str(data.get("synthesis", "")).strip()
+        experience_items = _coerce_experience_items(data.get("experience_items"))
+        if not headline or not synthesis:
+            return fallback
+        return {
+            "headline": headline[:240],
+            "synthesis": synthesis,
+            "synthesis_html": _paragraphs_to_html(synthesis),
+            "experience_items": experience_items or _fallback_experience_items(i, issue_s),
+        }
+    except llm_client.LLMAPIError:
+        logger.exception("[recommended-path] synthesis generation failed — using fallback copy")
+        return fallback
+    except Exception:
+        logger.exception("[recommended-path] synthesis unexpected error — using fallback copy")
+        return fallback
+
+
+def generate_everyone_overview(db: Session) -> dict[str, str]:
+    """
+    Broad ("Skip — just show me everything") executive overview, grounded in the
+    current live published topics so the page genuinely reflects radar state
+    rather than reciting a static template.
+
+    Returns the same key shape as ``generate_path_synthesis`` so the frontend
+    can reuse the synthesis-rendering surface unchanged:
+      - ``headline``       — short headline (<= 240 chars).
+      - ``synthesis``      — plain text with paragraphs separated by ``\\n\\n``.
+      - ``synthesis_html`` — HTML-escaped, ``<p>``-wrapped variant safe for
+        ``dangerouslySetInnerHTML``.
+    """
+    # Pull a small set of representative live themes — the AI uses these as
+    # grounding so the overview names what's actually on the radar today.
+    topics = (
+        db.query(Topic)
+        .filter(Topic.is_published == True)  # noqa: E712
+        .order_by(Topic.urgency_score.desc())
+        .limit(8)
+        .all()
+    )
+
+    fallback_synthesis = (
+        "Across the PulseOne radar this week, leadership teams are balancing "
+        "accelerating AI adoption pressure with the operational reality of "
+        "cybersecurity, compliance, and infrastructure modernisation. The themes "
+        "most boards are circling back to are governance, identity, and the "
+        "speed-versus-control tradeoff inside everyday workflows.\n\n"
+        "A practical next step for any executive is to align the leadership team "
+        "on risk appetite and decision rights before the next vendor or tooling "
+        "decision — then validate posture against your roadmap on a quarterly cadence."
+    )
+    fallback = {
+        "headline": "Where C-suite attention is concentrated on the radar right now",
+        "synthesis": fallback_synthesis,
+        "synthesis_html": _paragraphs_to_html(fallback_synthesis),
+    }
+
+    if not llm_client.is_llm_configured() or not topics:
+        return fallback
+
+    topic_lines = "\n".join(
+        f"- {t.name} ({t.domain}, urgency {float(t.urgency_score or 0):.1f}): "
+        f"{(t.summary or '').strip()[:240] or '(no summary yet)'}"
+        for t in topics
+    )
+    user = f"Live published radar topics, ordered by urgency (most urgent first):\n{topic_lines}"
+
+    try:
+        raw = _call(SONNET_MODEL, _EVERYONE_OVERVIEW_SYSTEM, user, max_tokens=900)
+        data = json.loads(_strip_fences(raw))
+        headline = str(data.get("headline", "")).strip()
+        synthesis = str(data.get("synthesis", "")).strip()
+        if not headline or not synthesis:
+            return fallback
+        return {
+            "headline": headline[:240],
+            "synthesis": synthesis,
+            "synthesis_html": _paragraphs_to_html(synthesis),
+        }
+    except llm_client.LLMAPIError:
+        logger.exception("[everyone-overview] synthesis generation failed — using fallback copy")
+        return fallback
+    except Exception:
+        logger.exception("[everyone-overview] synthesis unexpected error — using fallback copy")
+        return fallback

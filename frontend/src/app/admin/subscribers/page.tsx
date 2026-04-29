@@ -228,15 +228,19 @@ export default function SubscribersPage() {
   async function submitForm(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
+    if (form.role_ids.length === 0 || form.industries.length === 0 || form.domains.length === 0) {
+      setFormError("Select at least one title, one industry, and one topic domain.");
+      return;
+    }
     setFormSubmitting(true);
     try {
       const body = {
         email: form.email.trim(),
         first_name: form.first_name.trim(),
         last_name: form.last_name.trim(),
-        industries: form.industries.length > 0 ? form.industries : null,
-        domains: form.domains.length > 0 ? form.domains : null,
-        role_ids: form.role_ids.length > 0 ? form.role_ids : null,
+        industries: form.industries,
+        domains: form.domains,
+        role_ids: form.role_ids,
         is_active: form.is_active,
       };
       if (dialog === "add") {
@@ -528,9 +532,9 @@ export default function SubscribersPage() {
                 />
               </label>
               <div>
-                <span className="text-xs font-medium text-gray-400">Industry (multi)</span>
+                <span className="text-xs font-medium text-gray-400">Industry * (multi)</span>
                 <p className="mb-2 mt-0.5 text-[11px] text-gray-600">
-                  Select all sectors that apply; used for radar copy and HubSpot.
+                  Select at least one sector; used for radar copy and HubSpot.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {INDUSTRIES.map((ind) => {
@@ -553,9 +557,9 @@ export default function SubscribersPage() {
                 </div>
               </div>
               <div>
-                <span className="text-xs font-medium text-gray-400">Job title / role (multi)</span>
+                <span className="text-xs font-medium text-gray-400">Job title / role * (multi)</span>
                 <p className="mb-2 mt-0.5 text-[11px] text-gray-600">
-                  Persona matching uses all selected roles for newsletter articles.
+                  Select at least one title. Roles personalize context, not topic selection.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {roles.map((r) => {
@@ -578,9 +582,9 @@ export default function SubscribersPage() {
                 </div>
               </div>
               <div>
-                <span className="text-xs font-medium text-gray-400">Domains of interest</span>
+                <span className="text-xs font-medium text-gray-400">Domains of interest *</span>
                 <p className="mb-2 mt-0.5 text-[11px] text-gray-600">
-                  Leave empty to fall back to role tags for topic matching (same as public flow).
+                  Select at least one topic domain for newsletter matching.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {DOMAIN_OPTIONS.map((d) => {

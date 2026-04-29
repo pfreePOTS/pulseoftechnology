@@ -23,3 +23,24 @@ export const RADAR_RATIONALE_MAX_SENTENCES = 6;
 export function clampRadarRationaleParagraph(text: string): string {
   return truncateToMaxSentences(text, RADAR_RATIONALE_MAX_SENTENCES);
 }
+
+/**
+ * Reshape a prose rationale into a "lead + bullets" structure for the radar
+ * detail panel — long paragraphs become a key takeaway followed by supporting
+ * points so the panel scans quickly instead of forcing readers through a wall
+ * of text.
+ *
+ * Behaviour by sentence count:
+ *  - 0 sentences  → empty (caller should fall back to a paragraph)
+ *  - 1–2 sentences → empty (lets the caller render the original paragraph;
+ *                    bullets feel forced when there's only one supporting point)
+ *  - 3+ sentences → first sentence as `lead`, remainder as `bullets`
+ */
+export function structureRationale(text: string): {
+  lead: string;
+  bullets: string[];
+} {
+  const sentences = splitSentences(text);
+  if (sentences.length < 3) return { lead: "", bullets: [] };
+  return { lead: sentences[0], bullets: sentences.slice(1) };
+}

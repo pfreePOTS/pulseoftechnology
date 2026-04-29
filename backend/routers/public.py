@@ -1,29 +1,49 @@
 import logging
 import re
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 import jwt
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
 from ..models.article import Article
+from ..models.content import ContentItem
 from ..models.newsletter_issue import NewsletterIssue
 from ..models.role import Role
 from ..models.subscriber import Subscriber, validate_industries_and_role_ids
 from ..models.survey_response import SurveyResponse
 from ..models.topic import Topic
 from ..rate_limits import limiter
+from ..services.ai_service import generate_everyone_overview, generate_path_synthesis
 from ..services.hubspot_sync import sync_subscriber_to_hubspot
+from ..services.newsletter_selection import (
+    RECOMMENDED_PATH_ARTICLE_LOOKBACK,
+    resolve_role_names_from_intake,
+    topic_peak_newsletter_signal_for_recommended,
+)
 from ..services.subscriber_tokens import decode_subscriber_preferences_token
 
 logger = logging.getLogger(__name__)
 
+# Blend newsletter-style article scores into topic ordering (same signals as deep dives).
+_NEWSLETTER_SIGNAL_BLEND = 0.22
+
 router = APIRouter(prefix="/api", tags=["public"])
 
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+def _clean_required_list(values: list[str] | list[int] | None, label: str) -> list:
+    if values is None:
+        raise ValueError(f"Select at least one {label}")
+    cleaned = [v for v in values if v is not None and (not isinstance(v, str) or v.strip())]
+    if not cleaned:
+        raise ValueError(f"Select at least one {label}")
+    return cleaned
 
 
 # ---------------------------------------------------------------------------
@@ -75,10 +95,63 @@ class SubscribeRequest(BaseModel):
             raise ValueError("Field cannot be blank")
         return v
 
+    @model_validator(mode="after")
+    def require_subscription_preferences(self) -> "SubscribeRequest":
+        self.role_ids = _clean_required_list(self.role_ids, "title")
+        self.industries = _clean_required_list(self.industries, "industry")
+        self.domains = _clean_required_list(self.domains, "topic domain")
+        return self
+
 
 class SubscribeResponse(BaseModel):
     id: int
     email: str
+    message: str
+
+
+class ContactRequest(BaseModel):
+    """Inbound `/api/contact` payload — backs the form on the public `/contact`
+    page. Mirrors the `SubscribeRequest` style (no `EmailStr`; the codebase
+    deliberately avoids the `email-validator` dependency)."""
+
+    name: str
+    email: str
+    company: str
+    message: str
+    phone: str | None = None
+    industry: str | None = None
+    role: str | None = None
+    # Honeypot — should always come back blank from a real browser. Bots tend
+    # to fill every input they see; if this is non-empty we silently 200 and
+    # drop the submission (no DB write, no logging beyond a debug line).
+    website: str | None = None
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        v = (v or "").strip().lower()
+        if not _EMAIL_RE.match(v):
+            raise ValueError("Invalid email address")
+        return v
+
+    @field_validator("name", "company", "message")
+    @classmethod
+    def require_non_empty(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("Required field")
+        return v
+
+    @field_validator("phone", "industry", "role", "website")
+    @classmethod
+    def normalise_optional(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
+
+
+class ContactResponse(BaseModel):
     message: str
 
 
@@ -109,6 +182,73 @@ class SubscriberPreferencesUpdate(BaseModel):
             raise ValueError("Field cannot be blank")
         return v
 
+    @model_validator(mode="after")
+    def require_subscription_preferences(self) -> "SubscriberPreferencesUpdate":
+        self.role_ids = _clean_required_list(self.role_ids, "title")
+        self.industries = _clean_required_list(self.industries, "industry")
+        self.domains = _clean_required_list(self.domains, "topic domain")
+        return self
+
+
+class RecommendedTopicOut(BaseModel):
+    id: int
+    name: str
+    domain: str
+    summary: str | None
+    urgency_score: float
+
+
+class RecommendedContentOut(BaseModel):
+    id: str
+    title: str
+    url: str
+    summary: str | None = None
+    image_url: str | None = None
+    type: str
+    tags: list[str]
+
+
+class ExperienceItem(BaseModel):
+    """A single capability-style card under the "Our Experience" section on
+    `/recommended-path`. AI-generated per (industry, issue) pair so the cards
+    speak to the reader's actual situation."""
+
+    title: str
+    description: str
+
+
+class RecommendedPathOut(BaseModel):
+    headline: str
+    synthesis: str
+    synthesis_html: str
+    experience_items: list[ExperienceItem]
+    topics: list[RecommendedTopicOut]
+    content_items: list[RecommendedContentOut]
+
+
+class EveryoneOverviewStats(BaseModel):
+    """Live counts shown as badges on the broad-overview hero — keeps the page
+    visibly dynamic instead of feeling like a static template."""
+
+    published_topics: int
+    distinct_domains: int
+    stories_last_24h: int
+    last_ingested_at: datetime | None
+
+
+class EveryoneOverviewOut(BaseModel):
+    """No-profile broad executive overview ("Skip — just show me everything").
+
+    Same `headline` / `synthesis_html` shape as `RecommendedPathOut` so the
+    frontend can reuse the synthesis-rendering surface without branching."""
+
+    headline: str
+    synthesis: str
+    synthesis_html: str
+    topics: list[RecommendedTopicOut]
+    content_items: list[RecommendedContentOut]
+    stats: EveryoneOverviewStats
+
 
 class ArticleTrackedPublic(BaseModel):
     """Ingested story linked to a live radar topic — same article pool the newsletter uses."""
@@ -120,8 +260,26 @@ class ArticleTrackedPublic(BaseModel):
     ingested_at: datetime
     domain: str
     source_name: str | None = None
+    # Optional thumbnail (RSS media_thumbnail / enclosure / first <img>) — used by
+    # the public "Stories we're tracking" cards. Many feeds omit this; the card
+    # falls back to a domain-colour gradient so layout stays uniform.
+    image_url: str | None = None
+    # Short teaser summary: AI-extracted `what_is_it` is preferred (designed for
+    # this purpose); raw `content` is a last-resort fallback, truncated server-
+    # side so the wire payload stays small and the card layout stays uniform.
+    summary: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+def _public_article_teaser_summary(a: Article) -> str | None:
+    """Pick the cleanest short summary available for a tracked-stories card."""
+    if a.what_is_it and a.what_is_it.strip():
+        return a.what_is_it.strip()
+    if a.content and a.content.strip():
+        text = " ".join(a.content.split())
+        return text[:240] + "…" if len(text) > 240 else text
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -170,6 +328,8 @@ def list_tracked_articles_public(
             ingested_at=a.ingested_at,
             domain=a.topic.domain if a.topic else "Other",
             source_name=a.source.name if a.source else None,
+            image_url=a.image_url,
+            summary=_public_article_teaser_summary(a),
         )
         for a in rows
     ]
@@ -290,6 +450,47 @@ def subscribe(
     )
 
 
+@router.post("/contact", response_model=ContactResponse, status_code=201)
+@limiter.limit("5/minute")
+def contact(request: Request, payload: ContactRequest):
+    """Receive a "Send us a message" submission from the public `/contact` page.
+
+    MVP behaviour — the submission is structured-logged so an operator (and
+    Datadog/CloudWatch downstream) can see every inbound lead. Persistence to a
+    `ContactSubmission` table and HubSpot/SendGrid sync should follow the same
+    pattern as `/subscribe` → `sync_subscriber_to_hubspot`; a placeholder
+    background task is left here so wiring it up is a one-line change later.
+    """
+    # Honeypot — silently 200 to keep the bot from learning that the field
+    # tripped the filter. Log at debug for diagnostics only.
+    if payload.website:
+        logger.debug(
+            "[contact] honeypot tripped from %s — dropping submission silently",
+            request.client.host if request.client else "unknown",
+        )
+        return ContactResponse(message="Thanks — we'll be in touch within one business day.")
+
+    logger.info(
+        "[contact] inbound submission",
+        extra={
+            "contact_name": payload.name,
+            "contact_email": payload.email,
+            "contact_company": payload.company,
+            "contact_phone": payload.phone or "",
+            "contact_industry": payload.industry or "",
+            "contact_role": payload.role or "",
+            "contact_message_chars": len(payload.message),
+            "client_ip": request.client.host if request.client else "unknown",
+        },
+    )
+
+    # TODO: persist to a `ContactSubmission` table + sync to HubSpot/SendGrid.
+    #   `background_tasks.add_task(sync_contact_to_hubspot, payload)` once a
+    #   `services/hubspot_sync.py` helper exists for contact-form payloads.
+
+    return ContactResponse(message="Thanks — we'll be in touch within one business day.")
+
+
 @router.get("/survey", response_class=HTMLResponse)
 def record_survey(
     email: str = Query(..., description="Subscriber email"),
@@ -311,3 +512,354 @@ def record_survey(
     </style></head><body><div class="card"><h1>Thank you for your feedback!</h1>
     <p>Your response helps us make the briefing more relevant.</p></div></body></html>"""
     return HTMLResponse(content=html)
+
+
+ISSUE_DOMAINS: dict[str, list[str]] = {
+    "Cybersecurity": ["Security"],
+    "AI": ["AI"],
+    "Compliance": ["Finance", "Security"],
+    "Cloud": ["Cloud"],
+    "IT Management": ["Cloud", "Other"],
+    "Strategy": ["AI", "Leadership"],
+    "Other": [],
+}
+
+
+def _domains_for_intake_issue(issue: str) -> list[str]:
+    """
+    Map intake issue (wizard enums or loose text) onto radar ``Topic.domain`` values.
+
+    Exact wizard labels use ``ISSUE_DOMAINS``. Free-text (e.g. 'interested in AI') hints domains.
+    """
+    s = (issue or "").strip()
+    if not s:
+        return []
+    direct = ISSUE_DOMAINS.get(s)
+    if direct is not None:
+        return list(direct)
+
+    lo = s.lower()
+    guessed: list[str] = []
+
+    # Common concerns — substring hints (``?issue=Generative AI`` etc.).
+    if any(k in lo for k in ("cyber", "threat", "ransom", "nist", "zerotrust", "zero-trust")):
+        guessed.append("Security")
+    if (
+        (
+            "llm" in lo
+            or "gpt" in lo
+            or "genai" in lo
+            or "generative ai" in lo
+            or "machine learning" in lo
+        )
+        or lo.strip() == "ai"
+        or lo.startswith("ai ")
+        or lo.endswith(" ai")
+        or " ai " in (" " + lo + " ")
+    ):
+        guessed.append("AI")
+    if any(k in lo for k in ("compliance", "regulation", "hipaa", "sox ", "privacy law")):
+        guessed.extend(["Finance", "Security"])
+    if any(k in lo for k in ("cloud", "aws", "azure", "saas", "infrastructure")):
+        guessed.append("Cloud")
+    if any(k in lo for k in ("leadership", "board", "strategy", "culture")):
+        guessed.append("Leadership")
+    seen: set[str] = set()
+    out: list[str] = []
+    for d in guessed:
+        if d not in seen:
+            seen.add(d)
+            out.append(d)
+    return out
+
+
+def _recommended_topic_rank_value(
+    db: Session,
+    topic: Topic,
+    *,
+    industry: str,
+    role_names: list[str] | None,
+    since: datetime,
+    now: datetime,
+) -> float:
+    """
+    Topic urgency + industry_positions match (published topics only — caller filters)
+    + blended newsletter/article signal for “today’s” slice within the window.
+    """
+    score = float(topic.urgency_score or 0.0)
+    ind_l = (industry or "").strip().lower()
+    if ind_l:
+        ip = topic.industry_positions
+        if isinstance(ip, dict):
+            for key in ip.keys():
+                if ind_l in str(key).lower():
+                    score += 2.0
+                    break
+    peak = topic_peak_newsletter_signal_for_recommended(
+        db,
+        topic,
+        role_names=role_names,
+        industry_needle=industry or "",
+        reference_time=now,
+        article_after=since,
+    )
+    return score + _NEWSLETTER_SIGNAL_BLEND * peak
+
+
+def _topics_for_recommended(
+    db: Session, issue: str, industry: str, role: str, limit: int = 3
+) -> list[Topic]:
+    """
+    Published topics gated by intake issue→domain mapping, filled globally when thin.
+
+    Ordering adds the same newsletter article signals used for ranking deep dives —
+    persona/role relevance, recency, topic urgency — plus substring match of the reader’s
+    industry (``Insurance``, etc.) inside recent article prose.
+    """
+    role_names = resolve_role_names_from_intake(role, db)
+    now = datetime.now(UTC)
+    since = now - RECOMMENDED_PATH_ARTICLE_LOOKBACK
+
+    domains = _domains_for_intake_issue(issue)
+    q = db.query(Topic).filter(Topic.is_published == True)  # noqa: E712
+    if domains:
+        q = q.filter(Topic.domain.in_(domains))
+    candidates = q.order_by(Topic.urgency_score.desc()).limit(max(limit * 8, 24)).all()
+
+    scored: list[tuple[float, Topic]] = [
+        (
+            _recommended_topic_rank_value(
+                db, t, industry=industry, role_names=role_names, since=since, now=now
+            ),
+            t,
+        )
+        for t in candidates
+    ]
+    in_domain_ids = {t.id for t in candidates}
+
+    fill_q = (
+        db.query(Topic)
+        .filter(Topic.is_published == True)  # noqa: E712
+        .order_by(Topic.urgency_score.desc())
+        .limit(limit + 48)
+        .all()
+    )
+    for t in fill_q:
+        if t.id in in_domain_ids:
+            continue
+        scored.append(
+            (
+                _recommended_topic_rank_value(
+                    db, t, industry=industry, role_names=role_names, since=since, now=now
+                ),
+                t,
+            )
+        )
+
+    scored.sort(key=lambda x: -x[0])
+    out: list[Topic] = []
+    seen: set[int] = set()
+    for _, t in scored:
+        if t.id not in seen:
+            seen.add(t.id)
+            out.append(t)
+        if len(out) >= limit:
+            break
+    return out[:limit]
+
+
+def _content_for_recommended(
+    db: Session, industry: str, issue: str, limit: int = 4
+) -> list[ContentItem]:
+    rows = (
+        db.query(ContentItem)
+        .filter(ContentItem.is_active == True)  # noqa: E712
+        .order_by(ContentItem.created_at.desc())
+        .limit(120)
+        .all()
+    )
+    needles = [x.strip() for x in [industry or "", issue or ""] if x.strip()]
+
+    def score(ci: ContentItem) -> float:
+        tags = ci.tags or []
+        if not isinstance(tags, list):
+            return 0.0
+        blob = " ".join(str(x) for x in tags).lower()
+        s = 0.0
+        for n in needles:
+            nl = n.lower()
+            if nl and nl in blob:
+                s += 3.0
+            for tag in tags:
+                tl = str(tag).lower()
+                if nl and (nl in tl or tl in nl):
+                    s += 1.0
+        return s
+
+    ranked = sorted(rows, key=lambda x: score(x), reverse=True)
+    out = ranked[:limit]
+    if len(out) < limit:
+        for r in rows:
+            if r not in out:
+                out.append(r)
+            if len(out) >= limit:
+                break
+    return out[:limit]
+
+
+@router.get("/recommended-path", response_model=RecommendedPathOut)
+def recommended_path(
+    region: str = Query("", max_length=500),
+    industry: str = Query("", max_length=500),
+    role: str = Query("", max_length=500),
+    issue: str = Query("", max_length=500),
+    stage: str = Query("", max_length=8000),
+    db: Session = Depends(get_db),
+):
+    """Personalized headline + synthesis (Claude), matching radar topics, and curated content.
+
+    Any subset of query params may be supplied; at least one non-empty facet is required."""
+    facets = [
+        (region or "").strip(),
+        (industry or "").strip(),
+        (role or "").strip(),
+        (issue or "").strip(),
+        (stage or "").strip(),
+    ]
+    if not any(facets):
+        raise HTTPException(
+            status_code=400,
+            detail="Provide at least one intake field among region, industry, role, issue, stage.",
+        )
+    syn = generate_path_synthesis(db, region, industry, role, issue, stage)
+    # Bumped from 3→6 so the "What we're watching" teaser strip has enough
+    # depth to feel like a slice-of-iceberg, not the catalog itself.
+    topics = _topics_for_recommended(db, issue, industry, role, limit=6)
+    items = _content_for_recommended(db, industry, issue, limit=4)
+    raw_experience = syn.get("experience_items", []) or []
+    experience_items = [
+        ExperienceItem(title=str(e.get("title", "")), description=str(e.get("description", "")))
+        for e in raw_experience
+        if isinstance(e, dict) and e.get("title") and e.get("description")
+    ]
+    return RecommendedPathOut(
+        headline=str(syn["headline"]),
+        synthesis=str(syn["synthesis"]),
+        synthesis_html=str(syn.get("synthesis_html", "")),
+        experience_items=experience_items,
+        topics=[
+            RecommendedTopicOut(
+                id=t.id,
+                name=t.name,
+                domain=t.domain,
+                summary=t.summary,
+                urgency_score=float(t.urgency_score or 0.0),
+            )
+            for t in topics
+        ],
+        content_items=[
+            RecommendedContentOut(
+                id=str(ci.id),
+                title=ci.title,
+                url=ci.url,
+                summary=ci.summary,
+                image_url=ci.image_url,
+                type=ci.type,
+                tags=list(ci.tags or []),
+            )
+            for ci in items
+        ],
+    )
+
+
+@router.get("/everyone-overview", response_model=EveryoneOverviewOut)
+def everyone_overview(db: Session = Depends(get_db)):
+    """No-profile broad overview powering the `/everyone` ("Skip — just show me
+    everything") page. AI synthesis is grounded in live published topics, so
+    the page genuinely changes day-to-day with the radar (not just headers
+    swapped onto a static template)."""
+    syn = generate_everyone_overview(db)
+
+    # Top published topics across ALL domains/industries — broader than
+    # `_topics_for_recommended` (which filters to a chosen issue + industry).
+    topics = (
+        db.query(Topic)
+        .filter(Topic.is_published == True)  # noqa: E712
+        .order_by(Topic.urgency_score.desc())
+        .limit(6)
+        .all()
+    )
+
+    # Recently published, broadly applicable content. We sort newest-first so
+    # the page reflects what's been added recently rather than an arbitrary
+    # tag-match score (no profile to score against here).
+    items = (
+        db.query(ContentItem)
+        .filter(ContentItem.is_active == True)  # noqa: E712
+        .order_by(ContentItem.created_at.desc())
+        .limit(6)
+        .all()
+    )
+
+    # Stats badges — small SQL hits, all aggregate counts, no per-row data.
+    published_topics_count = (
+        db.query(func.count(Topic.id))
+        .filter(Topic.is_published == True)  # noqa: E712
+        .scalar()
+        or 0
+    )
+    distinct_domains_count = (
+        db.query(func.count(func.distinct(Topic.domain)))
+        .filter(Topic.is_published == True)  # noqa: E712
+        .scalar()
+        or 0
+    )
+    since_24h = datetime.now(UTC) - timedelta(hours=24)
+    stories_last_24h_count = (
+        db.query(func.count(Article.id))
+        .join(Topic, Article.topic_id == Topic.id)
+        .filter(Topic.is_published == True)  # noqa: E712
+        .filter(Article.ingested_at >= since_24h)
+        .scalar()
+        or 0
+    )
+    last_ingested_at = (
+        db.query(func.max(Article.ingested_at))
+        .join(Topic, Article.topic_id == Topic.id)
+        .filter(Topic.is_published == True)  # noqa: E712
+        .scalar()
+    )
+
+    return EveryoneOverviewOut(
+        headline=syn["headline"],
+        synthesis=syn["synthesis"],
+        synthesis_html=syn.get("synthesis_html", ""),
+        topics=[
+            RecommendedTopicOut(
+                id=t.id,
+                name=t.name,
+                domain=t.domain,
+                summary=t.summary,
+                urgency_score=float(t.urgency_score or 0.0),
+            )
+            for t in topics
+        ],
+        content_items=[
+            RecommendedContentOut(
+                id=str(ci.id),
+                title=ci.title,
+                url=ci.url,
+                summary=ci.summary,
+                image_url=ci.image_url,
+                type=ci.type,
+                tags=list(ci.tags or []),
+            )
+            for ci in items
+        ],
+        stats=EveryoneOverviewStats(
+            published_topics=int(published_topics_count),
+            distinct_domains=int(distinct_domains_count),
+            stories_last_24h=int(stories_last_24h_count),
+            last_ingested_at=last_ingested_at,
+        ),
+    )

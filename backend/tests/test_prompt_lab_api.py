@@ -92,5 +92,5 @@ def test_prompt_model_list_has_fallback_models(client, db_session):
 
     assert r.status_code == 200
     ids = [m["id"] for m in r.json()]
-    assert "claude-haiku-4-5-20251001" in ids
-    assert "claude-sonnet-4-6" in ids
+    assert "deepseek-v4-pro" in ids
+    assert "deepseek-v4-flash" in ids

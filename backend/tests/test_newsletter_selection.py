@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 from ..services.newsletter_selection import (
     NewsletterArticleContext,
+    article_industry_bonus,
     score_article_for_newsletter,
     select_articles_for_newsletter_topic,
 )
@@ -29,6 +30,19 @@ def _article(
         published_at=None,
         archived_at=None,
     )
+
+
+def test_article_industry_bonus_matches_case_insensitive():
+    art = SimpleNamespace(
+        title="Why carriers are watching this trend",
+        persona_impacts={"CFO": "Impact for insurance balance sheets."},
+        why_it_matters="",
+        what_is_it="",
+        content="",
+        tags=None,
+    )
+    assert article_industry_bonus(art, "Insurance") > 0
+    assert article_industry_bonus(art, "Healthcare") == 0
 
 
 def test_score_prefers_longer_persona_line_for_same_role():

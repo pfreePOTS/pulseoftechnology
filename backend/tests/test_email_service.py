@@ -188,8 +188,8 @@ class TestAssembleNewsletterTopics:
         result = email_service.assemble_newsletter_topics(sub, topics)
         assert len(result) == 3
 
-    def test_filters_by_role_tags_when_domains_empty(self):
-        """Job title (Role) tags narrow topics when the subscriber did not pick domains."""
+    def test_role_tags_do_not_filter_content_when_domains_empty(self):
+        """Titles/roles personalize context, not topic selection."""
         role = SimpleNamespace(tags=["Security", "Cloud"])
         sub = _sub(domains=None, roles=[role])
         topics = [
@@ -200,7 +200,7 @@ class TestAssembleNewsletterTopics:
         ]
         result = email_service.assemble_newsletter_topics(sub, topics)
         names = {t.name for t in result}
-        assert names == {"B", "C"}
+        assert names == {"A", "B", "C", "D"}
 
     def test_subscriber_domains_override_role_tags(self):
         """Explicit wizard domains win over role tags."""
@@ -213,12 +213,12 @@ class TestAssembleNewsletterTopics:
         result = email_service.assemble_newsletter_topics(sub, topics)
         assert [t.name for t in result] == ["A"]
 
-    def test_role_tag_match_is_case_insensitive(self):
+    def test_role_tags_do_not_narrow_single_topic_pool(self):
         role = SimpleNamespace(tags=["security"])
         sub = _sub(domains=None, roles=[role])
-        topics = [_topic("Security", 8.0, "S")]
+        topics = [_topic("AI", 9.0, "A"), _topic("Security", 8.0, "S")]
         result = email_service.assemble_newsletter_topics(sub, topics)
-        assert len(result) == 1 and result[0].name == "S"
+        assert [t.name for t in result] == ["A", "S"]
 
     def test_returns_empty_when_no_match(self):
         sub = _sub(domains=["Leadership"])
@@ -238,12 +238,12 @@ class TestAssembleNewsletterTopics:
         assert scores == sorted(scores, reverse=True)
 
     def test_skip_domain_filter_returns_full_pool(self):
-        """Preview mode: ignore role-tag narrowing when skip_domain_filter is set."""
+        """Preview mode with no domains still returns the full topic pool."""
         role = SimpleNamespace(tags=["Finance"])
         sub = _sub(domains=None, roles=[role])
         topics = [_topic("AI", 9.0, "A"), _topic("Security", 8.0, "B")]
         narrow = email_service.assemble_newsletter_topics(sub, topics)
-        assert len(narrow) == 0
+        assert len(narrow) == 2
         full = email_service.assemble_newsletter_topics(sub, topics, skip_domain_filter=True)
         assert len(full) == 2
 
@@ -381,6 +381,7 @@ def test_deep_dive_section_has_structured_briefing_and_trending():
     assert "Trending" in html
     assert "&#8593;" in html
     assert "Enterprises are wiring agents" in html
+    assert "<img" not in html
 
 
 def test_build_html_hot_topic_lead_when_subscriber_includes_hot_topic():
@@ -416,6 +417,8 @@ def test_build_html_hot_topic_lead_when_subscriber_includes_hot_topic():
     assert "mailto:?" in html
     assert "Hot on your radar" in html
     assert "Second story" in html
+    # Logo + hot lead image only; do not add another lead image to the remaining top story.
+    assert html.count("<img") == 2
 
 
 def test_build_html_no_hot_lead_when_hot_topic_not_in_subscriber_topics():

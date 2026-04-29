@@ -20,13 +20,9 @@ def _patch_prompts():
     )
 
 
-def _make_message(text: str) -> MagicMock:
-    """Return a minimal mock of an anthropic.types.Message."""
-    block = MagicMock()
-    block.text = text
-    msg = MagicMock()
-    msg.content = [block]
-    return msg
+def _patch_llm(reply: str):
+    """Patch DeepSeek-compatible ``chat_completion`` to return plain text."""
+    return patch.object(ai_service.llm_client, "chat_completion", return_value=reply)
 
 
 # ---------------------------------------------------------------------------
@@ -42,11 +38,9 @@ class TestEvaluateArticle:
             "urgency_score": 8,
             "reason": "Describes a major AI model launch affecting enterprise strategy.",
         }
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _make_message(json.dumps(payload))
         mock_db = MagicMock()
 
-        with patch.object(ai_service, "_get_client", return_value=mock_client), _patch_prompts():
+        with _patch_llm(json.dumps(payload)), _patch_prompts():
             result = ai_service.evaluate_article("OpenAI launches GPT-5 for enterprise.", mock_db)
 
         assert result is not None
@@ -62,21 +56,17 @@ class TestEvaluateArticle:
             "urgency_score": 1,
             "reason": "Celebrity gossip, not relevant to executives.",
         }
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _make_message(json.dumps(payload))
         mock_db = MagicMock()
 
-        with patch.object(ai_service, "_get_client", return_value=mock_client), _patch_prompts():
+        with _patch_llm(json.dumps(payload)), _patch_prompts():
             result = ai_service.evaluate_article("Celebrity spotted at coffee shop.", mock_db)
 
         assert result is None
 
     def test_malformed_json_uses_pipeline_defaults(self):
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _make_message("not json at all")
         mock_db = MagicMock()
 
-        with patch.object(ai_service, "_get_client", return_value=mock_client), _patch_prompts():
+        with _patch_llm("not json at all"), _patch_prompts():
             result = ai_service.evaluate_article("Some article text.", mock_db)
 
         assert result is not None
@@ -86,15 +76,18 @@ class TestEvaluateArticle:
 
     def test_correct_model_used(self):
         payload = {"relevant": False, "domain": "Other", "urgency_score": 1, "reason": "x"}
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _make_message(json.dumps(payload))
         mock_db = MagicMock()
 
-        with patch.object(ai_service, "_get_client", return_value=mock_client), _patch_prompts():
+        with (
+            patch.object(
+                ai_service.llm_client, "chat_completion", return_value=json.dumps(payload)
+            ) as mock_chat,
+            _patch_prompts(),
+        ):
             ai_service.evaluate_article("text", mock_db)
 
-        call_kwargs = mock_client.messages.create.call_args
-        assert call_kwargs.kwargs["model"] == ai_service.HAIKU_MODEL
+        gate_model = mock_chat.call_args_list[0].args[0]
+        assert gate_model == ai_service.HAIKU_MODEL
 
 
 # ---------------------------------------------------------------------------
@@ -131,15 +124,13 @@ class TestGenerateTopicSummary:
             "what_changed": "Enterprise suites shipped integrations.",
             "what_to_do": "Start with a bounded pilot.",
         }
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _make_message(json.dumps(payload))
 
         topic = self._make_topic()
         articles = self._make_articles()
 
         mock_db = MagicMock()
 
-        with patch.object(ai_service, "_get_client", return_value=mock_client), _patch_prompts():
+        with _patch_llm(json.dumps(payload)), _patch_prompts():
             result = ai_service.generate_topic_summary(topic, articles, mock_db)
 
         assert "AI adoption accelerated" in result
@@ -157,14 +148,12 @@ class TestGenerateTopicSummary:
     def test_malformed_json_falls_back_to_raw_text(self):
         raw_text = "Some summary without JSON structure."
         fallback = "Summary generation failed. Review needed."
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _make_message(raw_text)
 
         topic = self._make_topic()
         articles = self._make_articles()
         mock_db = MagicMock()
 
-        with patch.object(ai_service, "_get_client", return_value=mock_client), _patch_prompts():
+        with _patch_llm(raw_text), _patch_prompts():
             result = ai_service.generate_topic_summary(topic, articles, mock_db)
 
         assert result == fallback
@@ -173,32 +162,37 @@ class TestGenerateTopicSummary:
 
     def test_correct_model_used(self):
         payload = {"summary": "s", "why_it_matters": "w"}
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _make_message(json.dumps(payload))
 
         topic = self._make_topic()
         articles = self._make_articles()
         mock_db = MagicMock()
 
-        with patch.object(ai_service, "_get_client", return_value=mock_client), _patch_prompts():
+        with (
+            patch.object(
+                ai_service.llm_client, "chat_completion", return_value=json.dumps(payload)
+            ) as mock_chat,
+            _patch_prompts(),
+        ):
             ai_service.generate_topic_summary(topic, articles, mock_db)
 
-        call_kwargs = mock_client.messages.create.call_args
-        assert call_kwargs.kwargs["model"] == ai_service.SONNET_MODEL
+        used = mock_chat.call_args_list[0].args[0]
+        assert used == ai_service.SONNET_MODEL
 
     def test_articles_capped_at_ten(self):
         payload = {"summary": "s", "why_it_matters": "w"}
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _make_message(json.dumps(payload))
 
         topic = self._make_topic()
         articles = self._make_articles(15)
         mock_db = MagicMock()
 
-        with patch.object(ai_service, "_get_client", return_value=mock_client), _patch_prompts():
+        with (
+            patch.object(
+                ai_service.llm_client, "chat_completion", return_value=json.dumps(payload)
+            ) as mock_chat,
+            _patch_prompts(),
+        ):
             ai_service.generate_topic_summary(topic, articles, mock_db)
 
-        user_content = mock_client.messages.create.call_args.kwargs["messages"][0]["content"]
-        # Only articles 1-10 should appear
+        user_content = mock_chat.call_args_list[0].kwargs["user"]
         assert "Article 10" in user_content
         assert "Article 11" not in user_content

@@ -5,6 +5,7 @@ import pytest
 
 from ..config import Settings, settings
 from ..dependencies import ADMIN_COOKIE_NAME, decode_admin_token
+from ..models.role import Role
 from ..models.subscriber import Subscriber
 from ..services.subscriber_tokens import create_subscriber_preferences_token
 
@@ -163,7 +164,7 @@ def test_create_subscriber_requires_auth(client):
             "last_name": "User",
             "industries": ["Technology"],
             "domains": ["AI"],
-            "role_ids": None,
+            "role_ids": [1],
             "is_active": True,
         },
     )
@@ -177,13 +178,39 @@ def test_update_subscriber_requires_auth(client):
             "email": "x@example.com",
             "first_name": "A",
             "last_name": "B",
-            "industries": None,
-            "domains": None,
-            "role_ids": None,
+            "industries": ["Technology"],
+            "domains": ["AI"],
+            "role_ids": [1],
             "is_active": True,
         },
     )
     assert r.status_code == 401
+
+
+def test_admin_create_subscriber_requires_title_industry_and_domain(client, db_session):
+    db_session.add(Role(id=20, name="COO", tags=["Leadership"]))
+    db_session.commit()
+    client.post(
+        "/api/admin/login",
+        json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
+    )
+    base_payload = {
+        "email": "admin-added@example.com",
+        "first_name": "Admin",
+        "last_name": "Added",
+        "industries": ["Technology"],
+        "domains": ["AI"],
+        "role_ids": [20],
+        "is_active": True,
+    }
+
+    for field in ("role_ids", "industries", "domains"):
+        payload = dict(base_payload)
+        payload[field] = []
+
+        r = client.post("/api/admin/subscribers", json=payload)
+
+        assert r.status_code == 422
 
 
 def test_delete_subscriber_requires_auth(client):

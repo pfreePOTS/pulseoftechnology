@@ -10,7 +10,7 @@ Configure your `.env` file at the **project repository root** (same directory as
    ```bash
    cp .env.example .env
    ```
-2. Open `.env` and add your **Anthropic API Key** (`ANTHROPIC_API_KEY`). This is strictly required for the AI pipeline to work. You do *not* need SendGrid or HubSpot keys just to test the ingestion and curation flow.
+2. Open `.env` and add a **DeepSeek API Key** (`DEEPSEEK_API_KEY`). Optionally add **`ANTHROPIC_API_KEY`** so Claude is used automatically if DeepSeek is unavailable — or use Anthropic alone (no DeepSeek key) if preferred. Either way, **at least one** of these keys is required for the AI pipeline. You do *not* need SendGrid or HubSpot keys just to test the ingestion and curation flow.
 3. Set a secure `ADMIN_PASSWORD` in the `.env` file (the default is `pulseadmin`).
 4. For local development, ensure `NEXT_PUBLIC_API_URL` points at the API as exposed on the host (typically `http://localhost:8100` — see the main README port table).
 

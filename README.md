@@ -181,7 +181,10 @@ pulseoftechnology/
 | `POSTGRES_PASSWORD`    | `pulse_password`   | DB password                              |
 | `POSTGRES_DB`          | `pulse_db`         | DB name                                  |
 | `DATABASE_URL`         | auto-constructed   | Full connection string (set by Compose)  |
-| `ANTHROPIC_API_KEY`    | —                  | **Required** for AI ingestion pipeline   |
+| `DEEPSEEK_API_KEY`     | —                  | **Primary** LLM (OpenAI-compatible DeepSeek API). If `ANTHROPIC_API_KEY` is also set, failures fall back to Claude. |
+| `DEEPSEEK_BASE_URL`    | `https://api.deepseek.com` | API base URL                             |
+| `DEEPSEEK_MODEL`       | `deepseek-v4-pro`  | Default DeepSeek model id (`deepseek-v4-flash` for throughput) |
+| `ANTHROPIC_API_KEY`    | —                  | Optional **Anthropic Claude** fallback, or standalone LLM if DeepSeek key is omitted |
 | `ADMIN_PASSWORD`       | `pulseadmin`       | Password for the **bootstrap** superuser when `admin_users` is empty (with `FIRST_ADMIN_EMAIL`) |
 | `FIRST_ADMIN_EMAIL`    | `pulseoneadmin@pulseone.local` | Login email for that bootstrap account (short name `pulseoneadmin` also works) |
 | `ADMIN_JWT_SECRET`     | (see `.env.example`) | HS256 signing key for admin JWT sessions |

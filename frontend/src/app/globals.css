@@ -8,11 +8,13 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-dark-bg: #1e1e1e;
+  --color-light-bg: #f4f8fa;
   --font-sans: var(--font-ibm-plex-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   /* PulseOne brand palette */
-  --color-pulse-red: #e91d24;
+  --color-pulse-red: #d5171e;
   --color-pulse-teal: #019e7c;
   --color-pulse-gray: #e5e5e5;
   --color-pulse-surface: #f4f8fa;
@@ -25,7 +27,7 @@
 
   /* Domain accent colors (radar stars) */
   --color-industry-ai: #7c3aed;
-  --color-industry-security: #e91d24;
+  --color-industry-security: #d5171e;
   --color-industry-cloud: #0284c7;
   --color-industry-finance: #019e7c;
   --color-industry-leadership: #d97706;
@@ -44,4 +46,234 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), sans-serif;
+}
+
+@keyframes marquee-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.marquee-track-animate {
+  animation: marquee-scroll 48s linear infinite;
+}
+
+.marquee-track-animate:hover {
+  animation-play-state: paused;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Recommended-path "Building your specific solution" loading screen.
+   Pure-CSS so the loading.tsx stays a Server Component (no JS hydration
+   needed before the AI call returns). Each step element exposes a
+   `--complete-at` custom property so the staggered timeline lives in TSX
+   and the animation engine lives here.
+   ───────────────────────────────────────────────────────────────────── */
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.78);
+    opacity: 0.7;
+  }
+}
+
+@keyframes spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes loading-step-illuminate {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes loading-icon-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes loading-icon-in {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes loading-bar-fill {
+  0% {
+    width: 6%;
+  }
+  60% {
+    width: 68%;
+  }
+  100% {
+    width: 92%;
+  }
+}
+
+.loading-pulse-ring {
+  animation: pulse-ring 2.4s ease-out infinite;
+}
+.loading-pulse-ring-2 {
+  animation: pulse-ring 2.4s ease-out 0.8s infinite;
+}
+.loading-pulse-dot {
+  animation: pulse-dot 1.6s ease-in-out infinite;
+}
+.loading-spinner {
+  animation: spinner-rotate 1s linear infinite;
+  transform-origin: center;
+}
+.loading-bar {
+  width: 6%;
+  animation: loading-bar-fill 10s cubic-bezier(0.2, 0.6, 0.3, 1) forwards;
+}
+
+.loading-step {
+  opacity: 0.45;
+  animation: loading-step-illuminate 400ms ease-out var(--complete-at, 0ms) forwards;
+}
+
+.loading-step .step-spinner {
+  animation: loading-icon-out 400ms ease-out var(--complete-at, 0ms) forwards;
+}
+
+.loading-step .step-check {
+  opacity: 0;
+  animation: loading-icon-in 400ms ease-out var(--complete-at, 0ms) forwards;
+}
+
+/* The final step never auto-completes — it stays in the spinning state until
+   loading.tsx unmounts so a slow AI response doesn't end on "all done!" while
+   the user is still waiting. */
+.loading-step.is-final {
+  opacity: 1;
+  animation: none;
+}
+.loading-step.is-final .step-spinner {
+  opacity: 1;
+  animation: none;
+}
+.loading-step.is-final .step-check {
+  opacity: 0;
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-pulse-ring,
+  .loading-pulse-ring-2,
+  .loading-pulse-dot,
+  .loading-spinner,
+  .loading-bar,
+  .loading-step,
+  .loading-step .step-spinner,
+  .loading-step .step-check {
+    animation: none;
+  }
+  .loading-bar {
+    width: 50%;
+  }
+  .loading-step {
+    opacity: 1;
+  }
+  .loading-step .step-spinner {
+    opacity: 0;
+  }
+  .loading-step .step-check {
+    opacity: 1;
+  }
+  .loading-step.is-final .step-check {
+    opacity: 0;
+  }
+  .loading-step.is-final .step-spinner {
+    opacity: 1;
+  }
+}
+
+/* USA map — Executive intake (docs/frontend-redesign/source/index_v3.0.html lines 366-376) */
+.usa-map-wrap {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.usa-map-wrap svg {
+  width: 100%;
+  max-width: 560px;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+
+.usa-map-wrap svg .state-path {
+  fill: rgba(1, 158, 124, 0.12);
+  stroke: #019e7c;
+  stroke-width: 0.7;
+  transition:
+    fill 0.2s,
+    stroke 0.2s;
+}
+
+.usa-map-wrap svg .map-region {
+  cursor: pointer;
+  outline: none;
+}
+
+.usa-map-wrap svg .region-hit-area {
+  cursor: pointer;
+  pointer-events: all;
+}
+
+.usa-map-wrap svg .map-region:hover .state-path,
+.usa-map-wrap svg .map-region:focus-visible .state-path {
+  fill: rgba(213, 23, 30, 0.45);
+  stroke: rgba(213, 23, 30, 0.85);
+}
+
+.usa-map-wrap svg .map-region.selected .state-path {
+  fill: rgba(213, 23, 30, 0.6);
+  stroke: #d5171e;
+}
+
+.usa-map-wrap svg .map-region-label {
+  fill: rgba(255, 255, 255, 0.95);
+  font-size: 18px;
+  font-weight: 700;
+  text-anchor: middle;
+  pointer-events: none;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+}
+
+.usa-map-wrap svg .map-region.selected .map-region-label {
+  fill: #ffffff;
+}
+
+.usa-map-wrap svg .map-sublabel {
+  fill: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+  text-anchor: middle;
+  pointer-events: none;
 }

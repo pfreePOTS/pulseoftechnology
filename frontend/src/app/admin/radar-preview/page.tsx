@@ -226,7 +226,7 @@ export default function RadarPreviewPage() {
             </Link>{" "}
             page when you are ready for the public radar. Backend logs showing{" "}
             <code className="rounded bg-gray-800 px-1 text-xs">0 articles assigned to topics</code> mean classification did not
-            link new stories yet — check <code className="rounded bg-gray-800 px-1 text-xs">ANTHROPIC_API_KEY</code> and topic
+            link new stories yet — check <code className="rounded bg-gray-800 px-1 text-xs">DEEPSEEK_API_KEY</code> and topic
             coverage.
           </div>
         )}

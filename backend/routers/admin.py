@@ -49,19 +49,13 @@ from ..models.survey_response import SurveyResponse
 from ..models.topic import AdoptionState, Topic, TopicStatus
 from ..rate_limits import limiter
 from ..services.ai_service import (
-    HAIKU_MODEL,
     INDUSTRY_GRID_LABELS,
-    SONNET_MODEL,
-    _strip_fences,
     clear_prompt_template_cache,
     default_model_for_agent,
     ensure_topic_industry_grid_complete,
     suggest_industry_positions,
     suggest_subdomain_for_topic,
     suggest_topic_persona_by_role,
-)
-from ..services.ai_service import (
-    _get_client as get_anthropic_client,
 )
 from ..services.email_service import (
     generate_newsletter_preview,
@@ -71,6 +65,10 @@ from ..services.email_service import (
 )
 from ..services.hubspot_sync import sync_subscriber_to_hubspot
 from ..services.ingestion import run_all_sources, run_article_processing_pipeline
+from ..services.llm_client import (
+    chat_completion_result,
+    is_llm_configured,
+)
 from ..services.pipeline_settings import (
     merge_pipeline_settings,
     merged_settings_public_dict,
@@ -86,7 +84,7 @@ def _spawn_long_admin_job(fn: Callable[[], None]) -> None:
     """
     Run a long CPU/IO job off the Starlette/FastAPI BackgroundTasks queue.
 
-    BackgroundTasks are awaited during Uvicorn --reload shutdown; multi-minute Anthropic
+    BackgroundTasks are awaited during Uvicorn --reload shutdown; multi-minute LLM
     loops (industry/persona suggest-all) would otherwise freeze the API until they finish,
     which breaks the admin UI with endless \"Loading...\".
     """
@@ -1481,10 +1479,25 @@ class PromptTestOut(BaseModel):
 
 
 def _fallback_prompt_models() -> list[PromptModelOut]:
-    return [
-        PromptModelOut(id=HAIKU_MODEL, name="Claude Haiku 4.5"),
-        PromptModelOut(id=SONNET_MODEL, name="Claude Sonnet 4.6"),
+    rows: list[PromptModelOut] = [
+        PromptModelOut(id="deepseek-v4-pro", name="DeepSeek V4 Pro"),
+        PromptModelOut(id="deepseek-v4-flash", name="DeepSeek V4 Flash"),
+        PromptModelOut(id="deepseek-chat", name="deepseek-chat (legacy)"),
+        PromptModelOut(id="deepseek-reasoner", name="deepseek-reasoner (legacy)"),
     ]
+    if (app_settings.anthropic_api_key or "").strip():
+        rows.extend(
+            [
+                PromptModelOut(
+                    id=app_settings.anthropic_sonnet_model,
+                    name="Claude Sonnet (Anthropic fallback)",
+                ),
+                PromptModelOut(
+                    id=app_settings.anthropic_haiku_model, name="Claude Haiku (Anthropic fallback)"
+                ),
+            ]
+        )
+    return rows
 
 
 def _proposal_out(proposal: PromptProposal) -> PromptProposalOut:
@@ -1661,26 +1674,7 @@ def list_prompt_templates(
 
 @router.get("/prompt-models", response_model=list[PromptModelOut])
 def list_prompt_models(_: AdminUser = Depends(require_admin)) -> list[PromptModelOut]:
-    if not app_settings.anthropic_api_key:
-        return _fallback_prompt_models()
-    try:
-        client = get_anthropic_client()
-        models_api = getattr(client, "models", None)
-        list_fn = getattr(models_api, "list", None)
-        if list_fn is None:
-            return _fallback_prompt_models()
-        result = list_fn(limit=100)
-        rows: list[PromptModelOut] = []
-        for m in getattr(result, "data", []) or []:
-            model_id = str(getattr(m, "id", "")).strip()
-            if model_id:
-                rows.append(
-                    PromptModelOut(id=model_id, name=str(getattr(m, "display_name", model_id)))
-                )
-        return rows or _fallback_prompt_models()
-    except Exception:
-        logger.exception("Unable to list Anthropic models; using fallback list")
-        return _fallback_prompt_models()
+    return _fallback_prompt_models()
 
 
 @router.post("/prompt-lab/test", response_model=PromptTestOut)
@@ -1688,16 +1682,19 @@ def test_prompt_lab_request(
     payload: PromptTestBody,
     _: AdminUser = Depends(require_admin),
 ) -> PromptTestOut:
-    if not app_settings.anthropic_api_key:
-        raise HTTPException(status_code=400, detail="ANTHROPIC_API_KEY is not configured")
-    try:
-        response = get_anthropic_client().messages.create(
-            model=payload.model,
-            max_tokens=payload.max_tokens,
-            system=payload.system_prompt,
-            messages=[{"role": "user", "content": payload.user_message}],
+    if not is_llm_configured():
+        raise HTTPException(
+            status_code=400,
+            detail="Configure DEEPSEEK_API_KEY and/or ANTHROPIC_API_KEY",
         )
-        return PromptTestOut(output=_strip_fences(response.content[0].text), model=payload.model)
+    try:
+        result = chat_completion_result(
+            payload.model,
+            system=payload.system_prompt,
+            user=payload.user_message,
+            max_tokens=payload.max_tokens,
+        )
+        return PromptTestOut(output=result.text, model=result.model_id)
     except Exception as exc:
         logger.exception("Prompt Lab test run failed")
         raise HTTPException(status_code=502, detail=f"Prompt test failed: {exc}") from exc
@@ -2003,6 +2000,15 @@ class SubscriberOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+def _required_subscriber_list(values: list[str] | list[int] | None, label: str) -> list:
+    if values is None:
+        raise ValueError(f"Select at least one {label}")
+    cleaned = [v for v in values if v is not None and (not isinstance(v, str) or v.strip())]
+    if not cleaned:
+        raise ValueError(f"Select at least one {label}")
+    return cleaned
+
+
 class SubscriberCreate(BaseModel):
     """Same fields as public subscribe, plus optional is_active — for manual admin setup."""
 
@@ -2029,6 +2035,13 @@ class SubscriberCreate(BaseModel):
         if not v:
             raise ValueError("Field cannot be blank")
         return v
+
+    @model_validator(mode="after")
+    def require_subscription_preferences(self) -> "SubscriberCreate":
+        self.role_ids = _required_subscriber_list(self.role_ids, "title")
+        self.industries = _required_subscriber_list(self.industries, "industry")
+        self.domains = _required_subscriber_list(self.domains, "topic domain")
+        return self
 
 
 @router.post("/subscribers", response_model=SubscriberOut, status_code=201)

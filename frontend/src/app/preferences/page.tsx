@@ -120,14 +120,22 @@ export default function PreferencesPage() {
     void load();
   }, []);
 
-  const allDomains = form.domains.length === 0;
   const canSubmit = useMemo(
-    () => form.first_name.trim() && form.last_name.trim() && form.industries.length > 0,
+    () =>
+      form.first_name.trim() &&
+      form.last_name.trim() &&
+      form.role_ids.length > 0 &&
+      form.industries.length > 0 &&
+      form.domains.length > 0,
     [form],
   );
 
   async function savePreferences() {
-    if (!canSubmit || !token) return;
+    if (!token) return;
+    if (!canSubmit) {
+      setError("Select at least one title, one industry, and one topic domain.");
+      return;
+    }
     setSaving(true);
     setError("");
     setMessage("");
@@ -142,7 +150,7 @@ export default function PreferencesPage() {
             last_name: form.last_name.trim(),
             industries: form.industries.length > 0 ? form.industries : null,
             domains: form.domains.length > 0 ? form.domains : null,
-            role_ids: form.role_ids.length > 0 ? form.role_ids : null,
+            role_ids: form.role_ids,
           }),
         },
       );
@@ -242,7 +250,8 @@ export default function PreferencesPage() {
             </div>
 
             <section className="mt-8">
-              <h2 className="text-lg font-semibold">Your roles</h2>
+              <h2 className="text-lg font-semibold">Your titles</h2>
+              <p className="mt-1 text-sm text-[#4A5F6D]">Select at least one title.</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {roles.map((role) => (
                   <button
@@ -268,6 +277,7 @@ export default function PreferencesPage() {
 
             <section className="mt-8">
               <h2 className="text-lg font-semibold">Industries</h2>
+              <p className="mt-1 text-sm text-[#4A5F6D]">Select at least one industry.</p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {INDUSTRIES.map((industry) => (
                   <label key={industry} className="flex items-center gap-2 rounded-lg border border-gray-200 p-3 text-sm">
@@ -291,19 +301,8 @@ export default function PreferencesPage() {
             <section className="mt-8">
               <h2 className="text-lg font-semibold">Topic domains</h2>
               <p className="mt-1 text-sm text-[#4A5F6D]">
-                Choose domains to narrow your briefing, or use all domains for broader coverage.
+                Select at least one topic domain for your briefing.
               </p>
-              <button
-                type="button"
-                onClick={() => setForm((prev) => ({ ...prev, domains: [] }))}
-                className={`mt-3 rounded-lg border px-3 py-2 text-sm font-medium ${
-                  allDomains
-                    ? "border-pulse-teal bg-pulse-teal text-white"
-                    : "border-gray-200 bg-white text-gray-700"
-                }`}
-              >
-                All domains
-              </button>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {DOMAIN_OPTIONS.map((domain) => (
                   <label key={domain.value} className="flex items-center gap-2 rounded-lg border border-gray-200 p-3 text-sm">

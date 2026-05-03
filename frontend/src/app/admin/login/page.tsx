@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 import { API_BASE } from "@/lib/api";
 
@@ -43,12 +45,18 @@ export default function AdminLoginPage() {
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <span
-            className="inline-block h-3 w-3 rounded-full mb-4"
-            style={{ backgroundColor: "#E91D24" }}
-          />
-          <h1 className="text-2xl font-bold text-white">PulseOne Admin</h1>
+        <div className="mb-8 flex flex-col items-center text-center">
+          <Link href="/" className="mb-5 inline-block focus:outline-none focus-visible:ring-2 focus-visible:ring-[#019E7C] focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950 rounded-sm">
+            <Image
+              src="/pulseone_logo_official.png"
+              alt="PulseOne"
+              width={200}
+              height={48}
+              className="h-11 w-auto max-w-[220px] object-contain brightness-0 invert opacity-95"
+              priority
+            />
+          </Link>
+          <h1 className="text-2xl font-bold text-white">Admin</h1>
           <p className="mt-1 text-sm text-gray-500">
             Sign in with your admin email and password.
           </p>

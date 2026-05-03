@@ -12,6 +12,7 @@ import re
 # Slugs match `href` keys in frontend admin nav (see `ADMIN_NAV_HREFS`).
 PAGE_SLUG_BY_HREF: dict[str, str] = {
     "/admin/research": "research",
+    "/admin/review": "research",
     "/admin": "trending",
     "/admin/trending-daily": "daily_trends",
     "/admin/analysis": "analysis",
@@ -21,6 +22,7 @@ PAGE_SLUG_BY_HREF: dict[str, str] = {
     "/admin/radar-preview": "radar_preview",
     "/admin/sources": "sources",
     "/admin/subscribers": "subscribers",
+    "/admin/hubspot": "hubspot",
     "/admin/roles": "roles",
     "/admin/library": "library",
     "/admin/jobs": "jobs",
@@ -53,6 +55,7 @@ def normalize_login_email(raw: str) -> str:
 # Longest prefix first. Value = slug(s) required (user needs at least one).
 # `/api/admin/users` and `/api/admin/settings` are superuser-only (handled in auth dependency).
 _ADMIN_API_RULES: list[tuple[str, frozenset[str]]] = [
+    ("/api/admin/hubspot", frozenset({"hubspot"})),
     ("/api/admin/articles", frozenset({"research"})),
     (
         "/api/admin/topics",
@@ -67,7 +70,8 @@ _ADMIN_API_RULES: list[tuple[str, frozenset[str]]] = [
     ("/api/admin/roles", frozenset({"roles"})),
     ("/api/admin/content", frozenset({"library"})),
     ("/api/admin/newsletter", frozenset({"newsletter"})),
-    ("/api/admin/inbox", frozenset({"inbox"})),
+    # Ratings live in Newsletter context; Newsletter-only admins still need API access via Inbox UX.
+    ("/api/admin/inbox", frozenset({"inbox", "newsletter"})),
     ("/api/admin/jobs", frozenset({"jobs"})),
     ("/api/admin/agent-runs", frozenset({"ai_performance"})),
     ("/api/admin/prompt-templates", frozenset({"prompt_lab"})),

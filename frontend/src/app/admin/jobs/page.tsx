@@ -18,6 +18,7 @@ let toastSeq = 0;
 export default function JobsPage() {
   const [ingestState, setIngestState] = useState<JobState>("idle");
   const [processState, setProcessState] = useState<JobState>("idle");
+  const [imageBackfillState, setImageBackfillState] = useState<JobState>("idle");
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   function addToast(type: "success" | "error", message: string) {
@@ -66,6 +67,15 @@ export default function JobsPage() {
       state: processState,
       setState: setProcessState,
       icon: "⚙",
+    },
+    {
+      title: "Backfill Story Images",
+      description:
+        "Scrapes og:image / twitter:image for tracked articles still missing a thumbnail (lean feeds like TechCrunch and Bleeping Computer ship without images). Heals gradient-only cards on the public radar without waiting for the next hourly tick. Up to 200 articles per click.",
+      endpoint: "/api/admin/jobs/backfill-images",
+      state: imageBackfillState,
+      setState: setImageBackfillState,
+      icon: "🖼",
     },
   ];
 
@@ -135,6 +145,7 @@ export default function JobsPage() {
           </p>
           <ul className="space-y-1 text-sm text-gray-500">
             <li>RSS fetch + AI processing + sub-domain backfill — hourly</li>
+            <li>HubSpot Contacts + optional list membership — cron from env (defaults 04:00 UTC · see Admin HubSpot)</li>
             <li>Article archiving (retention) — 05:00 UTC daily</li>
             <li>Signal scoring + topic cleanup — 06:00 UTC daily</li>
             <li>

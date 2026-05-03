@@ -42,10 +42,21 @@ export default function InboxPage() {
     setError("");
     try {
       const res = await adminFetch(`${API_BASE}/api/admin/inbox/ratings`);
+      const payload = await res.json().catch(() => null);
       if (!res.ok) {
-        throw new Error("Could not load rating responses.");
+        const detail =
+          payload && typeof payload === "object" && payload !== null && "detail" in payload
+            ? (payload as { detail?: unknown }).detail
+            : undefined;
+        const msg =
+          typeof detail === "string"
+            ? detail
+            : detail !== undefined
+              ? JSON.stringify(detail)
+              : `Could not load rating responses (${res.status}).`;
+        throw new Error(msg);
       }
-      setRatings((await res.json()) as RatingStats);
+      setRatings(payload as RatingStats);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load rating responses.");
       setRatings(null);

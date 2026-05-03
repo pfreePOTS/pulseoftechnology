@@ -22,6 +22,8 @@ class MergedPipelineSettings:
     trend_prior_window_days: int
     article_retention_days: int
     article_archive_enabled: bool
+    newsletter_top_ingest_hours: int
+    newsletter_deep_dive_ingest_hours: int
     newsletter_article_lookback_days: int
     newsletter_send_hour_utc: int
     newsletter_send_minute_utc: int
@@ -65,6 +67,8 @@ def _defaults_from_env() -> dict[str, Any]:
         "trend_prior_window_days": env_settings.trend_prior_window_days,
         "article_retention_days": env_settings.article_retention_days,
         "article_archive_enabled": env_settings.article_archive_enabled,
+        "newsletter_top_ingest_hours": env_settings.newsletter_top_ingest_hours,
+        "newsletter_deep_dive_ingest_hours": env_settings.newsletter_deep_dive_ingest_hours,
         "newsletter_article_lookback_days": env_settings.newsletter_article_lookback_days,
         "newsletter_send_hour_utc": env_settings.newsletter_send_hour_utc,
         "newsletter_send_minute_utc": env_settings.newsletter_send_minute_utc,
@@ -97,11 +101,34 @@ def merge_pipeline_settings(db: Session | None) -> MergedPipelineSettings:
     ar = max(
         1, _coerce_int(base.get("article_retention_days"), env_settings.article_retention_days)
     )
+    nth = max(
+        1,
+        min(
+            168,
+            _coerce_int(
+                base.get("newsletter_top_ingest_hours"),
+                env_settings.newsletter_top_ingest_hours,
+            ),
+        ),
+    )
+    ndh = max(
+        1,
+        min(
+            336,
+            _coerce_int(
+                base.get("newsletter_deep_dive_ingest_hours"),
+                env_settings.newsletter_deep_dive_ingest_hours,
+            ),
+        ),
+    )
     nlb = max(
         1,
-        _coerce_int(
-            base.get("newsletter_article_lookback_days"),
-            env_settings.newsletter_article_lookback_days,
+        min(
+            365,
+            _coerce_int(
+                base.get("newsletter_article_lookback_days"),
+                env_settings.newsletter_article_lookback_days,
+            ),
         ),
     )
     h = max(
@@ -132,6 +159,8 @@ def merge_pipeline_settings(db: Session | None) -> MergedPipelineSettings:
         article_archive_enabled=_coerce_bool(
             base.get("article_archive_enabled"), env_settings.article_archive_enabled
         ),
+        newsletter_top_ingest_hours=nth,
+        newsletter_deep_dive_ingest_hours=ndh,
         newsletter_article_lookback_days=nlb,
         newsletter_send_hour_utc=h,
         newsletter_send_minute_utc=m,
@@ -164,6 +193,8 @@ def merged_settings_public_dict(merged: MergedPipelineSettings) -> dict[str, Any
         "trend_prior_window_days": merged.trend_prior_window_days,
         "article_retention_days": merged.article_retention_days,
         "article_archive_enabled": merged.article_archive_enabled,
+        "newsletter_top_ingest_hours": merged.newsletter_top_ingest_hours,
+        "newsletter_deep_dive_ingest_hours": merged.newsletter_deep_dive_ingest_hours,
         "newsletter_article_lookback_days": merged.newsletter_article_lookback_days,
         "newsletter_send_hour_utc": merged.newsletter_send_hour_utc,
         "newsletter_send_minute_utc": merged.newsletter_send_minute_utc,

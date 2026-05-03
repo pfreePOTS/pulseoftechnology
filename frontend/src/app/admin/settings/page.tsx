@@ -9,6 +9,8 @@ type PipelineSettings = {
   trend_prior_window_days: number;
   article_retention_days: number;
   article_archive_enabled: boolean;
+  newsletter_top_ingest_hours: number;
+  newsletter_deep_dive_ingest_hours: number;
   newsletter_article_lookback_days: number;
   newsletter_send_hour_utc: number;
   newsletter_send_minute_utc: number;
@@ -30,11 +32,29 @@ export default function AdminSettingsPage() {
     setError(null);
     try {
       const res = await adminFetch(`${API_BASE}/api/admin/settings`);
-      if (!res.ok) throw new Error(await res.text());
-      const data = (await res.json()) as PipelineSettings;
-      setForm(data);
+      const raw = await res.json().catch(() => null);
+      if (!res.ok) {
+        if (res.status === 403) {
+          throw new Error(
+            "Settings are restricted to superusers only. Pipeline settings API requires a superuser session.",
+          );
+        }
+        const detail =
+          raw && typeof raw === "object" && raw !== null && "detail" in raw
+            ? (raw as { detail?: unknown }).detail
+            : undefined;
+        const msg =
+          typeof detail === "string"
+            ? detail
+            : detail !== undefined
+              ? JSON.stringify(detail)
+              : `HTTP ${res.status}`;
+        throw new Error(msg || "Failed to load settings");
+      }
+      setForm(raw as PipelineSettings);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load settings");
+      setForm(null);
     } finally {
       setLoading(false);
     }
@@ -54,9 +74,21 @@ export default function AdminSettingsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      if (!res.ok) throw new Error(await res.text());
-      const data = (await res.json()) as PipelineSettings;
-      setForm(data);
+      const raw = await res.json().catch(() => null);
+      if (!res.ok) {
+        const detail =
+          raw && typeof raw === "object" && raw !== null && "detail" in raw
+            ? (raw as { detail?: unknown }).detail
+            : undefined;
+        const msg =
+          typeof detail === "string"
+            ? detail
+            : detail !== undefined
+              ? JSON.stringify(detail)
+              : `HTTP ${res.status}`;
+        throw new Error(msg || "Save failed");
+      }
+      setForm(raw as PipelineSettings);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -64,10 +96,38 @@ export default function AdminSettingsPage() {
     }
   }
 
-  if (loading || !form) {
+  if (loading) {
     return (
-      <div className="mx-auto max-w-2xl p-8 text-gray-400">
-        {loading ? "Loading settings…" : "No data."}
+      <div className="mx-auto max-w-2xl p-8 text-gray-400">Loading settings…</div>
+    );
+  }
+
+  if (!form) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-8">
+        <h1 className="text-2xl font-bold tracking-tight text-white">Pipeline settings</h1>
+        <p className="mt-2 text-sm text-gray-400">
+          This screen normally shows trend windows, article retention, and newsletter send options (stored in
+          site config over <code className="text-gray-500">.env</code> defaults).
+        </p>
+        {error ? (
+          <div
+            className="mt-6 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200"
+            role="alert"
+          >
+            <p className="font-semibold text-red-100">Could not load settings</p>
+            <p className="mt-2 whitespace-pre-wrap">{error}</p>
+          </div>
+        ) : (
+          <p className="mt-6 text-sm text-gray-500">No settings payload received.</p>
+        )}
+        <button
+          type="button"
+          onClick={() => void load()}
+          className="mt-6 rounded-lg border border-gray-700 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800"
+        >
+          Retry
+        </button>
       </div>
     );
   }
@@ -173,17 +233,59 @@ export default function AdminSettingsPage() {
           </h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block text-sm">
-              <span className="text-gray-400">Article lookback in email (days)</span>
+              <span className="text-gray-400">Top rollup &amp; topic rank freshness (hours)</span>
+              <input
+                type="number"
+                min={1}
+                max={168}
+                className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-white"
+                value={form.newsletter_top_ingest_hours}
+                onChange={(e) =>
+                  setForm({ ...form, newsletter_top_ingest_hours: Number(e.target.value) })
+                }
+              />
+              <span className="mt-1 block text-xs text-gray-500">
+                Ingest cutoff for ranking &quot;Your Radar Briefing&quot; and quick-hit rollup copy
+                (default 24h).
+              </span>
+            </label>
+            <label className="block text-sm">
+              <span className="text-gray-400">Deep-dive supporting articles (hours)</span>
+              <input
+                type="number"
+                min={1}
+                max={336}
+                className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-white"
+                value={form.newsletter_deep_dive_ingest_hours}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    newsletter_deep_dive_ingest_hours: Number(e.target.value),
+                  })
+                }
+              />
+              <span className="mt-1 block text-xs text-gray-500">
+                Primary pool for source links under analysis sections (default 72h).
+              </span>
+            </label>
+            <label className="block text-sm sm:col-span-2">
+              <span className="text-gray-400">
+                Wider fallback when a topic has no matching ingests above (days)
+              </span>
               <input
                 type="number"
                 min={1}
                 max={365}
-                className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-white"
+                className="mt-1 w-full max-w-xs rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-white"
                 value={form.newsletter_article_lookback_days}
                 onChange={(e) =>
                   setForm({ ...form, newsletter_article_lookback_days: Number(e.target.value) })
                 }
               />
+              <span className="mt-1 block text-xs text-gray-500">
+                Second-pass cutoff for rollup/deep cites only if tighter windows are empty
+                (default 4 days).
+              </span>
             </label>
             <label className="block text-sm">
               <span className="text-gray-400">Send time (UTC)</span>

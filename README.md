@@ -177,7 +177,7 @@ pulseoftechnology/
 
 | Variable               | Default            | Description                              |
 |------------------------|--------------------|------------------------------------------|
-| `POSTGRES_USER`        | `pulse_user`       | DB username                              |
+| `POSTGRES_USER`        | `pulse_user`       | DB username — **do not use `pulse`** (that role is not created; use `pulse_user`) |
 | `POSTGRES_PASSWORD`    | `pulse_password`   | DB password                              |
 | `POSTGRES_DB`          | `pulse_db`         | DB name                                  |
 | `DATABASE_URL`         | auto-constructed   | Full connection string (set by Compose)  |
@@ -192,6 +192,7 @@ pulseoftechnology/
 | `CORS_ORIGINS`         | `http://localhost:3000,http://localhost:3100` | Allowed browser origins (comma-separated) |
 | `SENDGRID_API_KEY`     | —                  | Email delivery (optional for dev)        |
 | `HUBSPOT_API_KEY`      | —                  | CRM sync (optional)                      |
+| `HUBSPOT_NEWSLETTER_LIST_ID` | —            | HubSpot list ILS ID; add/remove contact after upsert (optional) |
 | `NEXT_PUBLIC_API_URL`  | `http://localhost:8100` | Browser-facing API URL (Compose `frontend` service) |
 | `SERVER_API_URL`       | `http://backend:8000` (Compose default) | Server-side RSC fetches — must reach the API from inside the `frontend` container |
 | `PINECONE_*`           | —                  | Optional vector DB for signals (`config.py` names) |
@@ -199,6 +200,8 @@ pulseoftechnology/
 **Dependency lockfiles:** Python packages are installed from `backend/requirements.txt` in `backend/Dockerfile`; Node packages from `frontend/package.json` / `package-lock.json` in `frontend/Dockerfile` (`npm ci`). After changing dependencies, run `docker compose up --build` (or `--build` the affected service).
 
 > Production deployments should override all defaults via real secrets management.
+
+If Postgres logs **`FATAL: role "pulse" does not exist`**, a client is connecting with user `pulse`. This project creates **`pulse_user`** (see `POSTGRES_USER` / Compose). Fix `DATABASE_URL` or `.env` — if the URL is `postgresql://pulse:…@…`, change it to **`postgresql://pulse_user:…@…`**. The backend can coerce the mistaken `pulse` username to `pulse_user` at startup when `DATABASE_URL` is loaded from env files.
 
 ### Scheduler and scaling
 

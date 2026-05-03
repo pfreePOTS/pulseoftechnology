@@ -63,7 +63,24 @@ function startOfDay(d: Date): Date {
   return x;
 }
 
-export default function BookingCalendar() {
+export type BookingCalendarProps = {
+  /** Subtitle under the selected date heading (defaults to legacy 30‑minute wording). */
+  introductoryCallLabel?: string;
+  /** Short badge next to each time slot (defaults to “30 min”). */
+  slotDurationBadge?: string;
+  /** First sentence fragment in the confirm alert before the scheduled time. */
+  confirmAlertPhrase?: string;
+  /** Footer line below the footer (timezone + blurbs); middle segment uses `introductoryCallLabel` unless overridden. */
+  footerLine?: string;
+};
+
+export default function BookingCalendar(props: BookingCalendarProps = {}) {
+  const introductoryCallLabel = props.introductoryCallLabel ?? "30-minute introductory call";
+  const slotDurationBadge = props.slotDurationBadge ?? "30 min";
+  const confirmAlertPhrase = props.confirmAlertPhrase ?? "Your 30-minute call has been requested";
+  const footerLine =
+    props.footerLine ??
+    `All times shown in your local timezone · ${introductoryCallLabel} · Your survey responses will be shared with your PulseOne representative before the call so they arrive prepared.`;
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -124,9 +141,7 @@ export default function BookingCalendar() {
       month: "long",
       day: "numeric",
     });
-    window.alert(
-      `Your 30-minute call has been requested for ${ds} at ${selectedSlot}.\n\nA confirmation will be sent to your email.`,
-    );
+    window.alert(`${confirmAlertPhrase} for ${ds} at ${selectedSlot}.\n\nA confirmation will be sent to your email.`);
   };
 
   const blockedForSelected =
@@ -226,7 +241,7 @@ export default function BookingCalendar() {
                 })
               : "Select a date to see times"}
           </div>
-          <div className="mb-4 font-sans text-xs text-white/35">30-minute introductory call</div>
+          <div className="mb-4 font-sans text-xs text-white/35">{introductoryCallLabel}</div>
           <div className="flex max-h-[260px] flex-col gap-2 overflow-y-auto pr-1">
             {selectedDate ? (
               SLOTS.map((t) => {
@@ -240,7 +255,7 @@ export default function BookingCalendar() {
                       aria-disabled="true"
                     >
                       <span>{t}</span>
-                      <span className="text-[11px] opacity-60">30 min</span>
+                      <span className="text-[11px] opacity-60">{slotDurationBadge}</span>
                     </div>
                   );
                 }
@@ -255,7 +270,7 @@ export default function BookingCalendar() {
                     className={`flex items-center justify-between rounded-md border px-4 py-2.5 font-sans text-sm font-semibold transition-colors ${cls}`}
                   >
                     <span>{t}</span>
-                    <span className="text-[11px] opacity-60">30 min</span>
+                    <span className="text-[11px] opacity-60">{slotDurationBadge}</span>
                   </button>
                 );
               })
@@ -290,10 +305,7 @@ export default function BookingCalendar() {
         </button>
       </div>
 
-      <p className="px-7 pb-4 text-center font-sans text-xs text-white/25">
-        All times shown in your local timezone · 30-minute introductory call · Your survey responses
-        will be shared with your PulseOne representative before the call so they arrive prepared.
-      </p>
+      <p className="px-7 pb-4 text-center font-sans text-xs text-white/25">{footerLine}</p>
     </div>
   );
 }

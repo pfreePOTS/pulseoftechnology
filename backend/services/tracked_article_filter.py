@@ -173,6 +173,31 @@ _LEADERSHIP_ORG_AND_WORK_TECH = [
 
 TECH_NEEDLES_LEADERSHIP = _ENTERPRISE_AND_CYBER_CORE + _AI_SURFACE + _LEADERSHIP_ORG_AND_WORK_TECH
 
+_GENERAL_PULSE_TECH_TERMS = [
+    "technology",
+    " tech ",
+    "ai ",
+    " ai",
+    "agentic",
+    "copilot",
+    "data center",
+    "datacenter",
+    "semiconductor",
+    "chip",
+    "gpu",
+    "npm",
+    "package",
+    "wordpress",
+    "plugin",
+    "internet outage",
+    "network",
+    "broadband",
+    "openai",
+    "aws",
+    "google cloud",
+    "microsoft",
+]
+
 # Max characters of article.body passed into the tracked-stories heuristic (cheap API payloads).
 _SURFACE_CONTENT_CHARS = 14_000
 
@@ -300,6 +325,120 @@ def article_passes_pulse_tech_deep(article: Article, domain: str | None) -> bool
     if dom == "Finance":
         return tracked_finance_article_has_pulse_tech_signals(title, what, blob)
     return tracked_leadership_article_has_pulse_tech_signals(title, what, blob)
+
+
+def article_has_general_pulse_tech_signal(article: Article) -> bool:
+    """Broad stop-at-research gate for generic non-tech stories before topic creation."""
+    title = getattr(article, "title", None) or ""
+    what = getattr(article, "what_is_it", None)
+    blob = article_pulse_evidence_deep_blob(article)
+    return text_has_general_pulse_tech_signal(_text_from_fields(title, what, blob))
+
+
+def text_has_general_pulse_tech_signal(text: str) -> bool:
+    """Same broad stop-at-research check as `article_has_general_pulse_tech_signal` but on raw text.
+
+    Used by the gate node so we can override an LLM that says "relevant" for an article whose
+    content has zero substring evidence of Pulse-tech surfaces (politics, lifestyle, raw milk, etc.).
+    """
+    merged = (text or "").lower()
+    if not merged.strip():
+        return False
+    if re.search(
+        r"(?i)\b(not|nothing|without)\b.{0,80}\b(technology|tech|software|systems?|automation|ai)\b",
+        merged,
+    ):
+        return False
+    return _any_needle(
+        merged,
+        _ENTERPRISE_AND_CYBER_CORE
+        + _AI_SURFACE
+        + _FINANCE_RAILS_AND_META_PRODUCT
+        + _LEADERSHIP_ORG_AND_WORK_TECH
+        + _GENERAL_PULSE_TECH_TERMS,
+    )
+
+
+# -----------------------------------------------------------------------------
+# Deterministic Pulse-domain inference
+#
+# Used as a code-side rescue when the LLM classifier returns "Other" or a
+# "<domain>: Review Needed" topic name despite obvious AI / Security / Cloud /
+# Finance / Leadership cues in the article. Keeps clear-cut stories out of the
+# manual review queue.
+# -----------------------------------------------------------------------------
+
+
+_AI_DOMAIN_RE = re.compile(
+    r"(?i)\b("
+    r"aiops|ai\s+ops|chatbots?|agentic|generative\s+ai|gen\s*ai|"
+    r"large\s+language\s+models?|llms?|"
+    r"machine\s+learning|deep\s+learning|neural\s+networks?|"
+    r"openai|anthropic|claude|chatgpt|gpt[\-\s]?\d?|gemini|llama|mistral|perplexity|"
+    r"copilot|ai\s+agents?|ai[\-\s]powered|ai[\-\s]driven|ai[\-\s]first|ai[\-\s]native|"
+    r"foundation\s+models?|model\s+cards?|reinforcement\s+learning|"
+    r"transformer\s+models?|"
+    r"\bai\b"
+    r")\b"
+)
+
+_SECURITY_DOMAIN_RE = re.compile(
+    r"(?i)\b("
+    r"cve[\-\s]?\d{2,}|ransomware|phishing|zero[\-\s]day|0[\-\s]day|"
+    r"data\s+breach|breached?|credential\s+theft|"
+    r"ddos|malware|exploit(?:ed|s|ing)?|patch\s+tuesday|"
+    r"vulnerabilit(?:y|ies)|security\s+flaws?|cybersecurity|infosec|"
+    r"npm\s+packages?\s+compromised|supply[\-\s]chain\s+attacks?|"
+    r"siem|soar|edr|xdr|ciso"
+    r")\b"
+)
+
+_CLOUD_DOMAIN_RE = re.compile(
+    r"(?i)\b("
+    r"aws|amazon\s+web\s+services|azure|google\s+cloud|gcp|"
+    r"kubernetes|k8s|snowflake|databricks|data[\-\s]?center|"
+    r"saas|paas|iaas|serverless|container\s+orchestration"
+    r")\b"
+)
+
+_FINANCE_DOMAIN_RE = re.compile(
+    r"(?i)\b("
+    r"fintech|regtech|stablecoins?|blockchain[\-\s]payouts?|"
+    r"core\s+banking|payment\s+rails?|fednow|open\s+banking|"
+    r"trading\s+platform|market\s+data\s+system|settlement\s+systems?"
+    r")\b"
+)
+
+_LEADERSHIP_DOMAIN_RE = re.compile(
+    r"(?i)\b("
+    r"cio|cto|ciso|"
+    r"chief\s+information\s+officer|"
+    r"chief\s+technology\s+officer|"
+    r"chief\s+digital\s+officer|"
+    r"digital\s+transformation|digital\s+strategy"
+    r")\b"
+)
+
+
+def infer_pulse_domain(text: str) -> str | None:
+    """Best-effort deterministic domain label from raw text.
+
+    Order matters: AI > Security > Cloud > Finance > Leadership. Returns ``None`` if no
+    confident substring evidence is found, so callers fall back to LLM/curator paths.
+    """
+    if not text:
+        return None
+    if _AI_DOMAIN_RE.search(text):
+        return "AI"
+    if _SECURITY_DOMAIN_RE.search(text):
+        return "Security"
+    if _CLOUD_DOMAIN_RE.search(text):
+        return "Cloud"
+    if _FINANCE_DOMAIN_RE.search(text):
+        return "Finance"
+    if _LEADERSHIP_DOMAIN_RE.search(text):
+        return "Leadership"
+    return None
 
 
 def article_qualifies_pulse_tracked_surface(article: Article) -> bool:

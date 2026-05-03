@@ -1,7 +1,9 @@
 from .admin_user import AdminUser
 from .agent_run import AgentRun
 from .article import Article, ArticleStatus
+from .classification_feedback import ClassificationFeedback
 from .content import ContentItem
+from .hubspot_sync_log import HubSpotSyncLog
 from .newsletter_issue import NewsletterIssue
 from .prompt import PromptProposal, PromptTemplate
 from .role import Role
@@ -18,10 +20,12 @@ __all__ = [
     "SourceType",
     "Article",
     "ArticleStatus",
+    "ClassificationFeedback",
     "Topic",
     "TopicStatus",
     "AdoptionState",
     "Subscriber",
+    "HubSpotSyncLog",
     "Role",
     "ContentItem",
     "NewsletterIssue",

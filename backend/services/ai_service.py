@@ -18,18 +18,42 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, or_
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..models.article import Article, ArticleStatus
+from ..models.classification_feedback import ClassificationFeedback
 from ..models.prompt import PromptTemplate
 from ..models.role import Role
 from ..models.topic import Topic
 from . import llm_client
 from .archive_service import archive_outside_active_evidence_window
-from .tracked_article_filter import article_passes_pulse_tech_deep, article_pulse_evidence_deep_blob
+from .tracked_article_filter import (
+    article_has_general_pulse_tech_signal,
+    article_passes_pulse_tech_deep,
+    article_pulse_evidence_deep_blob,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class PipelineRetryRequested(RuntimeError):
+    """The AI response was malformed/empty enough that the article should be retried."""
+
+
+class PipelineReviewRequested(RuntimeError):
+    """The AI response was plausible but too weak to create Trend Discovery evidence."""
+
+
+# Hard cap on consecutive `LLMAPIError`s for one article before we escalate it
+# from the auto-retry queue to the manual `review` queue. Without this, an
+# article that keeps tripping a transient (or no-longer-transient) network /
+# provider error stays in `retry` forever and silently shadows the real
+# backlog in `process_raw_articles` — exactly the foot-gun we hit when 5 rows
+# accumulated 4+ hours of `attempts=1` after the cluster node started returning
+# malformed JSON.
+_LLM_API_ERROR_RETRY_CAP = 3
 
 # Short TTL cache for DB-backed prompt runtime config (see get_active_prompt).
 _PROMPT_CACHE_TTL_SEC = 30.0
@@ -339,8 +363,14 @@ def suggest_topic_persona_by_role(topic_id: int, db: Session) -> dict[str, Any]:
     )
 
     prompt, model = get_active_prompt_config(db, "topic_level_persona")
-    raw = _call(model, prompt, user_message, max_tokens=2048)
-    result = _parse(raw, "topic_persona")
+    cr = _call_result(model, prompt, user_message, max_tokens=4096, json_response=True)
+    result = _parse(
+        cr.text,
+        "topic_persona",
+        latency_ms=cr.latency_ms,
+        tokens=cr.total_tokens,
+        model=cr.model_id,
+    )
     if result is None:
         raise ValueError("AI returned invalid JSON for topic persona synthesis")
     pbr = result.get("persona_by_role")
@@ -710,6 +740,47 @@ def reclassify_legacy_leadership_topics(db: Session) -> dict[str, int]:
     """Archive Leadership articles lacking enterprise-technology Pulse cues."""
     return _reclassify_legacy_pulse_topics(db, "Leadership")
 
+
+def cleanup_review_needed_topics(db: Session) -> dict[str, int]:
+    """
+    Move legacy "*: Review Needed" topic evidence out of Trend Discovery.
+
+    Articles with no broad Pulse technology signal are skipped and archived; plausible tech articles
+    are parked in the review queue for curator classification.
+    """
+    from ..models.signal import SignalRecommendation
+
+    now = datetime.now(UTC)
+    reviewed = 0
+    skipped = 0
+    topics_deleted = 0
+    topics: list[Topic] = db.query(Topic).filter(Topic.name.ilike("%: Review Needed")).all()
+    for topic in topics:
+        articles = db.query(Article).filter(Article.topic_id == topic.id).all()
+        for article in articles:
+            article.topic_id = None
+            article.review_reason = (
+                article.review_reason
+                or f"Legacy low-confidence topic removed from Trend Discovery: {topic.name}"
+            )
+            if article_has_general_pulse_tech_signal(article):
+                article.status = ArticleStatus.review
+                article.archived_at = None
+                reviewed += 1
+            else:
+                article.status = ArticleStatus.skipped
+                article.archived_at = article.archived_at or now
+                skipped += 1
+        db.query(SignalRecommendation).filter(SignalRecommendation.topic_id == topic.id).delete(
+            synchronize_session=False
+        )
+        db.delete(topic)
+        topics_deleted += 1
+    if reviewed or skipped or topics_deleted:
+        db.commit()
+    return {"reviewed": reviewed, "skipped": skipped, "topics_deleted": topics_deleted}
+
+
 def get_active_prompt_config(db: Session, agent_name: str) -> tuple[str, str]:
     """
     Return the active (system prompt, model) for agent_name from prompt_templates.
@@ -792,65 +863,207 @@ def _strip_fences(text: str) -> str:
     return text
 
 
-def _call(model: str, system: str, user: str, max_tokens: int) -> str:
-    """Single DeepSeek chat completion; returns raw text content (fences stripped)."""
-    return llm_client.chat_completion(
+def _balanced_brace_segment(text: str, open_ch: str, close_ch: str) -> str | None:
+    """
+    Slice the first balanced open_ch … close_ch region (naive delimiter depth; suffices for prose + JSON blobs).
+    """
+    i = text.find(open_ch)
+    if i < 0:
+        return None
+    depth = 0
+    for j in range(i, len(text)):
+        c = text[j]
+        if c == open_ch:
+            depth += 1
+        elif c == close_ch:
+            depth -= 1
+            if depth == 0:
+                return text[i : j + 1]
+    return None
+
+
+def _candidate_strings_for_json(raw: str) -> list[str]:
+    """Ordered distinct fragments that might decode to the intended JSON object."""
+    if raw is None or not str(raw).strip():
+        return []
+    seen: set[str] = set()
+    ordered: list[str] = []
+
+    def push(text: str) -> None:
+        t = text.strip()
+        if not t or t in seen:
+            return
+        seen.add(t)
+        ordered.append(t)
+
+    sr = raw.strip()
+    push(sr)
+    push(_strip_fences(sr))
+
+    bases = tuple(ordered)
+    for base in bases:
+        seg = _balanced_brace_segment(base, "{", "}")
+        if seg:
+            push(seg)
+            push(_strip_fences(seg))
+    probe = raw.lstrip()
+    if probe != sr:
+        seg2 = _balanced_brace_segment(probe, "{", "}")
+        if seg2:
+            push(seg2)
+    return ordered
+
+
+def _loads_json_object_candidates(raw: str) -> tuple[dict | None, json.JSONDecodeError | None, int]:
+    """
+    Decode the first fragment that parses to a JSON object.
+    Returns (parsed, error, matched_index).
+    matched_index ``-1`` on failure (else index into candidate list).
+    """
+    candidates = _candidate_strings_for_json(raw)
+    last_exc: json.JSONDecodeError | None = None
+    expected_obj_err = json.JSONDecodeError("Expected a JSON object at the root", raw or "", 0)
+    for idx, cand in enumerate(candidates):
+        try:
+            val = json.loads(cand)
+        except json.JSONDecodeError as exc:
+            last_exc = exc
+            continue
+        if isinstance(val, dict):
+            return val, None, idx
+        last_exc = expected_obj_err
+    return None, last_exc or expected_obj_err, -1
+
+
+def _call_result(
+    model: str, system: str, user: str, max_tokens: int, *, json_response: bool = False
+) -> llm_client.ChatCompletionResult:
+    """DeepSeek-first chat completion with provider timing and usage when exposed."""
+    return llm_client.chat_completion_result(
         model,
         system=system,
         user=user,
         max_tokens=max_tokens,
+        json_response=json_response,
     )
 
 
-def _parse(raw: str, node_name: str) -> dict | None:
-    """JSON-parse a node response; logs and returns None on failure."""
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError as e:
-        n = len(raw)
-        tail = raw[-500:] if n > 500 else raw
-        logger.warning(
-            "[%s] JSON parse failed at char %s: %s — len=%s head=%r tail=%r",
-            node_name,
-            e.pos,
-            e.msg,
-            n,
-            raw[:400],
-            tail,
-        )
+def _call(
+    model: str, system: str, user: str, max_tokens: int, *, json_response: bool = False
+) -> str:
+    """Single chat completion; returns raw text content (fences stripped)."""
+    return _call_result(model, system, user, max_tokens, json_response=json_response).text
+
+
+def _parse(
+    raw: str,
+    node_name: str,
+    *,
+    latency_ms: int | None = None,
+    tokens: int | None = None,
+    model: str | None = None,
+    article_id: int | None = None,
+) -> dict | None:
+    """JSON-parse a node response (with repair fragments); logs and returns None on failure."""
+    raw_s = raw or ""
+    parsed, json_err, cand_idx = _loads_json_object_candidates(raw_s)
+
+    if parsed is not None:
+        if cand_idx > 0:
+            logger.info(
+                "[%s] Parsed JSON via repair/extracted fragment (candidate_index=%s)",
+                node_name,
+                cand_idx,
+            )
         try:
             from .optimizer_service import agent_name_for_parse_node, record_agent_run
 
             record_agent_run(
                 agent_name=agent_name_for_parse_node(node_name),
-                is_success=False,
-                fallback_used=True,
-                context_text=(raw[:16000] if raw else None),
+                is_success=True,
+                fallback_used=False,
+                article_id=article_id,
+                latency_ms=latency_ms,
+                tokens=tokens,
+                model=model,
             )
         except Exception:
             logger.debug("AgentRun telemetry skipped for [%s]", node_name, exc_info=True)
-        return None
+        return parsed
+
+    # Failure path
+    n = len(raw_s)
+    stripped = raw_s.strip()
+    tail = raw_s[-500:] if n > 500 else raw_s
+    e = json_err
+    em = getattr(e, "msg", "") or "could not coerce model output into a JSON object"
+    ep = getattr(e, "pos", None)
+    logger.warning(
+        "[%s] JSON parse failed%s: %s — len=%s head=%r tail=%r",
+        node_name,
+        f" at char {ep}" if ep is not None else "",
+        em,
+        n,
+        raw_s[:400],
+        tail,
+    )
+    try:
+        from .optimizer_service import agent_name_for_parse_node, record_agent_run
+
+        pos_part = f" (near char {ep})" if ep is not None else ""
+        if not stripped:
+            detail = (
+                "Empty model response — nothing to parse as JSON "
+                "(provider often returns null content or only ``` fences with json_object mode). "
+                f"Underlying: JSONDecodeError: {em}{pos_part}"
+            )
+            ctx: str | None = "(empty response)"
+        else:
+            detail = f"JSONDecodeError: {em}{pos_part}"
+            ctx = raw_s[:16000] if raw_s else None
+        record_agent_run(
+            agent_name=agent_name_for_parse_node(node_name),
+            is_success=False,
+            fallback_used=True,
+            context_text=ctx,
+            failure_detail=detail,
+            article_id=article_id,
+            latency_ms=latency_ms,
+            tokens=tokens,
+            model=model,
+        )
+    except Exception:
+        logger.debug("AgentRun telemetry skipped for [%s]", node_name, exc_info=True)
+    return None
 
 
 # ── Pipeline nodes ────────────────────────────────────────────────────────────
 
 
-def _node_gate(db: Session, content: str) -> bool:
+def _node_gate(db: Session, content: str, article_id: int | None = None) -> bool:
     """
     Node 1 — Gate (Haiku).
     Returns True if the article is relevant to C-level executives.
-    Defaults to True on any error so we don't silently drop articles.
+    Malformed AI JSON requests retry; it should not silently turn into Trend Discovery noise.
     """
     try:
-        raw = _call(
+        cr = _call_result(
             get_active_model(db, "gate"),
             get_active_prompt(db, "gate"),
             _wrap_untrusted_article_cdata(content),
-            max_tokens=64,
+            max_tokens=1024,
+            json_response=True,
         )
-        result = _parse(raw, "gate")
+        result = _parse(
+            cr.text,
+            "gate",
+            latency_ms=cr.latency_ms,
+            tokens=cr.total_tokens,
+            model=cr.model_id,
+            article_id=article_id,
+        )
         if result is None:
-            return True  # safe default: let it through
+            raise PipelineRetryRequested("gate returned malformed or empty JSON")
         rel = bool(result.get("relevant", True))
         conf_raw = result.get("confidence")
         try:
@@ -866,28 +1079,77 @@ def _node_gate(db: Session, content: str) -> bool:
     except llm_client.LLMAPIError:
         logger.warning("[gate] Transient API error — will retry article")
         raise
-    except Exception:
-        logger.exception("[gate] Unexpected error — treat as relevant to avoid data loss")
-        return True
+    except Exception as exc:
+        if isinstance(exc, PipelineRetryRequested):
+            raise
+        logger.exception("[gate] Unexpected error — will retry article")
+        raise PipelineRetryRequested("gate failed unexpectedly") from exc
 
 
-def _node_classify(content: str, system_prompt: str, model: str) -> dict:
+def _classification_feedback_context(db: Session, limit: int = 8) -> str:
+    rows = (
+        db.query(ClassificationFeedback)
+        .order_by(ClassificationFeedback.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    lines: list[str] = []
+    for row in rows:
+        title = (row.article_title or "").strip()
+        if not title:
+            continue
+        if row.action == "skip":
+            lines.append(f"- Reject as non-tech/noise: {title}")
+            continue
+        corrected = " / ".join(
+            part
+            for part in (row.corrected_domain, row.corrected_subdomain, row.corrected_topic_name)
+            if part
+        )
+        if corrected:
+            lines.append(f"- Classify as {corrected}: {title}")
+    return "\n".join(lines)
+
+
+def _node_classify(
+    content: str,
+    system_prompt: str,
+    model: str,
+    article_id: int | None = None,
+    feedback_context: str = "",
+) -> dict:
     """
     Node 2 — Classify (Haiku).
     Returns {"domain": str, "subdomain": str, "tags": list[str]}.
-    Falls back to {"domain": "Other", "subdomain": "", "tags": []} on error.
+    Malformed AI JSON requests retry instead of fabricating "Other".
     """
-    default = {"domain": "Other", "subdomain": "", "tags": []}
     try:
-        raw = _call(
+        user = _wrap_untrusted_article_cdata(content)
+        if feedback_context.strip():
+            user = (
+                "Trusted recent curator correction examples. Use these as classification guidance; "
+                "do not copy titles unless the new article is genuinely similar.\n"
+                f"<curator_examples>\n{feedback_context.strip()}\n</curator_examples>\n\n"
+                "Article to classify:\n"
+                f"{user}"
+            )
+        cr = _call_result(
             model,
             system_prompt,
-            _wrap_untrusted_article_cdata(content),
-            max_tokens=256,
+            user,
+            max_tokens=1536,
+            json_response=True,
         )
-        result = _parse(raw, "classify")
+        result = _parse(
+            cr.text,
+            "classify",
+            latency_ms=cr.latency_ms,
+            tokens=cr.total_tokens,
+            model=cr.model_id,
+            article_id=article_id,
+        )
         if result is None:
-            return default
+            raise PipelineRetryRequested("classify returned malformed or empty JSON")
         sub = result.get("subdomain")
         sub_s = sub.strip() if isinstance(sub, str) else ""
         return {
@@ -898,12 +1160,16 @@ def _node_classify(content: str, system_prompt: str, model: str) -> dict:
     except llm_client.LLMAPIError:
         logger.warning("[classify] Transient API error — will retry article")
         raise
-    except Exception:
-        logger.exception("[classify] Unexpected error — using defaults")
-        return default
+    except Exception as exc:
+        if isinstance(exc, PipelineRetryRequested):
+            raise
+        logger.exception("[classify] Unexpected error — will retry article")
+        raise PipelineRetryRequested("classify failed unexpectedly") from exc
 
 
-def _node_score(content: str, system_prompt: str, model: str) -> dict:
+def _node_score(
+    content: str, system_prompt: str, model: str, article_id: int | None = None
+) -> dict:
     """
     Node 3 — Score (Haiku).
     Returns {"urgency_score": float, "reason": str}.
@@ -911,13 +1177,21 @@ def _node_score(content: str, system_prompt: str, model: str) -> dict:
     """
     default = {"urgency_score": 5.0, "reason": ""}
     try:
-        raw = _call(
+        cr = _call_result(
             model,
             system_prompt,
             _wrap_untrusted_article_cdata(content),
-            max_tokens=128,
+            max_tokens=1024,
+            json_response=True,
         )
-        result = _parse(raw, "score")
+        result = _parse(
+            cr.text,
+            "score",
+            latency_ms=cr.latency_ms,
+            tokens=cr.total_tokens,
+            model=cr.model_id,
+            article_id=article_id,
+        )
         if result is None:
             return default
         return {
@@ -939,11 +1213,11 @@ def _node_cluster(
     *,
     domain: str,
     subdomain: str,
+    article_id: int | None = None,
 ) -> str:
     """
     Node 4 — Cluster (Sonnet).
-    Returns a topic name string, or "" if clustering fails (caller uses a
-    deterministic "{domain}: Review Needed" placeholder — not the bare domain).
+    Returns a topic name string. Malformed AI JSON requests retry; empty topic names are review.
     """
     dom = (domain or "Other").strip() or "Other"
     sub_hint = subdomain.strip() if subdomain else ""
@@ -961,17 +1235,28 @@ def _node_cluster(
     else:
         user = _wrap_untrusted_article_cdata(content)
     try:
-        raw = _call(get_active_model(db, "cluster"), system, user, max_tokens=128)
-        result = _parse(raw, "cluster")
+        cr = _call_result(
+            get_active_model(db, "cluster"), system, user, max_tokens=1536, json_response=True
+        )
+        result = _parse(
+            cr.text,
+            "cluster",
+            latency_ms=cr.latency_ms,
+            tokens=cr.total_tokens,
+            model=cr.model_id,
+            article_id=article_id,
+        )
         if result is None:
-            return ""
+            raise PipelineRetryRequested("cluster returned malformed or empty JSON")
         return (result.get("suggested_topic_name") or "").strip()
     except llm_client.LLMAPIError:
         logger.warning("[cluster] Transient API error — will retry article")
         raise
-    except Exception:
-        logger.exception("[cluster] Unexpected error — caller will use Review Needed placeholder")
-        return ""
+    except Exception as exc:
+        if isinstance(exc, PipelineRetryRequested):
+            raise
+        logger.exception("[cluster] Unexpected error — will retry article")
+        raise PipelineRetryRequested("cluster failed unexpectedly") from exc
 
 
 def _node_summarize(
@@ -982,6 +1267,7 @@ def _node_summarize(
     topic_name: str,
     urgency_score: float,
     role_names: list[str] | None = None,
+    article_id: int | None = None,
 ) -> dict:
     """
     Node 5 — Summarize (Sonnet).
@@ -1001,7 +1287,7 @@ def _node_summarize(
                 topic_name=tname,
                 urgency_score=ustr,
             )
-            max_tokens = 1024
+            max_tokens = 2048
         else:
             agent_name = "summarize_node_legacy"
             system = get_active_prompt(db, agent_name).format(
@@ -1009,14 +1295,22 @@ def _node_summarize(
                 topic_name=tname,
                 urgency_score=ustr,
             )
-            max_tokens = 256
-        raw = _call(
+            max_tokens = 2048
+        cr = _call_result(
             get_active_model(db, agent_name),
             system,
             _wrap_untrusted_article_cdata(content),
             max_tokens=max_tokens,
+            json_response=True,
         )
-        result = _parse(raw, "summarize")
+        result = _parse(
+            cr.text,
+            "summarize",
+            latency_ms=cr.latency_ms,
+            tokens=cr.total_tokens,
+            model=cr.model_id,
+            article_id=article_id,
+        )
         if result is None:
             return default
         what = result.get("what_is_it") or ""
@@ -1055,6 +1349,7 @@ def evaluate_article(
     db: Session,
     existing_topics: list[str] | None = None,
     role_names: list[str] | None = None,
+    article_id: int | None = None,
 ) -> dict[str, Any] | None:
     """
     Run the 5-node agentic pipeline for a single article.
@@ -1064,7 +1359,7 @@ def evaluate_article(
     consume the same key set as before.
     """
     # Node 1 — Gate
-    if not _node_gate(db, article_content):
+    if not _node_gate(db, article_content, article_id):
         logger.debug("[pipeline] article gated out as irrelevant")
         return None
 
@@ -1072,13 +1367,21 @@ def evaluate_article(
     # share the SQLAlchemy Session across threads.
     classify_prompt, classify_model = get_active_prompt_config(db, "classify")
     score_prompt, score_model = get_active_prompt_config(db, "score")
+    feedback_context = _classification_feedback_context(db)
 
     # Nodes 2–3 (Haiku) run in parallel. Cluster then summarize are sequential so the
     # summary can use the resolved topic label and shared framing (domain, urgency).
 
     with ThreadPoolExecutor(max_workers=2) as pool:
-        fut_classify = pool.submit(_node_classify, article_content, classify_prompt, classify_model)
-        fut_score = pool.submit(_node_score, article_content, score_prompt, score_model)
+        fut_classify = pool.submit(
+            _node_classify,
+            article_content,
+            classify_prompt,
+            classify_model,
+            article_id,
+            feedback_context,
+        )
+        fut_score = pool.submit(_node_score, article_content, score_prompt, score_model, article_id)
         classify = fut_classify.result()
         score = fut_score.result()
     logger.debug(
@@ -1095,9 +1398,13 @@ def evaluate_article(
         existing_topics or [],
         domain=classify["domain"],
         subdomain=classify.get("subdomain") or "",
+        article_id=article_id,
     )
     if not topic_name:
-        topic_name = f"{classify['domain']}: Review Needed"
+        # Gate already screened tech vs non-tech; an empty cluster name is not a curator decision.
+        # Hand back an empty placeholder so the downstream synthesizer in process_raw_articles
+        # constructs a "<Domain>: <subdomain or title>" name. Tech-passing articles always categorize.
+        topic_name = ""
     summary = _node_summarize(
         db,
         article_content,
@@ -1105,6 +1412,7 @@ def evaluate_article(
         topic_name=topic_name,
         urgency_score=float(score["urgency_score"]),
         role_names=role_names if role_names else None,
+        article_id=article_id,
     )
     logger.debug("[pipeline] cluster → topic=%r", topic_name)
     logger.debug(
@@ -1195,8 +1503,16 @@ def suggest_subdomain_for_topic(topic_id: int, db: Session) -> str:
 
     body = "\n".join(lines)
     user = _wrap_untrusted_context_cdata("context", body)
-    raw = _call(get_active_model(db, "subdomain_topic"), system, user, max_tokens=128)
-    result = _parse(raw, "subdomain_topic")
+    cr = _call_result(
+        get_active_model(db, "subdomain_topic"), system, user, max_tokens=1536, json_response=True
+    )
+    result = _parse(
+        cr.text,
+        "subdomain_topic",
+        latency_ms=cr.latency_ms,
+        tokens=cr.total_tokens,
+        model=cr.model_id,
+    )
     if result is None:
         raise ValueError("AI returned invalid JSON for subdomain")
     sub_raw = result.get("subdomain")
@@ -1288,12 +1604,23 @@ def process_raw_articles(db: Session) -> int:
 
     Returns the number of articles successfully processed.
     """
-    raw_articles = (
-        db.query(Article)
-        .filter(or_(Article.status == ArticleStatus.raw, Article.status == ArticleStatus.retry))
-        .all()
+    # Process `retry` rows ahead of fresh `raw` rows so a transient failure
+    # gets a fast second look on the next tick instead of waiting behind a
+    # 50-article batch from the latest ingestion. Within each bucket we go
+    # oldest-first so nothing gets starved by a steady stream of new arrivals.
+    _retry_first = case((Article.status == ArticleStatus.retry, 0), else_=1)
+    pending_q = db.query(Article).filter(
+        or_(Article.status == ArticleStatus.raw, Article.status == ArticleStatus.retry)
     )
-    logger.info("Processing %d raw articles through agentic pipeline", len(raw_articles))
+    queued_total = pending_q.count()
+    cap = max(1, int(settings.article_pipeline_max_per_pass))
+    raw_articles = pending_q.order_by(_retry_first, Article.ingested_at.asc()).limit(cap).all()
+    logger.info(
+        "Processing %d of %d queued raw/retry articles through agentic pipeline (cap=%d)",
+        len(raw_articles),
+        queued_total,
+        cap,
+    )
 
     from sqlalchemy import func as _func
 
@@ -1341,15 +1668,25 @@ def process_raw_articles(db: Session) -> int:
             db.commit()
             pending_since_commit = 0
 
-    def classification_result_matches_pulse_domains(article: Article, result: dict[str, Any]) -> bool:
-        dom = (result.get("domain") or "").strip()
-        if dom not in ("Finance", "Leadership"):
-            return True
-        article.what_is_it = result.get("what_is_it") or article.what_is_it
-        article.why_it_matters = result.get("why_it_matters") or article.why_it_matters
-        article.tags = result.get("tags") or article.tags
-        article.subdomain = result.get("subdomain") or article.subdomain
-        return article_passes_pulse_tech_deep(article, dom)
+    def mark_for_review(
+        article: Article, reason: str, result: dict[str, Any] | None = None
+    ) -> None:
+        article.status = ArticleStatus.review
+        article.topic_id = None
+        article.review_reason = reason[:2000]
+        article.ai_output = result or article.ai_output
+        flush_and_batch_commit()
+
+    def retry_or_review(article: Article, reason: str) -> None:
+        attempts = int(getattr(article, "review_attempts", 0) or 0) + 1
+        article.review_attempts = attempts
+        article.review_reason = reason[:2000]
+        if attempts >= 2 or article.status == ArticleStatus.retry:
+            article.status = ArticleStatus.review
+            article.topic_id = None
+        else:
+            article.status = ArticleStatus.retry
+        flush_and_batch_commit()
 
     for article in raw_articles:
         content = f"Title: {article.title}\n\n{article.content or ''}"
@@ -1359,14 +1696,42 @@ def process_raw_articles(db: Session) -> int:
                 db,
                 existing_topics=existing_topic_names,
                 role_names=role_names if role_names else None,
+                article_id=article.id,
             )
-        except llm_client.LLMAPIError:
-            logger.warning(
-                "Transient API error evaluating article id=%d — marking for retry (will be requeued)",
-                article.id,
-            )
-            article.status = ArticleStatus.retry
+        except llm_client.LLMAPIError as exc:
+            # Track every LLM API failure against `review_attempts` so a row
+            # that keeps tripping the same error escalates to manual review
+            # instead of looping forever in `retry`. The cap is intentionally
+            # small (3) — three back-to-back provider failures across separate
+            # ticks is far past "transient" and a curator should look.
+            attempts = int(getattr(article, "review_attempts", 0) or 0) + 1
+            article.review_attempts = attempts
+            article.review_reason = f"LLMAPIError (attempt {attempts}): {str(exc)[:400]}"
+            if attempts >= _LLM_API_ERROR_RETRY_CAP:
+                logger.warning(
+                    "Article id=%d hit LLM API retry cap (%d) — escalating to review",
+                    article.id,
+                    _LLM_API_ERROR_RETRY_CAP,
+                )
+                article.status = ArticleStatus.review
+                article.topic_id = None
+            else:
+                logger.warning(
+                    "Transient API error evaluating article id=%d (attempt %d/%d) — requeued",
+                    article.id,
+                    attempts,
+                    _LLM_API_ERROR_RETRY_CAP,
+                )
+                article.status = ArticleStatus.retry
             flush_and_batch_commit()
+            continue
+        except PipelineRetryRequested as exc:
+            logger.info("Article id=%d will retry/review: %s", article.id, exc)
+            retry_or_review(article, str(exc))
+            continue
+        except PipelineReviewRequested as exc:
+            logger.info("Article id=%d moved to review: %s", article.id, exc)
+            mark_for_review(article, str(exc))
             continue
         except Exception:
             logger.exception(
@@ -1377,23 +1742,42 @@ def process_raw_articles(db: Session) -> int:
             continue
 
         if result is None:
+            # Gate said this is not tech (Agent 1's only job). Drop it. No keyword overrides,
+            # no domain inference — that responsibility belongs to Agents 1 (gate) and 2 (classify).
             article.status = ArticleStatus.skipped
             flush_and_batch_commit()
             continue
 
-        if not classification_result_matches_pulse_domains(article, result):
-            logger.info(
-                "Article id=%d skipped: %s classification lacks Pulse technology signal",
-                article.id,
-                (result.get("domain") or "?").strip(),
-            )
-            article.status = ArticleStatus.skipped
-            flush_and_batch_commit()
-            continue
-
-        domain = result["domain"]
+        # Gate already screened tech / non-tech; classify already chose the domain. Trust both
+        # agents — never re-judge those decisions with deterministic keyword lists. The only
+        # defensive behavior here is synthesizing a real topic name when cluster left a
+        # placeholder string, so tech-passing articles always end up categorized.
+        domain = (result.get("domain") or "Other").strip() or "Other"
         urgency = float(result["urgency_score"])
-        topic_name = (result.get("suggested_topic_name") or f"{domain}: Review Needed").strip()
+        topic_name = (result.get("suggested_topic_name") or "").strip()
+
+        def _is_placeholder_topic(name: str) -> bool:
+            n = name.lower().strip()
+            return not n or n.endswith(": review needed") or n == "review needed"
+
+        if _is_placeholder_topic(topic_name):
+            sub_raw = result.get("subdomain")
+            sub_s = sub_raw.strip() if isinstance(sub_raw, str) else ""
+            if sub_s:
+                topic_name = f"{domain}: {sub_s}"
+            else:
+                title_words = (article.title or "").split()
+                title_stub = " ".join(title_words[:7]).strip()
+                topic_name = (
+                    f"{domain}: {title_stub}" if title_stub else f"{domain}: General Coverage"
+                )
+            result["suggested_topic_name"] = topic_name
+            logger.info(
+                "Article id=%d topic synthesized: %r (classify returned placeholder)",
+                article.id,
+                topic_name,
+            )
+
         sub_raw = result.get("subdomain")
         subdomain = (sub_raw.strip() if isinstance(sub_raw, str) else "") or ""
         subdomain = _normalize_subdomain_label(domain, subdomain, content)
@@ -1477,10 +1861,20 @@ def suggest_industry_positions(topic_id: int, db: Session) -> dict[str, Any]:
     for i in range(0, len(labels), _INDUSTRY_SUGGEST_BATCH_SIZE):
         batch = tuple(labels[i : i + _INDUSTRY_SUGGEST_BATCH_SIZE])
         system = _industry_positioning_system_for_batch(db, batch)
-        raw = _call(
-            get_active_model(db, "industry_positioning"), system, user_message, max_tokens=8192
+        cr = _call_result(
+            get_active_model(db, "industry_positioning"),
+            system,
+            user_message,
+            max_tokens=8192,
+            json_response=True,
         )
-        result = _parse(raw, "industry_positions")
+        result = _parse(
+            cr.text,
+            "industry_positions",
+            latency_ms=cr.latency_ms,
+            tokens=cr.total_tokens,
+            model=cr.model_id,
+        )
         if result is None:
             raise ValueError(
                 "AI returned invalid JSON for industry suggestions. "
@@ -1558,13 +1952,20 @@ def evaluate_trend_pick(
         + _wrap_untrusted_context_cdata("context", user_message)
     )
 
-    raw = _call(
+    cr = _call_result(
         get_active_model(db, "trend_pick"),
         get_active_prompt(db, "trend_pick"),
         user_message,
-        max_tokens=640,
+        max_tokens=1536,
+        json_response=True,
     )
-    result = _parse(raw, "trend_pick")
+    result = _parse(
+        cr.text,
+        "trend_pick",
+        latency_ms=cr.latency_ms,
+        tokens=cr.total_tokens,
+        model=cr.model_id,
+    )
     if result is None:
         return {
             "suggested_action": "watch",
@@ -1591,13 +1992,20 @@ def generate_topic_summary(topic: Topic, articles: list[Article], db: Session) -
         + _wrap_untrusted_context_cdata("context", user_message)
     )
 
-    raw = _call(
+    cr = _call_result(
         get_active_model(db, "summarize_topic"),
         get_active_prompt(db, "summarize_topic"),
         user_message,
-        max_tokens=1408,
+        max_tokens=4096,
+        json_response=True,
     )
-    result = _parse(raw, "topic_summary")
+    result = _parse(
+        cr.text,
+        "topic_summary",
+        latency_ms=cr.latency_ms,
+        tokens=cr.total_tokens,
+        model=cr.model_id,
+    )
     if result and "summary" in result:
         why = (result.get("why_it_matters") or "").strip()
         summary_text = f"{result['summary'].strip()}"
@@ -1611,7 +2019,7 @@ def generate_topic_summary(topic: Topic, articles: list[Article], db: Session) -
         }
         topic.newsletter_briefing = briefing
     else:
-        snippet = raw[:500] if raw else raw
+        snippet = cr.text[:500] if cr.text else cr.text
         logger.error(
             "[topic_summary] Parse failed or missing 'summary' key; response snippet: %r",
             snippet,
@@ -1644,13 +2052,20 @@ def evaluate_signal(
         + _wrap_untrusted_context_cdata("context", user_message)
     )
 
-    raw = _call(
+    cr = _call_result(
         get_active_model(db, "signal"),
         get_active_prompt(db, "signal"),
         user_message,
-        max_tokens=512,
+        max_tokens=1536,
+        json_response=True,
     )
-    result = _parse(raw, "signal")
+    result = _parse(
+        cr.text,
+        "signal",
+        latency_ms=cr.latency_ms,
+        tokens=cr.total_tokens,
+        model=cr.model_id,
+    )
     if result is None:
         return {
             "recommend_change": False,
@@ -1685,7 +2100,7 @@ Minimal shape (omit watch_slice only when RADAR CONTEXT is omitted from user mes
   "headline": "<max 120 characters>",
   "synthesis": "<two paragraphs separated by \\\\n\\\\n>",
   "synthesis_cards": [ { "title": "…", "bullets": [ "…", "…" ] }, ... ],
-  "experience_items": [ ... 4 capability cards ... ],
+  "experience_items": [ { "title": "…", "description": "…", "icon": "assessment" }, ... ],
   "watch_slice": {
     "brief_bullets": [ "<3-5 SHORT scan lines; EACH line ≤ ~22 WORDS>",
                        "<cite radar THEME NAMES; why they matter FOR THIS intake>", "..." ],
@@ -1725,6 +2140,9 @@ categories of action, not products). It will be presented as "What we think".
 The **experience_items** are 4 capability-style cards for "Our Experience". Each must be a real \
 category of work PulseOne does (assessments, advisory, evaluations, governance, managed services). \
 When only one facet is known, align cards to it while avoiding near-duplicate wording.
+Every ``experience_items`` object MUST include an **icon** field using ONLY one token from:\n\
+  assessment | advisory | governance | managed_services | security | cloud_data | ai_emerging | continuity | procurement | default\n\
+Map by dominant capability — readiness/maturity/baseline/vendor-neutral reviews → assessment; standing advisor/exec counsel → advisory; policies/compliance/audit/board/regulator → governance; MSP/co-source/run operations → managed_services; cyber/SOC/zero trust/incident posture → security; cloud/SaaS/data platforms/stacks → cloud_data; GenAI/LLM/machine learning adoption → ai_emerging; DR/backup/resilience/BC → continuity; RFP/supplier/sourcing/vendor selection programmes → procurement; ambiguous → default.
 """
 
 
@@ -1760,10 +2178,99 @@ def _paragraphs_to_html(text: str) -> str:
     return "".join(f"<p>{_htmllib.escape(p)}</p>" for p in paras)
 
 
+_EXPERIENCE_ITEM_ICONS: frozenset[str] = frozenset(
+    {
+        "assessment",
+        "advisory",
+        "governance",
+        "managed_services",
+        "security",
+        "cloud_data",
+        "ai_emerging",
+        "continuity",
+        "procurement",
+        "default",
+    }
+)
+
+_EXPERIENCE_ICON_ALIASES: dict[str, str] = {
+    "managed": "managed_services",
+    "msp": "managed_services",
+    "outsourced": "managed_services",
+    "cloud": "cloud_data",
+    "data_platform": "cloud_data",
+    "ai": "ai_emerging",
+    "gen_ai": "ai_emerging",
+    "genai": "ai_emerging",
+    "ml": "ai_emerging",
+    "vendor": "procurement",
+    "vendor_selection": "procurement",
+    "rfp": "procurement",
+    "dr": "continuity",
+    "bcdr": "continuity",
+}
+
+
+def _normalize_experience_icon(raw: object) -> str:
+    key = str(raw or "").strip().lower().replace("-", "_")
+    if not key:
+        return "default"
+    key = _EXPERIENCE_ICON_ALIASES.get(key, key)
+    if key in _EXPERIENCE_ITEM_ICONS:
+        return key
+    return "default"
+
+
+def _infer_experience_icon_from_text(title: str, description: str) -> str:
+    """Infer icon from card copy when the model omits one or chooses default incorrectly."""
+    hay = f"{title} {description}".lower()
+    rules: tuple[tuple[str, tuple[str, ...]], ...] = (
+        (
+            "security",
+            (
+                "cyber",
+                "security",
+                "threat",
+                "soc ",
+                "ransomware",
+                "zero trust",
+                "incident response",
+            ),
+        ),
+        (
+            "ai_emerging",
+            ("generative ai", "genai", "machine learning", "llm ", "prompt", "copilot"),
+        ),
+        ("cloud_data", ("cloud ", "saas", "kubernetes", "data warehouse", "data platform")),
+        ("continuity", ("disaster", "recovery", "resilien", "backup", "business continuity")),
+        ("procurement", ("procurement", "rfp", "supplier ", "sourcing")),
+        (
+            "governance",
+            (
+                "governance",
+                "compliance",
+                "audit",
+                "board",
+                "regulator",
+                "policies",
+                "policy ",
+                "cadences",
+            ),
+        ),
+        ("managed_services", ("managed service", "co-sour", "outsourc", "extension of yours")),
+        ("advisory", ("advisory", "advisor", "fractional", "quarterly", "deep-dive", "check-in")),
+        ("assessment", ("assessment", "maturity", "readiness", "baseline", "peer practice")),
+    )
+    for key, needles in rules:
+        if any(n in hay for n in needles):
+            return key
+    return "default"
+
+
 def _coerce_experience_items(raw_items: object) -> list[dict[str, str]]:
     """Normalise the AI-returned ``experience_items`` array.
 
-    Defensive: enforces shape ``[{"title": str, "description": str}, ...]`` and
+    Defensive: enforces shape ``[{"title": str, "description": str, "icon": str}, ...]`` and
     silently drops malformed entries so a single bad row from the model never
     blanks out the whole "Our Experience" section on the page.
     """
@@ -1777,7 +2284,10 @@ def _coerce_experience_items(raw_items: object) -> list[dict[str, str]]:
         description = str(entry.get("description", "")).strip()
         if not title or not description:
             continue
-        out.append({"title": title[:80], "description": description[:480]})
+        icon = _normalize_experience_icon(entry.get("icon"))
+        if icon == "default":
+            icon = _infer_experience_icon_from_text(title, description)
+        out.append({"title": title[:80], "description": description[:480], "icon": icon})
     return out[:6]  # hard cap so a chatty model can't blow up the layout
 
 
@@ -1864,6 +2374,16 @@ def _path_intake_user_block(
     return "\n".join(lines) + footer
 
 
+def _role_plural_headline(rl: str) -> str:
+    """Append trailing s for headings like CFOs … unless the label already ends in s (e.g. Operations)."""
+    t = rl.strip()
+    if not t:
+        return t
+    if t.lower().endswith("s"):
+        return t
+    return f"{t}s"
+
+
 def _sparse_fallback_headline(region: str, industry: str, role: str, issue: str, stage: str) -> str:
     ind = industry.strip()
     rl = role.strip()
@@ -1871,11 +2391,12 @@ def _sparse_fallback_headline(region: str, industry: str, role: str, issue: str,
     reg = region.strip()
     stg = stage.strip()
     if ind and rl:
-        return f"Technology priorities for {rl}s in {ind}"
+        ro = _role_plural_headline(rl)
+        return f"Technology priorities for {ro} in {ind}"
     if ind:
         return f"Technology posture that fits {ind} leadership teams today"
     if rl:
-        return f"Executive technology priorities most relevant for {rl}s now"
+        return f"Executive technology priorities most relevant for {_role_plural_headline(rl)} now"
     if iss:
         return f"Perspective on {iss}"
     if reg:
@@ -1929,8 +2450,9 @@ def _sparse_fallback_synthesis(
             "Articulating posture first keeps programmes sequenced rather than parallel and conflicting."
         )
     elif rl:
+        ro = _role_plural_headline(rl)
         p1 = (
-            f"{rl}s are often squeezed between mandates that misalign timelines and budgets. Making trade-offs "
+            f"{ro} are often squeezed between mandates that misalign timelines and budgets. Making trade-offs "
             "explicit avoids programmes that optimise one KPI while weakening another."
         )
     elif reg:
@@ -1971,6 +2493,7 @@ def _fallback_experience_items(industry: str, issue: str) -> list[dict[str, str]
                 f"A vendor-neutral review of where you sit relative to peer practice on "
                 f"{iss_note} — framed for executive and board audiences, not a product pitch."
             ),
+            "icon": "assessment",
         },
         {
             "title": "Strategic technology advisory",
@@ -1979,6 +2502,7 @@ def _fallback_experience_items(industry: str, issue: str) -> list[dict[str, str]
                 "deep-dives, monthly check-ins, and on-call sounding-board access "
                 "for the decisions that don't fit on a roadmap."
             ),
+            "icon": "advisory",
         },
         {
             "title": "Governance & risk build-out",
@@ -1987,6 +2511,7 @@ def _fallback_experience_items(industry: str, issue: str) -> list[dict[str, str]
                 "cadences your organisation needs so technology choices stay "
                 "defensible to auditors, regulators, and the board."
             ),
+            "icon": "governance",
         },
         {
             "title": "Managed services & co-sourcing",
@@ -1995,6 +2520,7 @@ def _fallback_experience_items(industry: str, issue: str) -> list[dict[str, str]
                 "running the day-to-day so your internal staff can focus on the "
                 "strategic work only they can do."
             ),
+            "icon": "managed_services",
         },
     ]
 
@@ -2075,7 +2601,7 @@ def offline_watch_slice_copy(
 
     brief_bullets: list[str] = []
     if ind or rl:
-        subj = f"{rl}s in {ind}" if rl and ind else (rl or ind)
+        subj = f"{_role_plural_headline(rl)} in {ind}" if rl and ind else (rl or ind)
         iss_note = f" focusing on {iss}" if iss else ""
         brief_bullets.append(
             f"For {subj}{iss_note}, investment and governance meet where AI pilots leave experimentation."
@@ -2099,19 +2625,21 @@ def offline_watch_slice_copy(
         posture_bullets.append(
             "Planning-phase posture: lock sequencing before broad operational rollouts."
         )
-        posture_bullets.append("Make adoption criteria and escalation paths explicit to procurement.")
+        posture_bullets.append(
+            "Make adoption criteria and escalation paths explicit to procurement."
+        )
     elif stg:
         clipped = stg[:120] + ("…" if len(stg) > 120 else "")
-        posture_bullets.append(
-            f'Mirror your framing ("{clipped}") with tempered pilot tempo.'
-        )
+        posture_bullets.append(f'Mirror your framing ("{clipped}") with tempered pilot tempo.')
         posture_bullets.append("Pair experiments with escalation paths auditors can trace.")
     else:
         posture_bullets.append("Balance pilots with repeatable controls—not hero projects.")
         posture_bullets.append("Keep strategy and operations coherent under scrutiny.")
 
     if rg:
-        brief_bullets.insert(0, f"{rg.strip()}: geographic operating realities amplify governance pressure.")
+        brief_bullets.insert(
+            0, f"{rg.strip()}: geographic operating realities amplify governance pressure."
+        )
 
     brief_joined = " ".join(brief_bullets).strip()
     posture_joined = " ".join(posture_bullets).strip()
@@ -2123,19 +2651,25 @@ def _radar_context_user_append(
     pairs: list[tuple[Topic, Article]],
 ) -> str:
     blocks: list[str] = []
-    blocks.append("\n---\n## RADAR CONTEXT (AUTHORITATIVE — DO NOT FABRICATE NEW THEMES OR URLS).\n")
+    blocks.append(
+        "\n---\n## RADAR CONTEXT (AUTHORITATIVE — DO NOT FABRICATE NEW THEMES OR URLS).\n"
+    )
 
     blocks.append("\n### Prioritised radar themes\n")
     for t in topics:
         snip = _truncate_to_max_sentences((t.summary or "").replace("\n", " "), max_sentences=2)
         if len(snip) > 340:
             snip = snip[:337].rsplit(" ", 1)[0] + "…"
-        blocks.append(f"- `{t.domain}` · **{t.name}**: {snip or 'Published Pulse topic — see Pulse for detail.'}")
+        blocks.append(
+            f"- `{t.domain}` · **{t.name}**: {snip or 'Published Pulse topic — see Pulse for detail.'}"
+        )
 
-    blocks.append("\n### Ingested stories you must align ``story_takeaways`` to (preserve order).\n")
+    blocks.append(
+        "\n### Ingested stories you must align ``story_takeaways`` to (preserve order).\n"
+    )
     for i, (topic, art) in enumerate(pairs, start=1):
         blocks.append(
-            f'{i}. Theme: **{topic.name}** (`{topic.domain}`)\n   Title: {art.title}\n   URL: {art.url}'
+            f"{i}. Theme: **{topic.name}** (`{topic.domain}`)\n   Title: {art.title}\n   URL: {art.url}"
         )
     return "\n".join(blocks)
 
@@ -2150,6 +2684,7 @@ def generate_path_synthesis(
     *,
     radar_topics: list[Topic] | None = None,
     radar_story_pairs: list[tuple[Topic, Article]] | None = None,
+    skip_llm: bool = False,
 ) -> dict[str, object]:
     """
     Personalized headline + two-paragraph executive synthesis +
@@ -2196,13 +2731,31 @@ def generate_path_synthesis(
 
     reader_context = reader_base + ("\n\n" + radar_block if radar_block else "")
 
-    if not llm_client.is_llm_configured():
+    if skip_llm or not llm_client.is_llm_configured():
         return fallback
 
     try:
-        max_tokens = 2300 if radar_block else 1800
-        raw = _call(SONNET_MODEL, _PATH_SYNTHESIS_SYSTEM, reader_context, max_tokens=max_tokens)
-        data = json.loads(_strip_fences(raw))
+        # Large JSON (cards + watch_slice + radar context) can exceed ~2.3k tokens and truncate mid-string.
+        max_tokens = 4500 if radar_block else 2400
+        raw = _call(
+            SONNET_MODEL,
+            _PATH_SYNTHESIS_SYSTEM,
+            reader_context,
+            max_tokens,
+            json_response=True,
+        )
+        stripped = _strip_fences(raw)
+        try:
+            data = json.loads(stripped)
+        except json.JSONDecodeError:
+            parsed, json_err, _ = _loads_json_object_candidates(stripped)
+            if parsed is None:
+                logger.warning(
+                    "[recommended-path] synthesis JSON repair failed: %s",
+                    getattr(json_err, "msg", json_err),
+                )
+                return fallback
+            data = parsed
         headline = str(data.get("headline", "")).strip()
         synthesis = str(data.get("synthesis", "")).strip()
         experience_items = _coerce_experience_items(data.get("experience_items"))
@@ -2262,8 +2815,6 @@ def fallback_story_teaser(article: Article) -> str:
     if len(w) > 260:
         w = w[:257].rsplit(" ", 1)[0] + "…"
     return w or "Tracked from PulseOne's ingested briefing stack for this radar theme."
-
-
 
 
 def generate_everyone_overview(db: Session) -> dict[str, str]:

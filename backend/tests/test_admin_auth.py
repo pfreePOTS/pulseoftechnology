@@ -5,7 +5,10 @@ import pytest
 
 from ..config import Settings, settings
 from ..dependencies import ADMIN_COOKIE_NAME, decode_admin_token
+from ..models.agent_run import AgentRun
+from ..models.article import Article, ArticleStatus
 from ..models.role import Role
+from ..models.source import Source
 from ..models.subscriber import Subscriber
 from ..services.subscriber_tokens import create_subscriber_preferences_token
 
@@ -221,6 +224,68 @@ def test_delete_subscriber_requires_auth(client):
 def test_newsletter_preview_filters_requires_auth(client):
     r = client.get("/api/admin/newsletter/preview-filters")
     assert r.status_code == 401
+
+
+def test_agent_runs_summary_ok_for_superuser_empty_table(client):
+    client.post(
+        "/api/admin/login",
+        json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
+    )
+    r = client.get("/api/admin/agent-runs/summary")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["total_runs"] == 0
+    assert data["success_rate"] == 0.0
+    assert data["total_tokens"] == 0
+
+
+def test_agent_run_detail_ok_for_superuser(client, db_session):
+    db = db_session
+    src = Source(name="src", url="https://example.com/src")
+    db.add(src)
+    db.flush()
+    article = Article(
+        source_id=src.id,
+        title="Example article",
+        url="https://example.com/article-1",
+        status=ArticleStatus.raw,
+    )
+    db.add(article)
+    db.flush()
+    run = AgentRun(
+        agent_name="gate",
+        is_success=False,
+        fallback_used=True,
+        failure_detail="JSONDecodeError: Expecting value (near char 0)",
+        context_text="not valid json {",
+        article_id=article.id,
+        latency_ms=120,
+        tokens=40,
+        model="test-model",
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+
+    client.post(
+        "/api/admin/login",
+        json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
+    )
+    r = client.get(f"/api/admin/agent-runs/{run.id}")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "fallback"
+    assert data["failure_detail"] == "JSONDecodeError: Expecting value (near char 0)"
+    assert data["context_text"] == "not valid json {"
+    assert data["article_title"] == "Example article"
+
+
+def test_inbox_api_allows_newsletter_or_inbox_slug():
+    from ..admin_permissions import user_may_access_admin_path
+
+    assert user_may_access_admin_path("/api/admin/inbox/ratings", False, ["newsletter"])
+    assert user_may_access_admin_path("/api/admin/inbox/ratings", False, ["inbox"])
+    assert not user_may_access_admin_path("/api/admin/inbox/ratings", False, ["sources"])
 
 
 def test_newsletter_test_send_requires_auth(client):

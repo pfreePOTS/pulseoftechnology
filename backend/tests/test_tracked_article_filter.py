@@ -6,9 +6,53 @@ import pytest
 
 from ..services.tracked_article_filter import (
     article_qualifies_pulse_tracked_surface,
+    infer_pulse_domain,
+    text_has_general_pulse_tech_signal,
     tracked_finance_article_has_pulse_tech_signals,
     tracked_leadership_article_has_pulse_tech_signals,
 )
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("The era of chatbot AIOps is fading as agentic AI gains traction", "AI"),
+        ("AI Finds 38 Security Flaws in Electronic Health Record Platform", "AI"),
+        ("Reverse Engineering With AI Unearths High-Severity GitHub Bug", "AI"),
+        ("OpenAI launches enterprise GPT model", "AI"),
+        ("Ransomware crew claims new Fortune 500 victim", "Security"),
+        ("CVE-2026-12345 disclosed in widely deployed library", "Security"),
+        ("AWS unveils next-gen Kubernetes-managed serverless tier", "Cloud"),
+        ("Snowflake doubles down on Databricks-style analytics", "Cloud"),
+        ("FinTech startup aims at core banking platform overhaul", "Finance"),
+        ("CIO says digital transformation is the priority for 2026", "Leadership"),
+        ("Risk of paralysis, bacteria, even death is no match for raw milk", None),
+        (
+            "More airport disruptions may be coming as White House warns pay for TSA workers will run out",
+            None,
+        ),
+        ("Trump spent nearly $2 billion of taxpayer money to undo wind projects", None),
+    ],
+)
+def test_infer_pulse_domain_recognises_clear_pulse_categories(text, expected):
+    assert infer_pulse_domain(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Raw milk popularity surges despite warnings", False),
+        ("Trump signs executive order on wind projects", False),
+        (
+            "Anthropic Claude expands to financial services with cybersecurity guardrails",
+            True,
+        ),
+        ("Cloud migration accelerates Kubernetes adoption", True),
+        ("This celebrity feature has nothing to do with technology", False),
+    ],
+)
+def test_text_has_general_pulse_tech_signal(text, expected):
+    assert text_has_general_pulse_tech_signal(text) is expected
 
 
 def _article(domain: str, *, title: str, what=None, content=None):

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { DragEvent } from "react";
@@ -191,13 +192,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className="flex min-h-screen bg-gray-950 text-white">
       {/* ── Sidebar ── */}
       <aside className="flex w-56 shrink-0 flex-col border-r border-gray-800 bg-gray-900">
-        {/* Brand */}
-        <div className="flex items-center gap-2 border-b border-gray-800 px-5 py-5">
-          <span
-            className="h-2.5 w-2.5 rounded-full"
-            style={{ backgroundColor: "#E91D24" }}
-          />
-          <span className="text-sm font-bold tracking-wide">PulseOne</span>
+        {/* Brand — same asset as GlobalHeader; inverted like GlobalFooter for dark rail */}
+        <div className="border-b border-gray-800 px-4 py-4">
+          <Link href="/admin" className="inline-block shrink-0">
+            <Image
+              src="/pulseone_logo_official.png"
+              alt="PulseOne"
+              width={176}
+              height={42}
+              className="h-9 w-auto max-w-[9.75rem] object-contain object-left brightness-0 invert opacity-95"
+              priority
+            />
+          </Link>
         </div>
 
         {/* Nav — order persisted in localStorage */}

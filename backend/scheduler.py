@@ -21,8 +21,11 @@ def _ingestion_job() -> None:
     try:
         run_all_sources(db)
         try:
+            # Ingestion / AI pipeline may leave the connection aborted on schema errors; start clean.
+            db.rollback()
             cleanup_empty_topics(db)
         except Exception:
+            db.rollback()
             logger.exception("cleanup_empty_topics after ingestion failed")
     except Exception:
         logger.exception("Unhandled error in ingestion job")
@@ -82,6 +85,49 @@ def _signal_job() -> None:
         db.close()
 
 
+def _hubspot_batch_job() -> None:
+    """Cron push of every subscriber snapshot to HubSpot (contacts API)."""
+    from .config import settings
+
+    if not (settings.hubspot_api_key or "").strip():
+        return
+    if not settings.hubspot_batch_sync_enabled:
+        return
+    from .services.hubspot_sync import reconcile_all_subscribers_to_hubspot
+
+    reconcile_all_subscribers_to_hubspot(source="scheduled_batch")
+
+
+def schedule_hubspot_batch_job() -> None:
+    """Register HubSpot reconcile on APScheduler using env config."""
+    from .config import settings
+
+    jid = "hubspot_batch_sync"
+    if scheduler.get_job(jid):
+        scheduler.remove_job(jid)
+    if not (settings.hubspot_api_key or "").strip():
+        logger.debug("HubSpot batch job not scheduled — HUBSPOT_API_KEY empty")
+        return
+    if not settings.hubspot_batch_sync_enabled:
+        logger.debug("HubSpot batch job disabled (HUBSPOT_BATCH_SYNC_ENABLED=false)")
+        return
+    scheduler.add_job(
+        _hubspot_batch_job,
+        trigger=CronTrigger(
+            hour=settings.hubspot_batch_sync_hour_utc,
+            minute=settings.hubspot_batch_sync_minute_utc,
+            timezone="UTC",
+        ),
+        id=jid,
+        replace_existing=True,
+    )
+    logger.info(
+        "HubSpot reconcile scheduled — %02d:%02d UTC",
+        settings.hubspot_batch_sync_hour_utc,
+        settings.hubspot_batch_sync_minute_utc,
+    )
+
+
 def schedule_newsletter_job() -> None:
     """(Re)schedule the newsletter cron from merged DB/env settings."""
     from .services.pipeline_settings import merge_pipeline_settings
@@ -137,10 +183,11 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
     schedule_newsletter_job()
+    schedule_hubspot_batch_job()
     scheduler.start()
     logger.info(
         "Scheduler started — ingestion hourly · archive 05:00 UTC · prompt optimizer 02:00 UTC · "
-        "signals 06:00 UTC · newsletter from settings"
+        "signals 06:00 UTC · newsletter from settings · HubSpot reconcile from env (if key)"
     )
 
 

@@ -5,6 +5,7 @@ import threading
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from typing import Any
 
 from fastapi import (
@@ -38,8 +39,10 @@ from ..dependencies import (
 )
 from ..models.admin_user import AdminUser
 from ..models.agent_run import AgentRun
-from ..models.article import Article
+from ..models.article import Article, ArticleStatus
+from ..models.classification_feedback import ClassificationFeedback
 from ..models.content import ContentItem
+from ..models.hubspot_sync_log import HubSpotSyncLog
 from ..models.prompt import PromptProposal, PromptTemplate
 from ..models.role import Role
 from ..models.signal import SignalRecommendation
@@ -63,8 +66,16 @@ from ..services.email_service import (
     send_admin_invite_email,
     send_test_newsletter,
 )
-from ..services.hubspot_sync import sync_subscriber_to_hubspot
-from ..services.ingestion import run_all_sources, run_article_processing_pipeline
+from ..services.hubspot_sync import (
+    reconcile_all_subscribers_to_hubspot,
+    sync_subscriber_to_hubspot,
+    test_hubspot_connection,
+)
+from ..services.ingestion import (
+    backfill_missing_article_images,
+    run_all_sources,
+    run_article_processing_pipeline,
+)
 from ..services.llm_client import (
     chat_completion_result,
     is_llm_configured,
@@ -414,12 +425,17 @@ class ArticleListItem(BaseModel):
     source_name: str | None = None
     topic_id: int | None
     topic_name: str | None = None
+    topic_domain: str | None = None
+    subdomain: str = ""
     title: str
     url: str
     published_at: datetime | None
     ingested_at: datetime
     status: str
     archived_at: datetime | None = None
+    review_reason: str | None = None
+    review_notes: str | None = None
+    ai_output: dict | None = None
 
     model_config = {"from_attributes": True}
 
@@ -431,8 +447,10 @@ class ArticleStatsOut(BaseModel):
 
 class PipelineProgressOut(BaseModel):
     raw: int
+    retry: int = 0
     processed: int
     skipped: int
+    review: int = 0
     total: int
 
 
@@ -457,10 +475,15 @@ def article_pipeline_progress(
     rows = db.query(Article.status, func.count(Article.id)).group_by(Article.status).all()
     counts = {str(status.value): cnt for status, cnt in rows}
     raw = counts.get("raw", 0)
+    retry = counts.get("retry", 0)
     processed = counts.get("processed", 0)
     skipped = counts.get("skipped", 0)
-    total = raw + processed + skipped + counts.get("published", 0)
-    return PipelineProgressOut(raw=raw, processed=processed, skipped=skipped, total=total)
+    review = counts.get("review", 0)
+    published = counts.get("published", 0)
+    total = raw + retry + processed + skipped + review + published
+    return PipelineProgressOut(
+        raw=raw, retry=retry, processed=processed, skipped=skipped, review=review, total=total
+    )
 
 
 @router.get("/articles", response_model=list[ArticleListItem])
@@ -489,22 +512,158 @@ def list_articles(
         raise HTTPException(status_code=400, detail="archive must be active, archived, or all")
     q = q.order_by(Article.published_at.desc().nullslast(), Article.id.desc())
     rows = q.offset(offset).limit(limit).all()
-    return [
-        ArticleListItem(
-            id=a.id,
-            source_id=a.source_id,
-            source_name=a.source.name if a.source else None,
-            topic_id=a.topic_id,
-            topic_name=a.topic.name if a.topic else None,
-            title=a.title,
-            url=a.url,
-            published_at=a.published_at,
-            ingested_at=a.ingested_at,
-            status=a.status.value if hasattr(a.status, "value") else str(a.status),
-            archived_at=a.archived_at,
-        )
-        for a in rows
-    ]
+    return [_article_list_item(a) for a in rows]
+
+
+def _article_list_item(a: Article) -> ArticleListItem:
+    return ArticleListItem(
+        id=a.id,
+        source_id=a.source_id,
+        source_name=a.source.name if a.source else None,
+        topic_id=a.topic_id,
+        topic_name=a.topic.name if a.topic else None,
+        topic_domain=a.topic.domain if a.topic else None,
+        subdomain=getattr(a, "subdomain", "") or "",
+        title=a.title,
+        url=a.url,
+        published_at=a.published_at,
+        ingested_at=a.ingested_at,
+        status=a.status.value if hasattr(a.status, "value") else str(a.status),
+        archived_at=a.archived_at,
+        review_reason=a.review_reason,
+        review_notes=a.review_notes,
+        ai_output=a.ai_output,
+    )
+
+
+class ArticleReviewUpdate(BaseModel):
+    action: str = Field(pattern="^(approve|skip|retry)$")
+    domain: str | None = None
+    subdomain: str | None = None
+    topic_name: str | None = None
+    notes: str | None = None
+
+    @model_validator(mode="after")
+    def validate_approval_fields(self) -> "ArticleReviewUpdate":
+        if self.action == "approve":
+            missing = [
+                label
+                for label, value in (
+                    ("domain", self.domain),
+                    ("subdomain", self.subdomain),
+                    ("topic_name", self.topic_name),
+                )
+                if not (value or "").strip()
+            ]
+            if missing:
+                raise ValueError(f"Approval requires {', '.join(missing)}")
+        return self
+
+
+def _feedback_excerpt(article: Article, limit: int = 1600) -> str:
+    text = " ".join((article.content or "").split())
+    return text[:limit]
+
+
+def _original_ai_field(article: Article, field: str) -> str | None:
+    raw = article.ai_output if isinstance(article.ai_output, dict) else {}
+    val = raw.get(field)
+    return str(val).strip() if val is not None and str(val).strip() else None
+
+
+def _record_classification_feedback(
+    db: Session,
+    article: Article,
+    *,
+    action: str,
+    corrected_domain: str | None = None,
+    corrected_subdomain: str | None = None,
+    corrected_topic_name: str | None = None,
+    notes: str | None = None,
+) -> ClassificationFeedback:
+    feedback = ClassificationFeedback(
+        article_id=article.id,
+        action=action,
+        article_title=article.title,
+        content_excerpt=_feedback_excerpt(article),
+        original_domain=_original_ai_field(article, "domain") or (article.topic.domain if article.topic else None),
+        original_subdomain=_original_ai_field(article, "subdomain") or article.subdomain or None,
+        original_topic_name=_original_ai_field(article, "suggested_topic_name")
+        or (article.topic.name if article.topic else None),
+        corrected_domain=corrected_domain,
+        corrected_subdomain=corrected_subdomain,
+        corrected_topic_name=corrected_topic_name,
+        notes=notes,
+    )
+    db.add(feedback)
+    return feedback
+
+
+@router.patch("/articles/{article_id}/review", response_model=ArticleListItem)
+def review_article(
+    article_id: int,
+    payload: ArticleReviewUpdate,
+    db: Session = Depends(get_db),
+    _: AdminUser = Depends(require_admin),
+):
+    article = (
+        db.query(Article)
+        .options(joinedload(Article.source), joinedload(Article.topic))
+        .filter(Article.id == article_id)
+        .first()
+    )
+    if article is None:
+        raise HTTPException(status_code=404, detail="Article not found")
+
+    notes = (payload.notes or "").strip() or None
+    if payload.action == "skip":
+        _record_classification_feedback(db, article, action="skip", notes=notes)
+        article.status = ArticleStatus.skipped
+        article.topic_id = None
+        article.review_notes = notes
+        article.review_reason = article.review_reason or "Rejected during article review"
+        db.commit()
+        db.refresh(article)
+        return _article_list_item(article)
+
+    if payload.action == "retry":
+        _record_classification_feedback(db, article, action="retry", notes=notes)
+        article.status = ArticleStatus.retry
+        article.topic_id = None
+        article.review_notes = notes
+        db.commit()
+        db.refresh(article)
+        return _article_list_item(article)
+
+    domain = (payload.domain or "").strip()
+    subdomain = (payload.subdomain or "").strip()
+    topic_name = (payload.topic_name or "").strip()
+    topic = (
+        db.query(Topic)
+        .filter(Topic.domain == domain, Topic.subdomain == subdomain, Topic.name == topic_name)
+        .first()
+    )
+    if topic is None:
+        topic = Topic(name=topic_name, domain=domain, subdomain=subdomain, urgency_score=5.0)
+        db.add(topic)
+        db.flush()
+    article.topic_id = topic.id
+    article.subdomain = subdomain
+    article.status = ArticleStatus.processed
+    article.review_notes = notes
+    article.review_reason = None
+    _record_classification_feedback(
+        db,
+        article,
+        action="approve",
+        corrected_domain=domain,
+        corrected_subdomain=subdomain,
+        corrected_topic_name=topic_name,
+        notes=notes,
+    )
+    db.commit()
+    db.refresh(article)
+    return _article_list_item(article)
 
 
 # ---------------------------------------------------------------------------
@@ -517,6 +676,8 @@ class PipelineSettingsUpdate(BaseModel):
     trend_prior_window_days: int | None = Field(default=None, ge=1, le=120)
     article_retention_days: int | None = Field(default=None, ge=1, le=3650)
     article_archive_enabled: bool | None = None
+    newsletter_top_ingest_hours: int | None = Field(default=None, ge=1, le=168)
+    newsletter_deep_dive_ingest_hours: int | None = Field(default=None, ge=1, le=336)
     newsletter_article_lookback_days: int | None = Field(default=None, ge=1, le=365)
     newsletter_send_hour_utc: int | None = Field(default=None, ge=0, le=23)
     newsletter_send_minute_utc: int | None = Field(default=None, ge=0, le=59)
@@ -1793,6 +1954,17 @@ def _agent_run_status(ar: AgentRun) -> str:
     return "failed"
 
 
+def _agent_run_context_excerpt(text: str | None, *, max_chars: int = 420) -> str | None:
+    if text is None:
+        return None
+    s = text.strip()
+    if not s:
+        return None
+    if len(s) <= max_chars:
+        return s
+    return s[:max_chars] + "…"
+
+
 def _apply_agent_run_status_filter(q, status: str | None):
     if not status or status == "all":
         return q
@@ -1913,8 +2085,24 @@ class AgentRunListItemOut(BaseModel):
     latency_ms: int | None
     tokens: int | None
     model: str | None
+    failure_detail: str | None = None
+    context_excerpt: str | None = None
 
-    model_config = {"from_attributes": True}
+
+class AgentRunDetailOut(BaseModel):
+    """Full row for diagnosing fallbacks — includes saved model raw text when present."""
+
+    id: int
+    agent_name: str
+    created_at: datetime
+    article_id: int | None
+    article_title: str | None
+    status: str
+    latency_ms: int | None
+    tokens: int | None
+    model: str | None
+    failure_detail: str | None = None
+    context_text: str | None = None
 
 
 class AgentRunListResponse(BaseModel):
@@ -1970,9 +2158,36 @@ def list_agent_runs(
                 latency_ms=ar.latency_ms,
                 tokens=ar.tokens,
                 model=ar.model,
+                failure_detail=ar.failure_detail,
+                context_excerpt=_agent_run_context_excerpt(ar.context_text),
             )
         )
     return AgentRunListResponse(items=items, total=total, limit=limit, offset=offset)
+
+
+@router.get("/agent-runs/{run_id}", response_model=AgentRunDetailOut)
+def get_agent_run_detail(
+    run_id: int,
+    db: Session = Depends(get_db),
+    _: AdminUser = Depends(require_admin),
+):
+    row = db.query(AgentRun, Article.title).outerjoin(Article, AgentRun.article_id == Article.id).filter(AgentRun.id == run_id).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Agent run not found")
+    ar, title = row
+    return AgentRunDetailOut(
+        id=ar.id,
+        agent_name=ar.agent_name,
+        created_at=ar.created_at,
+        article_id=ar.article_id,
+        article_title=title,
+        status=_agent_run_status(ar),
+        latency_ms=ar.latency_ms,
+        tokens=ar.tokens,
+        model=ar.model,
+        failure_detail=ar.failure_detail,
+        context_text=ar.context_text,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -2151,7 +2366,7 @@ def create_subscriber(
     db.add(subscriber)
     db.commit()
     db.refresh(subscriber)
-    background_tasks.add_task(sync_subscriber_to_hubspot, subscriber)
+    background_tasks.add_task(partial(sync_subscriber_to_hubspot, subscriber, source="admin_create"))
     return subscriber
 
 
@@ -2196,7 +2411,7 @@ def replace_subscriber(
     subscriber.is_active = payload.is_active
     db.commit()
     db.refresh(subscriber)
-    background_tasks.add_task(sync_subscriber_to_hubspot, subscriber)
+    background_tasks.add_task(partial(sync_subscriber_to_hubspot, subscriber, source="admin_replace"))
     return subscriber
 
 
@@ -2233,7 +2448,7 @@ def update_subscriber_role(
     subscriber.role_ids = rids
     db.commit()
     db.refresh(subscriber)
-    background_tasks.add_task(sync_subscriber_to_hubspot, subscriber)
+    background_tasks.add_task(partial(sync_subscriber_to_hubspot, subscriber, source="admin_role_patch"))
     return subscriber
 
 
@@ -2638,6 +2853,107 @@ def _run_newsletter() -> None:
         db.close()
 
 
+def _run_hubspot_reconcile_manual() -> None:
+    reconcile_all_subscribers_to_hubspot(source="manual_reconcile")
+
+
+class HubSpotStatusOut(BaseModel):
+    api_key_configured: bool
+    api_key_masked: str
+    newsletter_list_id_configured: bool
+    hubspot_custom_properties_note: list[str]
+    batch_sync_enabled: bool
+    batch_sync_hour_utc: int
+    batch_sync_minute_utc: int
+    scheduler_job_id: str
+    scheduler_next_run_utc: str | None
+
+
+class HubSpotSyncLogOut(BaseModel):
+    id: int
+    created_at: datetime
+    subscriber_id: int | None
+    email: str
+    source: str
+    operation: str
+    success: bool
+    hubspot_contact_id: str | None
+    payload: dict[str, Any] | None
+    error_message: str | None
+
+    model_config = {"from_attributes": True}
+
+
+class HubSpotLogsResponse(BaseModel):
+    total: int
+    logs: list[HubSpotSyncLogOut]
+
+
+@router.get("/hubspot/status", response_model=HubSpotStatusOut)
+def hubspot_status(_: AdminUser = Depends(require_admin)):
+    configured = bool((app_settings.hubspot_api_key or "").strip())
+    key = app_settings.hubspot_api_key or ""
+    masked = ("••••" + key[-4:]) if configured and len(key) >= 4 else ("(configured)" if configured else "(not configured)")
+    from ..scheduler import scheduler as sched
+
+    jid = "hubspot_batch_sync"
+    job = sched.get_job(jid)
+    next_rt = getattr(job, "next_run_time", None) if job else None
+    next_iso = next_rt.isoformat() if next_rt else None
+    list_ok = bool((app_settings.hubspot_newsletter_list_id or "").strip())
+    props = [
+        "pulse_domains — comma-separated topic domains shown on signup",
+        "pulse_subscribed — reflects active vs lapsed unsubscribe",
+        "pulse_role — selected executive persona titles",
+        "firstname, lastname, email, industry — standard HubSpot contact fields",
+        "Optional: `HUBSPOT_NEWSLETTER_LIST_ID` — MANUAL or SNAPSHOT list for marketing membership",
+    ]
+    return HubSpotStatusOut(
+        api_key_configured=configured,
+        api_key_masked=masked,
+        newsletter_list_id_configured=list_ok,
+        hubspot_custom_properties_note=props,
+        batch_sync_enabled=app_settings.hubspot_batch_sync_enabled,
+        batch_sync_hour_utc=app_settings.hubspot_batch_sync_hour_utc,
+        batch_sync_minute_utc=app_settings.hubspot_batch_sync_minute_utc,
+        scheduler_job_id=jid,
+        scheduler_next_run_utc=next_iso,
+    )
+
+
+@router.get("/hubspot/logs", response_model=HubSpotLogsResponse)
+def hubspot_logs(
+    db: Session = Depends(get_db),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    _: AdminUser = Depends(require_admin),
+):
+    q = db.query(HubSpotSyncLog)
+    total = q.count()
+    rows = (
+        q.order_by(HubSpotSyncLog.created_at.desc()).offset(offset).limit(limit).all()
+    )
+    return HubSpotLogsResponse(total=total, logs=list(rows))
+
+
+@router.post("/hubspot/test-connection")
+def hubspot_test_connection(_: AdminUser = Depends(require_admin)):
+    ok, err = test_hubspot_connection()
+    return {"ok": ok, "error": err}
+
+
+@router.post("/hubspot/reconcile")
+def hubspot_manual_reconcile(
+    background_tasks: BackgroundTasks,
+    _: AdminUser = Depends(require_admin),
+):
+    background_tasks.add_task(_run_hubspot_reconcile_manual)
+    return {
+        "message": "Subscriber reconciliation queued — each row is synced to HubSpot in the "
+        "background. Open the sync log on this page in a minute to inspect results.",
+    }
+
+
 @router.post("/jobs/ingest")
 def trigger_ingest(
     background_tasks: BackgroundTasks,
@@ -2655,6 +2971,32 @@ def trigger_process_raw(
     """Run AI classification + embeddings on existing raw articles (no RSS fetch)."""
     background_tasks.add_task(_run_process_raw)
     return {"message": "Raw article processing started in the background."}
+
+
+def _run_image_backfill() -> None:
+    """Standalone DB session so the manual job doesn't share state with the request."""
+    db = SessionLocal()
+    try:
+        filled = backfill_missing_article_images(db)
+        logger.info("Manual image backfill complete — filled %d article(s)", filled)
+    except Exception:
+        logger.exception("Manual image backfill failed")
+    finally:
+        db.close()
+
+
+@router.post("/jobs/backfill-images")
+def trigger_image_backfill(
+    background_tasks: BackgroundTasks,
+    _: AdminUser = Depends(require_admin),
+):
+    """Scrape `og:image` for tracked-surface articles still missing a thumbnail.
+
+    Targets the same rows the public "Stories we're tracking" cards render, so
+    operators can clear gradient-only cards on demand without waiting for the
+    next hourly ingestion tick to do its incremental backfill pass."""
+    background_tasks.add_task(_run_image_backfill)
+    return {"message": "Story image backfill started in the background."}
 
 
 @router.post("/jobs/newsletter")

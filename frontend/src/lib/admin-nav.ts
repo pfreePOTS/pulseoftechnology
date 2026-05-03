@@ -4,12 +4,15 @@
  */
 export type AdminNavItem = {
   label: string;
+  /** Unique route — use as React `key` / invite checkbox identity (slug may repeat, e.g. Collection + Review → `research`). */
   href: string;
+  /** Backend `page_permissions` slug; may match multiple nav rows. */
   slug: string;
 };
 
 export const ADMIN_NAV: readonly AdminNavItem[] = [
   { label: "Collection", href: "/admin/research", slug: "research" },
+  { label: "Review", href: "/admin/review", slug: "research" },
   { label: "Trending", href: "/admin", slug: "trending" },
   { label: "Daily trends", href: "/admin/trending-daily", slug: "daily_trends" },
   { label: "Analysis", href: "/admin/analysis", slug: "analysis" },
@@ -19,6 +22,7 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
   { label: "Radar Preview", href: "/admin/radar-preview", slug: "radar_preview" },
   { label: "Manage Sources", href: "/admin/sources", slug: "sources" },
   { label: "Subscribers", href: "/admin/subscribers", slug: "subscribers" },
+  { label: "HubSpot", href: "/admin/hubspot", slug: "hubspot" },
   { label: "Role Profiles", href: "/admin/roles", slug: "roles" },
   { label: "Content Library", href: "/admin/library", slug: "library" },
   { label: "System Jobs", href: "/admin/jobs", slug: "jobs" },
@@ -38,6 +42,12 @@ export type SessionUser = {
 
 export function navAllowedForUser(item: AdminNavItem, user: SessionUser): boolean {
   if (user.is_superuser) return true;
+  /** Inbox = newsletter ratings; show for dedicated Inbox grants or Newsletter editors */
+  if (item.slug === "inbox") {
+    return (
+      user.page_permissions.includes("inbox") || user.page_permissions.includes("newsletter")
+    );
+  }
   return user.page_permissions.includes(item.slug);
 }
 
@@ -52,5 +62,10 @@ export function canAccessAdminPath(pathname: string, user: SessionUser): boolean
     n.href === "/admin" ? pathname === "/admin" : pathname.startsWith(n.href),
   );
   if (!entry) return true;
+  if (entry.slug === "inbox") {
+    return (
+      user.page_permissions.includes("inbox") || user.page_permissions.includes("newsletter")
+    );
+  }
   return user.page_permissions.includes(entry.slug);
 }

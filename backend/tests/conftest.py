@@ -20,12 +20,23 @@ from backend.database import Base, get_db  # noqa: E402
 from backend.dependencies import hash_password  # noqa: E402
 from backend.main import app  # noqa: E402
 from backend.models.admin_user import AdminUser  # noqa: E402
+from backend.models.hubspot_sync_log import HubSpotSyncLog  # noqa: E402, F401 — Base.metadata
 from backend.models.agent_run import AgentRun  # noqa: E402, F401 — Base.metadata
 from backend.models.prompt import PromptProposal  # noqa: E402, F401 — Base.metadata
 
 # Scheduler connects to Postgres during lifespan — no-op for unit tests.
 main_mod.start_scheduler = lambda: None  # type: ignore[assignment, misc]
 main_mod.stop_scheduler = lambda: None  # type: ignore[assignment, misc]
+
+
+@pytest.fixture(autouse=True)
+def _noop_hubspot_background_sync(request: pytest.FixtureRequest):
+    """Subscriptions/preferences enqueue HubSpot — stub for API tests; keep real code in test_hubspot_sync."""
+    if "test_hubspot_sync" in str(request.path):
+        yield
+        return
+    with patch("backend.services.hubspot_sync.sync_subscriber_to_hubspot", return_value=True):
+        yield
 
 
 @pytest.fixture

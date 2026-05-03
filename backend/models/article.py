@@ -1,7 +1,7 @@
 import enum
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, Enum, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -13,6 +13,7 @@ class ArticleStatus(str, enum.Enum):
     published = "published"
     skipped = "skipped"  # gated as irrelevant or permanent failure — no retry
     retry = "retry"  # transient error (API, parse) — requeue by scheduler or manual job
+    review = "review"  # low-confidence / questionable classification awaiting curator decision
 
 
 class Article(Base):
@@ -48,6 +49,11 @@ class Article(Base):
     archived_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
+    review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    review_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ai_output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    review_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
 
     source: Mapped["Source"] = relationship("Source", back_populates="articles")
     topic: Mapped["Topic | None"] = relationship("Topic", back_populates="articles")

@@ -16,6 +16,8 @@ import json
 import logging
 import re
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import quote
@@ -31,12 +33,69 @@ from ..models.newsletter_issue import NewsletterIssue
 from ..models.role import Role
 from ..models.subscriber import Subscriber
 from ..models.topic import Topic, TopicStatus
-from .newsletter_selection import select_articles_for_newsletter_topic
-from .pipeline_settings import merge_pipeline_settings, set_last_newsletter_sent_at
+from .newsletter_selection import (
+    article_has_persona_for_roles,
+    article_industry_bonus,
+    select_articles_for_newsletter_topic,
+    sort_topics_for_newsletter_profile,
+)
+from .pipeline_settings import (
+    MergedPipelineSettings,
+    merge_pipeline_settings,
+    set_last_newsletter_sent_at,
+)
 from .subscriber_tokens import create_subscriber_preferences_token
 from .trend_service import build_hot_of_day, newsletter_topic_velocity_trend
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class NewsletterArticleIngestCutoffs:
+    """Lower bounds on ``Article.ingested_at`` — newer ingests qualify."""
+
+    #: Profile topic sort peak signal + top rollup first attempt (breaking / daily freshness).
+    top_rank_peak: datetime
+    #: Deep-dive supporting articles primary pool (still short-horizon for daily brief).
+    deep_dive_primary: datetime
+    #: Wider fallback when tighter pools yield no usable article rows for that topic.
+    legacy_fallback: datetime
+
+
+def newsletter_article_ingest_cutoffs(
+    merged: MergedPipelineSettings,
+    *,
+    now: datetime | None = None,
+) -> NewsletterArticleIngestCutoffs:
+    """Derive ingest cutoffs from merged pipeline settings (hours for top/deep; days widen last)."""
+    ts = now or datetime.now(UTC)
+    return NewsletterArticleIngestCutoffs(
+        top_rank_peak=ts - timedelta(hours=merged.newsletter_top_ingest_hours),
+        deep_dive_primary=ts - timedelta(hours=merged.newsletter_deep_dive_ingest_hours),
+        legacy_fallback=ts - timedelta(days=merged.newsletter_article_lookback_days),
+    )
+
+
+def _newsletter_article_pick_cutoffs(c: NewsletterArticleIngestCutoffs) -> list[datetime | None]:
+    ordered: tuple[datetime | None, ...] = (
+        c.top_rank_peak,
+        c.deep_dive_primary,
+        c.legacy_fallback,
+        None,
+    )
+    seen: set[str | None] = set()
+    out: list[datetime | None] = []
+    for x in ordered:
+        sig = "__none__" if x is None else x.isoformat()
+        if sig in seen:
+            continue
+        seen.add(sig)
+        out.append(x)
+    return out
+
+
+# Prefer this many radar themes before widening the topic pool beyond strict profile/article fit.
+NEWSLETTER_ASSEMBLY_MIN_TOPICS = 5
 
 
 def _format_sendgrid_error(exc: BaseException) -> str:
@@ -222,8 +281,11 @@ def _newsletter_subject_and_headline(
     hot_data: dict[str, Any] | None,
 ) -> tuple[str, str | None]:
     """
-    Email subject uses the hot-topic article title when this subscriber's briefing includes it;
-    otherwise a Pulse of Technology Daily digest line. Returns (subject, headline_for_body or None).
+    Prefer the global hot-topic article title when ``hot_data`` is available; otherwise a
+    Pulse of Technology Daily digest line. Returns (subject, headline_for_body or None).
+
+    Hot-topic selection is editorial and shared across subscribers; it no longer depends on
+    whether the theme appears in the subscriber's domain-filtered topic list.
     """
     ht, ha, _ = _resolve_hot_topic_lead_for_subscriber(topics, hot_data)
     role_bit = ""
@@ -248,12 +310,16 @@ def _newsletter_subject_and_headline(
 def _build_newsletter_header_banner_html(*, headline_article_title: str | None) -> str:
     """
     Light surface header (DESIGN.md). Renders the official hosted logo image with text fallback.
+    Logo links to the main PulseOne marketing site.
     """
     logo_src = html.escape(_newsletter_logo_url())
+    logo_href = html.escape("https://pulseone.com")
     img_block = f"""
     <p style="margin:0 0 14px;">
-      <img src="{logo_src}" alt="PulseOne | People | Technology | Progress" width="386" height="83"
-           style="display:block;margin:0 auto;max-width:260px;width:100%;height:auto;border:0;" />
+      <a href="{logo_href}" style="text-decoration:none;border:0;display:inline-block;" target="_blank" rel="noopener noreferrer">
+        <img src="{logo_src}" alt="PulseOne | People | Technology | Progress" width="386" height="83"
+             style="display:block;margin:0 auto;max-width:260px;width:100%;height:auto;border:0;" />
+      </a>
     </p>"""
     headline_block = ""
     if headline_article_title and headline_article_title.strip():
@@ -510,7 +576,11 @@ def _industry_lens_block(topic: Topic, subscriber: Subscriber | None) -> str:
 
 
 def _article_teaser_for_email(article: Article) -> str:
-    for raw in (article.why_it_matters, article.what_is_it):
+    """
+    Short explanatory blurb from the article analysis — prefer what's-it-about wording
+    (`what_is_it`) over impact framing (`why_it_matters`).
+    """
+    for raw in (article.what_is_it, article.why_it_matters):
         s = (raw or "").strip()
         if s:
             return _first_sentences(s, 3)
@@ -706,15 +776,28 @@ def _resolve_hot_topic_lead_for_subscriber(
     topics: list[Topic],
     hot_data: dict[str, Any] | None,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None, int | None]:
-    """If today's global hot topic is in this subscriber's briefing, return it and the hot article."""
+    """
+    Return the global ``hot_of_day`` lead for everyone when ``hot_topic`` / ``hot_article`` exist.
+
+    ``topics`` is retained for call-site compatibility only; the lead is **not** gated on
+    whether the subscriber's domain-filtered briefing includes that topic. The returned topic
+    id is used to peel that theme from downstream sections (rollup, deep dives) so it is not
+    shown twice in the same issue.
+    """
+    _ = topics
     if not hot_data:
         return None, None, None
     ht = hot_data.get("hot_topic")
     ha = hot_data.get("hot_article")
-    matched_ids = {t.id for t in topics}
-    if isinstance(ht, dict) and isinstance(ha, dict) and ht.get("id") in matched_ids:
-        return ht, ha, int(ht["id"])
-    return None, None, None
+    if not isinstance(ht, dict) or not isinstance(ha, dict):
+        return None, None, None
+    try:
+        peel_id = int(ht["id"])
+    except (KeyError, TypeError, ValueError):
+        return None, None, None
+    if not (str(ha.get("title") or "").strip() or str(ha.get("url") or "").strip()):
+        return None, None, None
+    return ht, ha, peel_id
 
 
 def _build_top_stories_block(
@@ -723,18 +806,21 @@ def _build_top_stories_block(
     db: Session | None = None,
     subscriber: Subscriber | None = None,
     role_objs: list | None = None,
-    article_ingested_after: datetime | None = None,
+    ingest_cutoffs: NewsletterArticleIngestCutoffs | None = None,
     include_lead_image: bool = True,
 ) -> str:
     role_names: list[str] | None = None
     if role_objs:
         names = [(getattr(r, "name", None) or "").strip() for r in role_objs]
         role_names = [n for n in names if n] or None
+    chain = (
+        _newsletter_article_pick_cutoffs(ingest_cutoffs) if ingest_cutoffs is not None else [None]
+    )
     rows = []
     for idx, t in enumerate(topics):
         first_art: Article | None = None
         if db is not None:
-            for cutoff in (article_ingested_after, None):
+            for cutoff in chain:
                 arts = select_articles_for_newsletter_topic(
                     t,
                     db,
@@ -745,9 +831,11 @@ def _build_top_stories_block(
                 if arts:
                     first_art = arts[0]
                     break
-        summ = _first_sentences(t.summary, 3).strip()
-        if not summ and first_art is not None:
-            summ = _article_teaser_for_email(first_art)
+        summ = ""
+        if first_art is not None:
+            summ = _article_teaser_for_email(first_art).strip()
+        if not summ:
+            summ = _first_sentences(t.summary, 3).strip()
         if not summ:
             summ = _subscriber_industry_teaser(t, subscriber)
         if not summ:
@@ -788,8 +876,8 @@ def _build_top_stories_block(
 
 def _build_hot_topic_lead_html(hot_topic: dict, hot_article: dict) -> str:
     """
-    Lead block for subscribers whose newsletter includes today's global hot topic
-    (same selection as admin Daily trends: ``build_hot_of_day``).
+    Lead block for today's global hot topic — same payload as admin Daily trends
+    (``build_hot_of_day``), shown at the top of every issue when configured.
     """
     dom = html.escape((hot_topic.get("domain") or "").strip())
     sub = html.escape((hot_topic.get("subdomain") or "").strip())
@@ -1110,7 +1198,7 @@ def _build_html(
     topics: list[Topic],
     db: Session | None = None,
     promoted_content: list[ContentItem] | None = None,
-    article_ingested_after: datetime | None = None,
+    merged_pipeline: MergedPipelineSettings | None = None,
     *,
     hot_of_day: dict[str, Any] | None = None,
     read_online_url_override: str | None = None,
@@ -1124,7 +1212,11 @@ def _build_html(
     role_display = role_footer or "Leader"
     public_site = (settings.public_site_url or "http://localhost:3100").rstrip("/")
 
-    sorted_topics = sorted(topics, key=lambda t: t.urgency_score, reverse=True)
+    merged_eff = merged_pipeline or (
+        merge_pipeline_settings(db) if db is not None else merge_pipeline_settings(None)
+    )
+    ingest = newsletter_article_ingest_cutoffs(merged_eff)
+
     hot_data: dict[str, Any] | None = None
     if db is not None:
         if hot_of_day is not None:
@@ -1135,6 +1227,27 @@ def _build_html(
             except Exception:
                 logger.debug("build_hot_of_day failed for newsletter HTML", exc_info=True)
                 hot_data = {"hot_topic": None, "hot_article": None}
+    elif hot_of_day is not None:
+        hot_data = hot_of_day
+
+    sorted_topics: list[Topic]
+    if db is not None:
+        try:
+            sorted_topics = sort_topics_for_newsletter_profile(
+                db,
+                list(topics),
+                subscriber,
+                role_objs,
+                article_after=ingest.top_rank_peak,
+            )
+        except Exception:
+            logger.warning(
+                "Newsletter profile topic sort failed — using urgency order.",
+                exc_info=True,
+            )
+            sorted_topics = sorted(topics, key=lambda t: t.urgency_score, reverse=True)
+    else:
+        sorted_topics = sorted(topics, key=lambda t: t.urgency_score, reverse=True)
 
     ht, ha, hot_topic_id_for_sections = _resolve_hot_topic_lead_for_subscriber(topics, hot_data)
     hot_lead_html = _build_hot_topic_lead_html(ht, ha) if ht and ha else ""
@@ -1162,7 +1275,7 @@ def _build_html(
         db=db,
         subscriber=subscriber,
         role_objs=role_objs,
-        article_ingested_after=article_ingested_after,
+        ingest_cutoffs=ingest,
         include_lead_image=not bool(hot_lead_html),
     )
 
@@ -1170,10 +1283,12 @@ def _build_html(
     if db is not None:
         for topic in deep_dives:
             arts = _select_articles_for_topic(
-                topic, db, role_objs, article_ingested_after=article_ingested_after
+                topic, db, role_objs, article_ingested_after=ingest.deep_dive_primary
             )
-            if not arts and article_ingested_after is not None:
-                arts = _select_articles_for_topic(topic, db, role_objs, article_ingested_after=None)
+            if not arts:
+                arts = _select_articles_for_topic(
+                    topic, db, role_objs, article_ingested_after=ingest.legacy_fallback
+                )
             deep_parts.append(
                 _build_deep_dive_section(
                     topic,
@@ -1267,8 +1382,8 @@ def send_daily_newsletter(
     topics: list[Topic],
     db: Session | None = None,
     promoted_content: list[ContentItem] | None = None,
-    article_ingested_after: datetime | None = None,
     *,
+    merged_pipeline: MergedPipelineSettings | None = None,
     hot_of_day: dict[str, Any] | None = None,
 ) -> tuple[bool, str | None]:
     """
@@ -1276,6 +1391,9 @@ def send_daily_newsletter(
 
     Always uses the built-in full HTML briefing (hot lead, top stories, deep dives,
     quick hits, tip, survey). SendGrid receives ``html_content`` only — no dynamic template.
+
+    Ingest windows (top rollup vs deep dives vs fallback) come from ``merged_pipeline``.
+    When omitted, merges from ``db`` or environment defaults.
 
     Returns (True, None) if accepted by SendGrid (HTTP 202), or (False, reason) on failure.
     """
@@ -1298,6 +1416,10 @@ def send_daily_newsletter(
                 logger.debug("build_hot_of_day failed for newsletter send", exc_info=True)
                 hot_data = {"hot_topic": None, "hot_article": None}
 
+    merged_eff = merged_pipeline or (
+        merge_pipeline_settings(db) if db is not None else merge_pipeline_settings(None)
+    )
+
     subject, _ = _newsletter_subject_and_headline(topics, roles, hot_data)
     issue = NewsletterIssue(
         subscriber_email=subscriber.email,
@@ -1315,7 +1437,7 @@ def send_daily_newsletter(
         topics,
         db=db,
         promoted_content=promoted_content,
-        article_ingested_after=article_ingested_after,
+        merged_pipeline=merged_eff,
         hot_of_day=hot_data,
         read_online_url_override=read_online_url,
     )
@@ -1371,16 +1493,244 @@ def _resolve_subscriber_role(subscriber: Subscriber, db: Session | None) -> Role
 
 def _domain_allow_for_newsletter(subscriber: Subscriber) -> set[str] | None:
     """
-    Which topic domains to include for this subscriber.
+    Subscriber-selected radar pillars (wizard ``domains``) for topic domain matching.
 
-    Explicit `subscriber.domains` (from the subscribe wizard/preferences) controls content.
-    Titles/roles are deliberately not used here; they personalize context and article framing.
-    Legacy subscribers with empty domains receive all eligible topics until they choose domains.
+    When set, themes not in those pillars are excluded from the **first-pass** cohort; the
+    newsletter assembler may widen beyond them when ingest-driven tiers still fall below the
+    minimum topic count.
+
+    Legacy subscribers with empty domains receive ``None`` (no pillar gate — full pipeline cohort).
     """
     domains = getattr(subscriber, "domains", None)
     if domains:
         return {d for d in domains if d}
     return None
+
+
+def _domain_topics_for_subscriber(all_approved: list[Topic], subscriber: Subscriber) -> list[Topic]:
+    """Topics whose ``domain`` matches wizard picks; legacy subscribers get the full cohort."""
+    allow = _domain_allow_for_newsletter(subscriber)
+    if allow is None:
+        return list(all_approved)
+    allow_l = {x.lower() for x in allow}
+    return [
+        t
+        for t in all_approved
+        if (t.domain or "").strip() and (t.domain or "").strip().lower() in allow_l
+    ]
+
+
+def _subscriber_industry_labels(subscriber: Subscriber | object) -> list[str]:
+    raw = getattr(subscriber, "industries", None) or []
+    return [str(x).strip() for x in raw if x is not None and str(x).strip()]
+
+
+def _industry_signals_for_article(topic: Topic, article: Article, industries: list[str]) -> bool:
+    if not industries:
+        return True
+    ip = topic.industry_positions
+    if isinstance(ip, dict):
+        for ind in industries:
+            il = ind.strip().lower()
+            if len(il) < 2:
+                continue
+            for key in ip.keys():
+                if il in str(key).lower():
+                    return True
+    return any(article_industry_bonus(article, ind) > 0 for ind in industries)
+
+
+def _newsletter_first_article_via_chain(
+    topic: Topic,
+    db: Session,
+    role_names: list[str] | None,
+    ingest: NewsletterArticleIngestCutoffs,
+) -> Article | None:
+    for cutoff in _newsletter_article_pick_cutoffs(ingest):
+        arts = select_articles_for_newsletter_topic(
+            topic,
+            db,
+            role_names,
+            article_ingested_after=cutoff,
+            limit=1,
+        )
+        if arts:
+            return arts[0]
+    return None
+
+
+def _sort_topics_by_urgency_desc(topics: list[Topic]) -> list[Topic]:
+    return sorted(topics, key=lambda t: float(t.urgency_score or 0.0), reverse=True)
+
+
+def _assemble_topics_strict_profile(
+    cohort: list[Topic],
+    *,
+    db: Session,
+    subscriber: Subscriber | object,
+    role_names: list[str] | None,
+    ingest: NewsletterArticleIngestCutoffs,
+) -> list[Topic]:
+    industries = _subscriber_industry_labels(subscriber)
+    pool: list[Topic] = []
+    for topic in cohort:
+        art = _newsletter_first_article_via_chain(topic, db, role_names, ingest)
+        if art is None:
+            continue
+        if industries and not _industry_signals_for_article(topic, art, industries):
+            continue
+        if not article_has_persona_for_roles(art, role_names):
+            continue
+        pool.append(topic)
+    return pool
+
+
+def _assemble_topics_industry_domains(
+    cohort: list[Topic],
+    *,
+    db: Session,
+    subscriber: Subscriber | object,
+    role_names: list[str] | None,
+    ingest: NewsletterArticleIngestCutoffs,
+) -> list[Topic]:
+    industries = _subscriber_industry_labels(subscriber)
+    pool: list[Topic] = []
+    for topic in cohort:
+        art = _newsletter_first_article_via_chain(topic, db, role_names, ingest)
+        if art is None:
+            continue
+        if industries and not _industry_signals_for_article(topic, art, industries):
+            continue
+        pool.append(topic)
+    return pool
+
+
+def _assemble_topics_fresh_domains(
+    cohort: list[Topic],
+    *,
+    db: Session,
+    role_names: list[str] | None,
+    ingest: NewsletterArticleIngestCutoffs,
+) -> list[Topic]:
+    pool: list[Topic] = []
+    for topic in cohort:
+        if _newsletter_first_article_via_chain(topic, db, role_names, ingest) is not None:
+            pool.append(topic)
+    return pool
+
+
+def _assemble_topics_cross_domain_industry(
+    all_approved: list[Topic],
+    *,
+    db: Session,
+    subscriber: Subscriber | object,
+    role_names: list[str] | None,
+    ingest: NewsletterArticleIngestCutoffs,
+) -> list[Topic]:
+    industries = _subscriber_industry_labels(subscriber)
+    if not industries:
+        return []
+    pool: list[Topic] = []
+    for topic in all_approved:
+        art = _newsletter_first_article_via_chain(topic, db, role_names, ingest)
+        if art is None:
+            continue
+        if _industry_signals_for_article(topic, art, industries):
+            pool.append(topic)
+    return pool
+
+
+def _resolve_newsletter_topic_pool(
+    *,
+    subscriber: Subscriber,
+    all_approved: list[Topic],
+    db: Session,
+    merged_pipeline: MergedPipelineSettings,
+    min_topics: int = NEWSLETTER_ASSEMBLY_MIN_TOPICS,
+) -> tuple[list[Topic], str]:
+    ingest = newsletter_article_ingest_cutoffs(merged_pipeline)
+    cohort_dom = _domain_topics_for_subscriber(all_approved, subscriber)
+    role_objs = _resolve_subscriber_roles(subscriber, db)
+    names = [(getattr(r, "name", None) or "").strip() for r in role_objs]
+    role_names = [n for n in names if n] or None
+
+    tier_specs: list[tuple[str, Callable[[], list[Topic]]]] = [
+        (
+            "industry_domains_persona_fresh",
+            lambda: _assemble_topics_strict_profile(
+                cohort_dom,
+                db=db,
+                subscriber=subscriber,
+                role_names=role_names,
+                ingest=ingest,
+            ),
+        ),
+        (
+            "industry_domains_fresh",
+            lambda: _assemble_topics_industry_domains(
+                cohort_dom,
+                db=db,
+                subscriber=subscriber,
+                role_names=role_names,
+                ingest=ingest,
+            ),
+        ),
+        (
+            "domains_fresh_articles",
+            lambda: _assemble_topics_fresh_domains(
+                cohort_dom,
+                db=db,
+                role_names=role_names,
+                ingest=ingest,
+            ),
+        ),
+        ("domains_only", lambda: list(cohort_dom)),
+        (
+            "cross_domain_industry_fresh",
+            lambda: _assemble_topics_cross_domain_industry(
+                all_approved,
+                db=db,
+                subscriber=subscriber,
+                role_names=role_names,
+                ingest=ingest,
+            ),
+        ),
+        ("all_pipeline_topics", lambda: list(all_approved)),
+    ]
+
+    best_pick: tuple[int, list[Topic], str] | None = None
+    for idx, (label, lazy_fn) in enumerate(tier_specs):
+        pool = lazy_fn()
+        if len(pool) >= min_topics:
+            logger.info(
+                "Newsletter topic assembly: tier=%s count=%d (≥ min %d) email=%s",
+                label,
+                len(pool),
+                min_topics,
+                getattr(subscriber, "email", "?"),
+            )
+            return _sort_topics_by_urgency_desc(pool), label
+        if pool:
+            if (
+                best_pick is None
+                or len(pool) > len(best_pick[1])
+                or (len(pool) == len(best_pick[1]) and idx < best_pick[0])
+            ):
+                best_pick = (idx, pool, label)
+
+    if best_pick:
+        _, plist, lbl = best_pick
+        logger.warning(
+            "Newsletter topic assembly below min tier=%s count=%d wanted≥%d email=%s "
+            "(use best-available pool)",
+            lbl,
+            len(plist),
+            min_topics,
+            getattr(subscriber, "email", "?"),
+        )
+        return _sort_topics_by_urgency_desc(plist), lbl
+
+    return [], "empty"
 
 
 def assemble_promoted_content(
@@ -1423,37 +1773,37 @@ def assemble_newsletter_topics(
     db: Session | None = None,
     *,
     skip_domain_filter: bool = False,
+    merged_pipeline: MergedPipelineSettings | None = None,
 ) -> list[Topic]:
     """
-    Filter approved topics to the subscriber's domain interests.
+    Narrow pipeline topics by subscriber wizard preferences, relaxing when ingest is sparse.
 
-    - If the subscriber chose specific domains in the wizard, only those topic domains
-      are included (case-insensitive match on ``topic.domain``).
-    - Titles/roles never narrow the topic pool; they only personalize context and framing.
-    - If no domains are present (legacy rows), all approved topics are returned.
+    - **Technology (domains)** from preferences narrows eligible themes first.
 
-    ``skip_domain_filter=True`` (admin newsletter preview only): ignore domain narrowing so
-    the sandbox shows the full eligible topic pool while still using roles for persona scoring.
+    With ``merged_pipeline`` + ``db``, applies a ladder until at least
+    ``NEWSLETTER_ASSEMBLY_MIN_TOPICS`` qualifying topics emerge (Industry + persona + fresh
+    article → Industry + fresh → domains with any fresh ingest → domains only → industry
+    match across pillars → entire pipeline cohort). Prefer the strictest tier that clears
+    the minimum; otherwise the largest pool wins (preferring tighter tiers on ties).
 
-    Topics are sorted by descending urgency score.
+    ``skip_domain_filter=True`` skips domain narrowing **and** the ladder (preview / sandbox).
+
+    When ``merged_pipeline`` or ``db`` is omitted, behaves as legacy **domain-filter only**.
     """
     if skip_domain_filter:
         return sorted(all_approved, key=lambda t: t.urgency_score, reverse=True)
 
-    allow = _domain_allow_for_newsletter(subscriber)
+    if merged_pipeline is None or db is None:
+        cohort = _domain_topics_for_subscriber(all_approved, subscriber)
+        return sorted(cohort, key=lambda t: t.urgency_score, reverse=True)
 
-    if allow is None:
-        return sorted(all_approved, key=lambda t: t.urgency_score, reverse=True)
-
-    # Case-insensitive match so wizard/sandbox chips align with DB casing (e.g. "finance" vs "Finance").
-    allow_l = {x.lower() for x in allow}
-    matched = [
-        t
-        for t in all_approved
-        if (t.domain or "").strip() and (t.domain or "").strip().lower() in allow_l
-    ]
-
-    return sorted(matched, key=lambda t: t.urgency_score, reverse=True)
+    cohort, _label = _resolve_newsletter_topic_pool(
+        subscriber=subscriber,
+        all_approved=all_approved,
+        db=db,
+        merged_pipeline=merged_pipeline,
+    )
+    return cohort
 
 
 def generate_newsletter_preview(
@@ -1500,11 +1850,13 @@ def generate_newsletter_preview(
         .all()
     )
 
+    merged = merge_pipeline_settings(db)
     topics = assemble_newsletter_topics(
         dummy,
         eligible,
         db,
         skip_domain_filter=skip_domain_topic_filter,
+        merged_pipeline=None if skip_domain_topic_filter else merged,
     )[:20]
 
     if not topics:
@@ -1518,22 +1870,23 @@ def generate_newsletter_preview(
             "</body></html>"
         )
 
-    merged = merge_pipeline_settings(db)
-    article_cutoff = datetime.now(UTC) - timedelta(days=merged.newsletter_article_lookback_days)
     promoted = assemble_promoted_content(dummy, db)
     return _build_html(
         dummy,
         topics,
         db=db,
         promoted_content=promoted,
-        article_ingested_after=article_cutoff,
+        merged_pipeline=merged,
     )
 
 
 def run_daily_newsletter(db: Session) -> None:
     """
     Fetch all active subscribers and dispatch newsletters for watched/selected (on-radar) topics.
-    Article snippets use newsletter_article_lookback_days and exclude archived rows.
+
+    Article pools use tiered ingest cutoffs from pipeline settings: a short window for
+    topic ranking and top rollup, a ~48–72h primary pool for deep-dive sources, and a
+    slightly wider day-based fallback when per-topic selection would otherwise be empty.
     """
     merged = merge_pipeline_settings(db)
     if not merged.newsletter_enabled:
@@ -1543,7 +1896,7 @@ def run_daily_newsletter(db: Session) -> None:
         logger.warning("Daily newsletter: SENDGRID_API_KEY not set — skipping send")
         return
 
-    article_cutoff = datetime.now(UTC) - timedelta(days=merged.newsletter_article_lookback_days)
+    ingest = newsletter_article_ingest_cutoffs(merged)
 
     eligible_topics: list[Topic] = (
         db.query(Topic).filter(Topic.status.in_([TopicStatus.watched, TopicStatus.selected])).all()
@@ -1558,10 +1911,13 @@ def run_daily_newsletter(db: Session) -> None:
     )
 
     logger.info(
-        "Daily newsletter: %d topics, %d subscribers (article lookback from %s)",
+        "Daily newsletter: %d topics, %d subscribers "
+        "(ingest cutoffs ingested≥ top %s · deep %s · legacy %s UTC)",
         len(eligible_topics),
         len(subscribers),
-        article_cutoff.isoformat(),
+        ingest.top_rank_peak.strftime("%Y-%m-%dT%H:%MZ"),
+        ingest.deep_dive_primary.strftime("%Y-%m-%dT%H:%MZ"),
+        ingest.legacy_fallback.strftime("%Y-%m-%dT%H:%MZ"),
     )
 
     try:
@@ -1573,7 +1929,12 @@ def run_daily_newsletter(db: Session) -> None:
     sent = 0
     delay_s = settings.newsletter_subscriber_delay_seconds
     for i, subscriber in enumerate(subscribers):
-        matched = assemble_newsletter_topics(subscriber, eligible_topics, db)
+        matched = assemble_newsletter_topics(
+            subscriber,
+            eligible_topics,
+            db,
+            merged_pipeline=merged,
+        )
         if matched:
             promoted = assemble_promoted_content(subscriber, db)
             ok, sg_err = send_daily_newsletter(
@@ -1581,7 +1942,7 @@ def run_daily_newsletter(db: Session) -> None:
                 matched,
                 db=db,
                 promoted_content=promoted,
-                article_ingested_after=article_cutoff,
+                merged_pipeline=merged,
                 hot_of_day=batch_hot,
             )
             if ok:
@@ -1609,7 +1970,7 @@ def send_test_newsletter(db: Session, to_email: str) -> tuple[bool, str]:
     matches Radar Preview “Pipeline staging” and the scheduled newsletter — it does **not**
     pull topics that appear on the live site only via ``is_published`` without pipeline status.
 
-    Article lookback matches merged settings. Synthetic subscriber has no domain/role narrowing
+    Article ingest windows match merged pipeline settings (top rollup vs deep-dive tiers).
     so all pipeline topics are included (like a subscriber who did not filter domains).
 
     Does not update last_newsletter_sent_at. Requires SENDGRID_API_KEY.
@@ -1622,7 +1983,6 @@ def send_test_newsletter(db: Session, to_email: str) -> tuple[bool, str]:
         return False, "SENDGRID_API_KEY is not set — cannot send email."
 
     merged = merge_pipeline_settings(db)
-    article_cutoff = datetime.now(UTC) - timedelta(days=merged.newsletter_article_lookback_days)
 
     # Watched + selected only — pipeline cohort, not “published to live site” alone.
     eligible_topics: list[Topic] = (
@@ -1644,7 +2004,7 @@ def send_test_newsletter(db: Session, to_email: str) -> tuple[bool, str]:
         role_ids=None,
         is_active=True,
     )
-    matched = assemble_newsletter_topics(dummy, eligible_topics, db)
+    matched = assemble_newsletter_topics(dummy, eligible_topics, db, merged_pipeline=merged)
     if not matched:
         return False, "No topics matched for this send (unexpected)."
 
@@ -1654,7 +2014,7 @@ def send_test_newsletter(db: Session, to_email: str) -> tuple[bool, str]:
         matched,
         db=db,
         promoted_content=promoted,
-        article_ingested_after=article_cutoff,
+        merged_pipeline=merged,
     )
     if ok:
         return True, f"Test newsletter sent to {raw} ({len(matched)} topic(s))."

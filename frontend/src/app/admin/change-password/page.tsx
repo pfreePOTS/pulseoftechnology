@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -82,11 +84,17 @@ export default function AdminChangePasswordPage() {
 
   return (
     <div>
-      <header className="mb-8 text-center">
-        <span
-          className="inline-block h-3 w-3 rounded-full mb-4"
-          style={{ backgroundColor: "#E91D24" }}
-        />
+      <header className="mb-8 flex flex-col items-center text-center">
+        <Link href="/" className="mb-5 inline-block focus:outline-none focus-visible:ring-2 focus-visible:ring-[#019E7C] focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950 rounded-sm">
+          <Image
+            src="/pulseone_logo_official.png"
+            alt="PulseOne"
+            width={200}
+            height={48}
+            className="h-11 w-auto max-w-[220px] object-contain brightness-0 invert opacity-95"
+            priority
+          />
+        </Link>
         <h1 className="text-2xl font-bold text-white">Choose a new password</h1>
         <p className="mt-2 text-sm text-gray-400">
           Signed in as <span className="text-gray-300">{sessionUser.email}</span>. Replace your temporary password

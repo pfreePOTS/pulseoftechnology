@@ -10,6 +10,7 @@ If only ``ANTHROPIC_API_KEY`` is set (no DeepSeek key), Anthropic is used direct
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 
 import anthropic
@@ -31,6 +32,12 @@ class ChatCompletionResult:
 
     model_id: str
     """Model identifier actually invoked (DeepSeek id or Claude id)."""
+
+    latency_ms: int
+    """Wall time for the underlying provider round-trip (milliseconds)."""
+
+    total_tokens: int | None = None
+    """Provider-reported tokens when available (input+output summed for Anthropic)."""
 
 
 def _deepseek_configured() -> bool:
@@ -122,9 +129,40 @@ def _anthropic_equivalent_model(requested_model: str) -> str:
     return sn
 
 
-def _complete_deepseek(requested_model: str, *, system: str, user: str, max_tokens: int) -> str:
+def _deepseek_usage_total_tokens(resp) -> int | None:
+    usage = getattr(resp, "usage", None)
+    if usage is None:
+        return None
+    t = getattr(usage, "total_tokens", None)
+    if isinstance(t, int):
+        return t
+    return None
+
+
+def _anthropic_usage_total_tokens(response) -> int | None:
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return None
+    inp = getattr(usage, "input_tokens", None)
+    outp = getattr(usage, "output_tokens", None)
+    if inp is None and outp is None:
+        return None
+    ia = inp if isinstance(inp, int) else 0
+    oa = outp if isinstance(outp, int) else 0
+    return ia + oa
+
+
+def _complete_deepseek(
+    requested_model: str,
+    *,
+    system: str,
+    user: str,
+    max_tokens: int,
+    json_response: bool = False,
+) -> tuple[str, int | None]:
     model = resolved_model(requested_model)
-    resp = _get_openai_client().chat.completions.create(
+    client = _get_openai_client()
+    kwargs: dict = dict(
         model=model,
         messages=[
             {"role": "system", "content": system},
@@ -132,15 +170,42 @@ def _complete_deepseek(requested_model: str, *, system: str, user: str, max_toke
         ],
         max_tokens=max_tokens,
     )
+    if json_response:
+        # OpenAI-compatible JSON mode — DeepSeek API supports this; harmless to retry without.
+        kwargs["response_format"] = {"type": "json_object"}
+    try:
+        resp = client.chat.completions.create(**kwargs)
+    except OpenAIError as e:
+        if json_response:
+            logger.info("DeepSeek request with json_object failed (%s); retrying without JSON mode.", e)
+            kwargs.pop("response_format", None)
+            resp = client.chat.completions.create(**kwargs)
+        else:
+            raise
+
+    tokens = _deepseek_usage_total_tokens(resp)
     ch = resp.choices[0].message.content
     if ch is None:
-        return ""
-    return _strip_code_fences(str(ch))
+        if json_response:
+            logger.warning(
+                "DeepSeek returned null message.content with response_format=json_object (model=%s)",
+                model,
+            )
+        return "", tokens
+    text = _strip_code_fences(str(ch))
+    if not text and json_response:
+        logger.warning(
+            "DeepSeek returned empty text after strip/fences with response_format=json_object "
+            "(model=%s; raw_len=%s)",
+            model,
+            len(str(ch)),
+        )
+    return text, tokens
 
 
 def _complete_anthropic(
     requested_model: str, *, system: str, user: str, max_tokens: int
-) -> tuple[str, str]:
+) -> tuple[str, str, int | None]:
     mid = _anthropic_equivalent_model(requested_model)
     raw = _get_anthropic_client().messages.create(
         model=mid,
@@ -148,8 +213,9 @@ def _complete_anthropic(
         system=system,
         messages=[{"role": "user", "content": user}],
     )
+    tokens = _anthropic_usage_total_tokens(raw)
     text = _strip_code_fences(raw.content[0].text)
-    return text, mid
+    return text, mid, tokens
 
 
 def chat_completion_result(
@@ -158,6 +224,7 @@ def chat_completion_result(
     system: str,
     user: str,
     max_tokens: int,
+    json_response: bool = False,
 ) -> ChatCompletionResult:
     """
     Run chat completion: DeepSeek first when configured; Anthropic on missing key, after DeepSeek
@@ -166,12 +233,22 @@ def chat_completion_result(
     if not is_llm_configured():
         raise RuntimeError("Configure DEEPSEEK_API_KEY and/or ANTHROPIC_API_KEY")
 
+    started = time.perf_counter()
+
     if _deepseek_configured():
         try:
-            text = _complete_deepseek(
-                requested_model, system=system, user=user, max_tokens=max_tokens
+            text, tok = _complete_deepseek(
+                requested_model,
+                system=system,
+                user=user,
+                max_tokens=max_tokens,
+                json_response=json_response,
             )
-            return ChatCompletionResult(text=text, model_id=resolved_model(requested_model))
+            mid = resolved_model(requested_model)
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            return ChatCompletionResult(
+                text=text, model_id=mid, latency_ms=latency_ms, total_tokens=tok
+            )
         except OpenAIError as e:
             logger.warning("DeepSeek request failed (%s)", e)
             if not _anthropic_configured():
@@ -180,10 +257,13 @@ def chat_completion_result(
                 "Falling back to Anthropic Claude (requested_route=%r)", requested_model or ""
             )
             try:
-                text, mid = _complete_anthropic(
+                text, mid, tok = _complete_anthropic(
                     requested_model, system=system, user=user, max_tokens=max_tokens
                 )
-                return ChatCompletionResult(text=text, model_id=mid)
+                latency_ms = int((time.perf_counter() - started) * 1000)
+                return ChatCompletionResult(
+                    text=text, model_id=mid, latency_ms=latency_ms, total_tokens=tok
+                )
             except anthropic.APIError as ae:
                 raise LLMAPIError(f"DeepSeek failed; Anthropic fallback failed: {ae}") from ae
 
@@ -191,10 +271,13 @@ def chat_completion_result(
         raise RuntimeError("No Anthropic credentials for LLM invocation")
 
     try:
-        text, mid = _complete_anthropic(
+        text, mid, tok = _complete_anthropic(
             requested_model, system=system, user=user, max_tokens=max_tokens
         )
-        return ChatCompletionResult(text=text, model_id=mid)
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        return ChatCompletionResult(
+            text=text, model_id=mid, latency_ms=latency_ms, total_tokens=tok
+        )
     except anthropic.APIError as e:
         raise LLMAPIError(str(e)) from e
 

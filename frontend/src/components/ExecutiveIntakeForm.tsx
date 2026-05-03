@@ -128,7 +128,7 @@ export default function ExecutiveIntakeForm({
       issue: iss,
       stage: situationText,
     });
-    router.push(`/recommended-path?${q.toString()}`);
+    router.push(`/recommended-path?${q.toString()}`, { scroll: true });
   };
 
   // Visible position (1..N) — used for both labels and progress %.

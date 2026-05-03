@@ -64,17 +64,17 @@ export default function GlobalFooter() {
               <Link href="/radar#subscribe" className="hover:text-pulse-teal">
                 Newsletter
               </Link>
-              <a href="#" className="hover:text-pulse-teal">
+              <Link href="/assessments" className="hover:text-pulse-teal">
                 Assessments
-              </a>
+              </Link>
             </div>
           </div>
           <div>
             <h5 className="mb-4 font-sans text-sm font-bold text-white">Company</h5>
             <div className="flex flex-col gap-2 font-sans text-sm text-white/55">
-              <a href="#" className="hover:text-pulse-teal">
+              <Link href="/approach" className="hover:text-pulse-teal">
                 Our Approach
-              </a>
+              </Link>
               <Link href="/industries" className="hover:text-pulse-teal">
                 Industries We Serve
               </Link>

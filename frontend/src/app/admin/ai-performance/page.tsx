@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { adminFetch, API_BASE } from "@/lib/api";
+import { adminFetch, adminResponseErrorDetail, API_BASE } from "@/lib/api";
 
 interface Summary {
   total_runs: number;
@@ -30,6 +30,22 @@ interface RunRow {
   latency_ms: number | null;
   tokens: number | null;
   model: string | null;
+  failure_detail: string | null;
+  context_excerpt: string | null;
+}
+
+interface RunDetailPayload {
+  id: number;
+  agent_name: string;
+  created_at: string;
+  article_id: number | null;
+  article_title: string | null;
+  status: string;
+  latency_ms: number | null;
+  tokens: number | null;
+  model: string | null;
+  failure_detail: string | null;
+  context_text: string | null;
 }
 
 interface RunListResponse {
@@ -150,7 +166,12 @@ type LogStatusFilter = "all" | "success" | "fallback" | "failed";
 
 export default function AiPerformancePage() {
   const [summary, setSummary] = useState<Summary | null>(null);
+  const summaryRef = useRef<Summary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
+  /** Set when we have no summary yet (initial load / hard failure). */
+  const [summaryBlockError, setSummaryBlockError] = useState<string | null>(null);
+  /** Set when polling fails but we still show the last good summary. */
+  const [summaryRefreshWarning, setSummaryRefreshWarning] = useState<string | null>(null);
   const [byAgent, setByAgent] = useState<ByAgentRow[]>([]);
   const [byAgentLoading, setByAgentLoading] = useState(true);
   const [breakdownDays, setBreakdownDays] = useState<BreakdownWindow>(7);
@@ -162,17 +183,96 @@ export default function AiPerformancePage() {
   const [logAgent, setLogAgent] = useState<string | null>(null);
   const [logStatus, setLogStatus] = useState<LogStatusFilter>("all");
 
+  const [detailRunId, setDetailRunId] = useState<number | null>(null);
+  const [detailPayload, setDetailPayload] = useState<RunDetailPayload | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
+  useEffect(() => {
+    summaryRef.current = summary;
+  }, [summary]);
+
+  useEffect(() => {
+    if (detailRunId === null) {
+      setDetailPayload(null);
+      setDetailError(null);
+      setDetailLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function load() {
+      setDetailLoading(true);
+      setDetailError(null);
+      try {
+        const res = await adminFetch(
+          `${API_BASE}/api/admin/agent-runs/${detailRunId}`,
+        );
+        if (!res.ok) {
+          const detail = await adminResponseErrorDetail(res);
+          if (!cancelled) {
+            setDetailPayload(null);
+            setDetailError(detail || `HTTP ${res.status}`);
+          }
+          return;
+        }
+        const data = (await res.json()) as RunDetailPayload;
+        if (!cancelled) {
+          setDetailPayload(data);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setDetailPayload(null);
+          setDetailError(e instanceof Error ? e.message : "Network error");
+        }
+      } finally {
+        if (!cancelled) setDetailLoading(false);
+      }
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [detailRunId]);
+
+  useEffect(() => {
+    if (detailRunId === null) return;
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") setDetailRunId(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [detailRunId]);
+
   const fetchSummary = useCallback(async () => {
     try {
       const res = await adminFetch(`${API_BASE}/api/admin/agent-runs/summary`);
       if (!res.ok) {
-        setSummary(null);
+        const detail = await adminResponseErrorDetail(res);
+        const msg =
+          res.status === 403
+            ? "You need the AI Performance permission (or superuser) to load agent telemetry."
+            : detail;
+        if (summaryRef.current === null) {
+          setSummaryBlockError(msg);
+        } else {
+          setSummaryRefreshWarning(`Could not refresh summary: ${msg}`);
+        }
         return;
       }
       const data = (await res.json()) as Summary;
       setSummary(data);
-    } catch {
-      setSummary(null);
+      setSummaryBlockError(null);
+      setSummaryRefreshWarning(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Network error";
+      if (summaryRef.current === null) {
+        setSummaryBlockError(msg);
+      } else {
+        setSummaryRefreshWarning(`Could not refresh summary: ${msg}`);
+      }
     } finally {
       setSummaryLoading(false);
     }
@@ -275,6 +375,15 @@ export default function AiPerformancePage() {
       </div>
 
       {/* Summary cards */}
+      {summaryRefreshWarning ? (
+        <div
+          className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100"
+          role="status"
+        >
+          {summaryRefreshWarning}
+        </div>
+      ) : null}
+
       {summaryLoading ? (
         <div className="mb-10 flex items-center gap-3 text-gray-400">
           <span
@@ -327,6 +436,19 @@ export default function AiPerformancePage() {
             <p className="mt-1 text-xs text-gray-500">Sum where recorded</p>
           </div>
         </div>
+      ) : summaryBlockError ? (
+        <div
+          className="mb-10 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200"
+          role="alert"
+        >
+          <p className="font-semibold text-red-100">Could not load summary</p>
+          <p className="mt-2 whitespace-pre-wrap">{summaryBlockError}</p>
+          <p className="mt-2 text-xs text-red-300/90">
+            Check that <code className="text-red-100/90">NEXT_PUBLIC_API_URL</code> is the API origin only
+            (e.g. <code className="text-red-100/90">http://localhost:8100</code>, not <code className="text-red-100/90">…/api</code>
+            ), the backend is running, and your account has the AI Performance role.
+          </p>
+        </div>
       ) : (
         <p className="mb-10 text-sm text-gray-500">Summary unavailable.</p>
       )}
@@ -334,6 +456,10 @@ export default function AiPerformancePage() {
       {/* Agent breakdown */}
       <div className="mb-6">
         <h2 className="text-lg font-semibold text-white">Per-agent breakdown</h2>
+        <p className="mt-2 max-w-3xl text-sm text-gray-500">
+          Fallback means the model output did not parse as strict JSON, so safe defaults ran.
+          Rows recorded before detail fields were added may show fallback without an issue message.
+        </p>
         <div className="mt-3 flex flex-wrap gap-2">
           {(
             [
@@ -417,7 +543,8 @@ export default function AiPerformancePage() {
       <div className="mb-4">
         <h2 className="text-lg font-semibold text-white">Run log</h2>
         <p className="mt-1 text-sm text-gray-500">
-          Parsed outputs and fallbacks (newest first). Filters apply to the full history.
+          Parsed outputs and fallbacks (newest first). Filters apply to the full history. Use Full
+          output to open the saved model text when present (especially for fallback runs).
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <span className="text-xs font-medium uppercase text-gray-500">Agent</span>
@@ -479,16 +606,18 @@ export default function AiPerformancePage() {
       ) : (
         <>
           <div className="overflow-x-auto rounded-xl border border-gray-800">
-            <table className="w-full min-w-[900px] text-left text-sm">
+            <table className="w-full min-w-[1100px] text-left text-sm">
               <thead className="bg-gray-900">
                 <tr>
                   <th className="px-4 py-3 font-medium text-gray-300">Timestamp</th>
                   <th className="px-4 py-3 font-medium text-gray-300">Agent</th>
                   <th className="px-4 py-3 font-medium text-gray-300">Article</th>
                   <th className="px-4 py-3 font-medium text-gray-300">Status</th>
+                  <th className="px-4 py-3 font-medium text-gray-300">Issue</th>
                   <th className="px-4 py-3 font-medium text-gray-300">Latency</th>
                   <th className="px-4 py-3 font-medium text-gray-300">Tokens</th>
                   <th className="px-4 py-3 font-medium text-gray-300">Model</th>
+                  <th className="px-4 py-3 font-medium text-gray-300"> </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800 bg-gray-950">
@@ -506,6 +635,16 @@ export default function AiPerformancePage() {
                     <td className="px-4 py-3">
                       <RunStatusBadge status={row.status} />
                     </td>
+                    <td className="max-w-[min(280px,32vw)] px-4 py-3 align-top">
+                      <p className="break-words text-xs text-gray-400">
+                        {row.failure_detail ?? "—"}
+                      </p>
+                      {row.context_excerpt ? (
+                        <pre className="mt-1 max-h-16 overflow-hidden whitespace-pre-wrap break-all font-mono text-[10px] leading-snug text-gray-500">
+                          {row.context_excerpt}
+                        </pre>
+                      ) : null}
+                    </td>
                     <td className="whitespace-nowrap px-4 py-3 tabular-nums text-gray-400">
                       {row.latency_ms != null ? `${row.latency_ms} ms` : "—"}
                     </td>
@@ -514,6 +653,15 @@ export default function AiPerformancePage() {
                     </td>
                     <td className="max-w-[140px] truncate px-4 py-3 text-gray-500">
                       {row.model ?? "—"}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => setDetailRunId(row.id)}
+                        className="rounded-md border border-gray-700 bg-gray-800 px-2.5 py-1 text-xs font-medium text-gray-200 hover:border-gray-600 hover:bg-gray-700"
+                      >
+                        Full output
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -535,6 +683,85 @@ export default function AiPerformancePage() {
           ) : null}
         </>
       )}
+
+      {detailRunId !== null ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close dialog"
+            className="absolute inset-0 bg-black/65"
+            onClick={() => setDetailRunId(null)}
+          />
+          <div
+            className="relative z-[1] flex max-h-[min(560px,85vh)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-gray-800 bg-gray-900 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="agent-run-detail-title"
+          >
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-gray-800 px-5 py-4">
+              <div className="min-w-0">
+                <p
+                  id="agent-run-detail-title"
+                  className="truncate text-lg font-semibold text-white"
+                >
+                  Run #{detailRunId}
+                </p>
+                <p className="mt-1 text-xs text-gray-500">
+                  Saved model response (truncated server-side when stored). Inspect JSON shape and stray
+                  text when debugging fallbacks.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-300 hover:bg-gray-800"
+                onClick={() => setDetailRunId(null)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              {detailLoading ? (
+                <p className="text-sm text-gray-400">Loading…</p>
+              ) : detailError ? (
+                <p className="break-words text-sm text-red-300">{detailError}</p>
+              ) : detailPayload ? (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap gap-2 text-xs text-gray-500">
+                    <span className="rounded-md bg-gray-800 px-2 py-1 font-mono text-gray-300">
+                      {detailPayload.agent_name}
+                    </span>
+                    <span>{new Date(detailPayload.created_at).toLocaleString()}</span>
+                    {truncateTitle(detailPayload.article_title) !== "—" ? (
+                      <span className="max-w-[18rem] truncate">
+                        Article: {detailPayload.article_title}
+                      </span>
+                    ) : null}
+                  </div>
+                  {detailPayload.failure_detail ? (
+                    <div className="rounded-lg border border-amber-600/35 bg-amber-500/10 px-3 py-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-amber-400/95">
+                        Parse / failure detail
+                      </p>
+                      <p className="mt-1 break-words text-sm text-amber-100">
+                        {detailPayload.failure_detail}
+                      </p>
+                    </div>
+                  ) : null}
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                      Raw output
+                    </p>
+                    <pre className="mt-2 max-h-[min(320px,40vh)] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-gray-800 bg-gray-950 p-3 font-mono text-xs text-gray-300">
+                      {detailPayload.context_text ??
+                        "(No raw text stored for this run — often older telemetry or success path.)"}
+                    </pre>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

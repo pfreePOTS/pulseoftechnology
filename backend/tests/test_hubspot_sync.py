@@ -3,7 +3,16 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from ..services import hubspot_sync
+
+
+@pytest.fixture(autouse=True)
+def _mute_hubspot_sync_persistence():
+    """Avoid Postgres SessionLocal writes when exercising HubSpot mocks."""
+    with patch.object(hubspot_sync, "_persist_sync_log"):
+        yield
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -206,3 +215,97 @@ class TestApiExceptions:
             result = hubspot_sync.sync_subscriber_to_hubspot(_sub())
 
         assert result is False
+
+
+# ---------------------------------------------------------------------------
+# Newsletter list membership
+# ---------------------------------------------------------------------------
+
+
+class TestNewsletterListMembership:
+    def test_adds_to_list_when_configured_and_active(self):
+        mock_client = MagicMock()
+        mock_client.crm.contacts.search_api.do_search.return_value = _search_result(
+            total=1, contact_id="77"
+        )
+
+        with (
+            patch.object(hubspot_sync, "_get_hs_client", return_value=mock_client),
+            patch.object(hubspot_sync.settings, "hubspot_api_key", "fake-key"),
+            patch.object(hubspot_sync.settings, "hubspot_newsletter_list_id", "list-99"),
+        ):
+            result = hubspot_sync.sync_subscriber_to_hubspot(_sub(is_active=True))
+
+        assert result is True
+        mock_client.crm.lists.memberships_api.add.assert_called_once_with("list-99", ["77"])
+        mock_client.crm.lists.memberships_api.remove.assert_not_called()
+
+    def test_removes_from_list_when_inactive(self):
+        mock_client = MagicMock()
+        mock_client.crm.contacts.search_api.do_search.return_value = _search_result(
+            total=1, contact_id="77"
+        )
+
+        with (
+            patch.object(hubspot_sync, "_get_hs_client", return_value=mock_client),
+            patch.object(hubspot_sync.settings, "hubspot_api_key", "fake-key"),
+            patch.object(hubspot_sync.settings, "hubspot_newsletter_list_id", "list-99"),
+        ):
+            result = hubspot_sync.sync_subscriber_to_hubspot(_sub(is_active=False))
+
+        assert result is True
+        mock_client.crm.lists.memberships_api.remove.assert_called_once_with("list-99", ["77"])
+        mock_client.crm.lists.memberships_api.add.assert_not_called()
+
+    def test_skips_list_when_list_id_empty(self):
+        mock_client = MagicMock()
+        mock_client.crm.contacts.search_api.do_search.return_value = _search_result(
+            total=1, contact_id="77"
+        )
+
+        with (
+            patch.object(hubspot_sync, "_get_hs_client", return_value=mock_client),
+            patch.object(hubspot_sync.settings, "hubspot_api_key", "fake-key"),
+            patch.object(hubspot_sync.settings, "hubspot_newsletter_list_id", ""),
+        ):
+            hubspot_sync.sync_subscriber_to_hubspot(_sub())
+
+        mock_client.crm.lists.memberships_api.add.assert_not_called()
+        mock_client.crm.lists.memberships_api.remove.assert_not_called()
+
+    def test_list_failure_still_returns_true_after_upsert(self):
+        from hubspot.crm.lists.exceptions import ApiException as ListsApiException
+
+        mock_client = MagicMock()
+        mock_client.crm.contacts.search_api.do_search.return_value = _search_result(
+            total=1, contact_id="77"
+        )
+        mock_client.crm.lists.memberships_api.add.side_effect = ListsApiException(
+            status=403, reason="Forbidden"
+        )
+
+        with (
+            patch.object(hubspot_sync, "_get_hs_client", return_value=mock_client),
+            patch.object(hubspot_sync.settings, "hubspot_api_key", "fake-key"),
+            patch.object(hubspot_sync.settings, "hubspot_newsletter_list_id", "list-99"),
+        ):
+            result = hubspot_sync.sync_subscriber_to_hubspot(_sub(is_active=True))
+
+        assert result is True
+        mock_client.crm.contacts.basic_api.update.assert_called_once()
+
+    def test_new_contact_gets_list_add_with_created_id(self):
+        mock_client = MagicMock()
+        mock_client.crm.contacts.search_api.do_search.return_value = _search_result(0)
+        created = MagicMock()
+        created.id = "42"
+        mock_client.crm.contacts.basic_api.create.return_value = created
+
+        with (
+            patch.object(hubspot_sync, "_get_hs_client", return_value=mock_client),
+            patch.object(hubspot_sync.settings, "hubspot_api_key", "fake-key"),
+            patch.object(hubspot_sync.settings, "hubspot_newsletter_list_id", "list-1"),
+        ):
+            hubspot_sync.sync_subscriber_to_hubspot(_sub(is_active=True))
+
+        mock_client.crm.lists.memberships_api.add.assert_called_once_with("list-1", ["42"])

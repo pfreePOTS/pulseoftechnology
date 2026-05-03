@@ -80,13 +80,13 @@ export default async function EveryonePage() {
     <div className="flex min-h-screen flex-col bg-white">
       <GlobalHeader />
       <main className="flex-1">
-        {/* HERO — broad framing + live stats badges (no profile tags). */}
-        <section className="relative overflow-hidden border-b-4 border-pulse-teal bg-[#111] px-8 py-16">
+        {/* HERO — min-height + padding aligned with HeroSection / /radar */}
+        <section className="relative flex min-h-[560px] items-center overflow-hidden border-b-4 border-pulse-teal bg-[#111]">
           <div
             className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[rgba(10,10,15,0.82)] via-[rgba(10,10,15,0.65)] to-[rgba(10,10,15,0.45)]"
             aria-hidden
           />
-          <div className="relative z-[1] mx-auto max-w-[1100px]">
+          <div className="relative z-[1] mx-auto w-full max-w-[1100px] px-6 py-16">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-pulse-teal/30 bg-pulse-teal/10 px-4 py-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-pulse-teal" aria-hidden />
               <span className="font-sans text-[13px] font-semibold tracking-[2px] text-pulse-teal uppercase">

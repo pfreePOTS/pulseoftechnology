@@ -23,16 +23,19 @@ const SSR_FETCH_DEADLINE_MS = 15_000;
 /**
  * Bounded `fetch` for public JSON routes on the Pulse API — returns `null` on
  * HTTP errors, timeouts, abort, or invalid JSON handlers.
+ *
+ * @param deadlineMs — override for slow AI routes (e.g. `/api/recommended-path`).
  */
 export async function ssrFetchJsonUnknown(
   pathname: string,
   init?: Omit<RequestInit, "signal" | "cache">,
+  deadlineMs: number = SSR_FETCH_DEADLINE_MS,
 ): Promise<unknown | null> {
   const url = pathname.startsWith("http")
     ? pathname
     : `${SSR_PUBLIC_API_BASE}${pathname.startsWith("/") ? pathname : `/${pathname}`}`;
   const ac = new AbortController();
-  const tid = setTimeout(() => ac.abort(), SSR_FETCH_DEADLINE_MS);
+  const tid = setTimeout(() => ac.abort(), deadlineMs);
   try {
     const res = await fetch(url, {
       ...init,
@@ -51,7 +54,12 @@ export async function ssrFetchJsonUnknown(
 export async function ssrFetchJson<T>(
   pathname: string,
   init?: Omit<RequestInit, "signal" | "cache">,
+  deadlineMs?: number,
 ): Promise<T | null> {
-  const data = await ssrFetchJsonUnknown(pathname, init);
+  const data = await ssrFetchJsonUnknown(
+    pathname,
+    init,
+    deadlineMs ?? SSR_FETCH_DEADLINE_MS,
+  );
   return data !== null ? (data as T) : null;
 }

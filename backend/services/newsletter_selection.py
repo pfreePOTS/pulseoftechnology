@@ -3,8 +3,9 @@ Rank and pick articles for newsletter deep dives.
 
 Selection is **content- and persona-driven**, not template-driven:
 
-- **Topic domains** are already filtered upstream (`assemble_newsletter_topics`) using the
-  subscriber's domain picks and/or role domain tags.
+- Topic domains are narrowed in ``assemble_newsletter_topics``
+  (`email_service`): domain picks first, then a **fallback ladder** (industry / persona /
+  ingest freshness vs all-pipeline topics) guarantees a minimally sized pool when ingest is thin.
 - **Article choice within a topic** prefers pieces that have a substantive
   ``persona_impacts[role_name]`` line for one of the subscriber's job titles (Role.name), as
   produced during AI processing. That is the primary signal for "CFO vs CTO" relevance.
@@ -20,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -91,6 +93,13 @@ def _best_persona_line_for_roles(article: Article, role_names: list[str] | None)
         if len(line) > len(best):
             best = line
     return best
+
+
+def article_has_persona_for_roles(article: Article, role_names: list[str] | None) -> bool:
+    """Whether ``article.persona_impacts`` has substantive text for one of ``role_names``."""
+    if not role_names:
+        return True
+    return any(_persona_line_for_role(article, rn) for rn in role_names)
 
 
 def _article_recency_dt(article: Article) -> datetime | None:
@@ -312,3 +321,145 @@ def resolve_role_names_from_intake(intake_role: str, db: Session) -> list[str] |
                 token_hits[n] = n
                 break
     return list(token_hits.values()) or None
+
+
+# Blend article/persona signal into topic ordering — matches public Recommended Path.
+NEWSLETTER_TOPIC_SIGNAL_BLEND = 0.22
+
+
+def industry_radar_bonus(topic: Topic, industry: str) -> float:
+    """Boost topics whose title/summary co-mentions sector language."""
+    ind = industry.strip().lower()
+    if len(ind) < 3:
+        return 0.0
+    blob = f"{topic.name} {(topic.summary or '')}".lower()
+    bonus = 0.0
+    if ind in blob:
+        bonus += 2.8
+    if "transport" in ind:
+        for kw in (
+            "transport",
+            "transportation",
+            "logistics",
+            "freight",
+            "fleet",
+            "supply chain",
+            "shipping",
+            "mobility",
+        ):
+            if kw in blob:
+                bonus += 2.6
+                break
+    if "health" in ind:
+        for kw in ("health", "clinical", "hospital", "patient"):
+            if kw in blob:
+                bonus += 2.4
+                break
+    return min(bonus, 6.0)
+
+
+def recommended_path_topic_base_rank(
+    db: Session,
+    topic: Topic,
+    *,
+    industry: str,
+    role_names: list[str] | None,
+    since: datetime,
+    now: datetime,
+) -> float:
+    """Topic urgency, industry_positions hint, blended fresh-article persona signal."""
+    score = float(topic.urgency_score or 0.0)
+    ind_l = (industry or "").strip().lower()
+    if ind_l:
+        ip = topic.industry_positions
+        if isinstance(ip, dict):
+            for key in ip.keys():
+                if ind_l in str(key).lower():
+                    score += 2.0
+                    break
+    peak = topic_peak_newsletter_signal_for_recommended(
+        db,
+        topic,
+        role_names=role_names,
+        industry_needle=industry or "",
+        reference_time=now,
+        article_after=since,
+    )
+    return score + NEWSLETTER_TOPIC_SIGNAL_BLEND * peak
+
+
+def recommended_path_topic_total_rank(
+    db: Session,
+    topic: Topic,
+    *,
+    industry: str,
+    role_names: list[str] | None,
+    since: datetime,
+    now: datetime,
+) -> float:
+    """Base rank plus title/summary industry keyword reinforcement (recommended path parity)."""
+    return recommended_path_topic_base_rank(
+        db, topic, industry=industry, role_names=role_names, since=since, now=now
+    ) + industry_radar_bonus(topic, industry)
+
+
+def newsletter_subscriber_profile_topic_rank(
+    db: Session,
+    topic: Topic,
+    *,
+    subscriber: object,
+    role_names: list[str] | None,
+    article_after: datetime,
+    reference_time: datetime | None = None,
+) -> float:
+    """Max rank across subscriber industries — matches multi-sector executives."""
+    now = reference_time or datetime.now(UTC)
+    raw_inds = getattr(subscriber, "industries", None) or []
+    inds = [str(x).strip() for x in raw_inds if x is not None and str(x).strip()]
+    if not inds:
+        inds = [""]
+    best = float("-inf")
+    for ind in inds:
+        score = recommended_path_topic_total_rank(
+            db, topic, industry=ind, role_names=role_names, since=article_after, now=now
+        )
+        if score > best:
+            best = score
+    return best
+
+
+def sort_topics_for_newsletter_profile(
+    db: Session,
+    topics: Sequence[Topic],
+    subscriber: object,
+    role_objs: list,
+    *,
+    article_after: datetime,
+    reference_time: datetime | None = None,
+) -> list[Topic]:
+    """
+    Order briefing topics by profile-aware score (domains already applied upstream).
+
+    Uses the same industry + persona + freshness signals as Recommended Path ordering so
+    "Your Radar Briefing" aligns with subscriber industries and roles, not urgency alone.
+    """
+    names = [(getattr(r, "name", None) or "").strip() for r in role_objs]
+    role_names = [n for n in names if n] or None
+    now = reference_time or datetime.now(UTC)
+
+    ranked: list[tuple[float, float, int, Topic]] = []
+    for t in topics:
+        score = newsletter_subscriber_profile_topic_rank(
+            db,
+            t,
+            subscriber=subscriber,
+            role_names=role_names,
+            article_after=article_after,
+            reference_time=now,
+        )
+        urg = float(t.urgency_score or 0.0)
+        tid = getattr(t, "id", 0)
+        ranked.append((score, urg, int(tid) if tid is not None else 0, t))
+
+    ranked.sort(key=lambda x: (-x[0], -x[1], -x[2]))
+    return [row[3] for row in ranked]

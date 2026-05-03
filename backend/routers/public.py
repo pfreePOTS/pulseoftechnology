@@ -1,6 +1,7 @@
 import logging
 import re
 from datetime import UTC, datetime, timedelta
+from functools import partial
 
 import jwt
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
@@ -27,16 +28,13 @@ from ..services.ai_service import (
 from ..services.hubspot_sync import sync_subscriber_to_hubspot
 from ..services.newsletter_selection import (
     RECOMMENDED_PATH_ARTICLE_LOOKBACK,
+    recommended_path_topic_total_rank,
     resolve_role_names_from_intake,
-    topic_peak_newsletter_signal_for_recommended,
 )
 from ..services.subscriber_tokens import decode_subscriber_preferences_token
 from ..services.tracked_article_filter import article_qualifies_pulse_tracked_surface
 
 logger = logging.getLogger(__name__)
-
-# Blend newsletter-style article scores into topic ordering (same signals as deep dives).
-_NEWSLETTER_SIGNAL_BLEND = 0.22
 
 router = APIRouter(prefix="/api", tags=["public"])
 
@@ -221,6 +219,7 @@ class ExperienceItem(BaseModel):
 
     title: str
     description: str
+    icon: str = "default"
 
 
 class RecommendedWatchStoryOut(BaseModel):
@@ -422,7 +421,9 @@ def update_subscriber_preferences(
     subscriber.is_active = True
     db.commit()
     db.refresh(subscriber)
-    background_tasks.add_task(sync_subscriber_to_hubspot, subscriber)
+    background_tasks.add_task(
+        partial(sync_subscriber_to_hubspot, subscriber, source="preference_update")
+    )
     return subscriber
 
 
@@ -437,7 +438,7 @@ def unsubscribe_subscriber(
     subscriber.is_active = False
     db.commit()
     db.refresh(subscriber)
-    background_tasks.add_task(sync_subscriber_to_hubspot, subscriber)
+    background_tasks.add_task(partial(sync_subscriber_to_hubspot, subscriber, source="unsubscribe"))
     return subscriber
 
 
@@ -465,7 +466,9 @@ def subscribe(
         existing.role_ids = rids
         db.commit()
         db.refresh(existing)
-        background_tasks.add_task(sync_subscriber_to_hubspot, existing)
+        background_tasks.add_task(
+            partial(sync_subscriber_to_hubspot, existing, source="subscribe_reactivate")
+        )
         return SubscribeResponse(
             id=existing.id, email=existing.email, message="Subscription reactivated"
         )
@@ -481,7 +484,9 @@ def subscribe(
     db.add(subscriber)
     db.commit()
     db.refresh(subscriber)
-    background_tasks.add_task(sync_subscriber_to_hubspot, subscriber)
+    background_tasks.add_task(
+        partial(sync_subscriber_to_hubspot, subscriber, source="subscribe_signup")
+    )
     return SubscribeResponse(
         id=subscriber.id, email=subscriber.email, message="Successfully subscribed"
     )
@@ -610,39 +615,6 @@ def _domains_for_intake_issue(issue: str) -> list[str]:
     return out
 
 
-def _recommended_topic_rank_value(
-    db: Session,
-    topic: Topic,
-    *,
-    industry: str,
-    role_names: list[str] | None,
-    since: datetime,
-    now: datetime,
-) -> float:
-    """
-    Topic urgency + industry_positions match (published topics only — caller filters)
-    + blended newsletter/article signal for “today’s” slice within the window.
-    """
-    score = float(topic.urgency_score or 0.0)
-    ind_l = (industry or "").strip().lower()
-    if ind_l:
-        ip = topic.industry_positions
-        if isinstance(ip, dict):
-            for key in ip.keys():
-                if ind_l in str(key).lower():
-                    score += 2.0
-                    break
-    peak = topic_peak_newsletter_signal_for_recommended(
-        db,
-        topic,
-        role_names=role_names,
-        industry_needle=industry or "",
-        reference_time=now,
-        article_after=since,
-    )
-    return score + _NEWSLETTER_SIGNAL_BLEND * peak
-
-
 def _domains_for_intake(issue: str, stage: str) -> list[str]:
     """
     Extend wizard issue→domain mapping with **stage** hints ("planning for AI",
@@ -681,37 +653,6 @@ def _domains_for_intake(issue: str, stage: str) -> list[str]:
             seen.add(d)
             merged.append(d)
     return merged
-
-
-def _industry_radar_bonus(topic: Topic, industry: str) -> float:
-    """Boost topics whose title/summary co-mentions sector language."""
-    ind = industry.strip().lower()
-    if len(ind) < 3:
-        return 0.0
-    blob = f"{topic.name} {(topic.summary or '')}".lower()
-    bonus = 0.0
-    if ind in blob:
-        bonus += 2.8
-    if "transport" in ind:
-        for kw in (
-            "transport",
-            "transportation",
-            "logistics",
-            "freight",
-            "fleet",
-            "supply chain",
-            "shipping",
-            "mobility",
-        ):
-            if kw in blob:
-                bonus += 2.6
-                break
-    if "health" in ind:
-        for kw in ("health", "clinical", "hospital", "patient"):
-            if kw in blob:
-                bonus += 2.4
-                break
-    return min(bonus, 6.0)
 
 
 def _articles_for_watch_stories(
@@ -771,19 +712,16 @@ def _topics_for_recommended(
 
     fallback_pool: list[Topic] = []
     if domains and len(candidates) < limit:
-        fallback_pool = (
-            base_q.order_by(Topic.urgency_score.desc()).limit(max(limit + 24, 32)).all()
-        )
+        fallback_pool = base_q.order_by(Topic.urgency_score.desc()).limit(max(limit + 24, 32)).all()
 
     cand_ids = {c.id for c in candidates}
     pool = candidates + [t for t in fallback_pool if t.id not in cand_ids]
 
     scored: list[tuple[float, Topic]] = []
     for t in pool:
-        score = _recommended_topic_rank_value(
+        score = recommended_path_topic_total_rank(
             db, t, industry=industry, role_names=role_names, since=since, now=now
         )
-        score += _industry_radar_bonus(t, industry)
         scored.append((score, t))
 
     scored.sort(key=lambda x: -x[0])
@@ -845,6 +783,10 @@ def recommended_path(
     role: str = Query("", max_length=500),
     issue: str = Query("", max_length=500),
     stage: str = Query("", max_length=8000),
+    skip_ai: bool = Query(
+        False,
+        description="Return deterministic headline, synthesis, and experience cards without calling the LLM (for SSR fallback when the model path is slow or unavailable).",
+    ),
     db: Session = Depends(get_db),
 ):
     """Personalized headline + synthesis (Claude), matching radar topics, and curated content.
@@ -874,11 +816,16 @@ def recommended_path(
         stage,
         radar_topics=topics,
         radar_story_pairs=watch_pairs,
+        skip_llm=skip_ai,
     )
     items = _content_for_recommended(db, industry, issue, limit=4)
     raw_experience = syn.get("experience_items", []) or []
     experience_items = [
-        ExperienceItem(title=str(e.get("title", "")), description=str(e.get("description", "")))
+        ExperienceItem(
+            title=str(e.get("title", "")),
+            description=str(e.get("description", "")),
+            icon=str(e.get("icon") or "default").strip() or "default",
+        )
         for e in raw_experience
         if isinstance(e, dict) and e.get("title") and e.get("description")
     ]

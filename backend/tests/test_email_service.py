@@ -247,10 +247,41 @@ class TestAssembleNewsletterTopics:
         full = email_service.assemble_newsletter_topics(sub, topics, skip_domain_filter=True)
         assert len(full) == 2
 
+    def test_merged_pipeline_triggers_resolver(self):
+        merged = SimpleNamespace(
+            newsletter_top_ingest_hours=24,
+            newsletter_deep_dive_ingest_hours=72,
+            newsletter_article_lookback_days=4,
+        )
+        sub = _sub()
+        topics = [_topic()]
+        fake_db = MagicMock()
+        with patch.object(
+            email_service,
+            "_resolve_newsletter_topic_pool",
+            return_value=(topics, "domains_only"),
+        ) as mock_r:
+            out = email_service.assemble_newsletter_topics(
+                sub, topics, db=fake_db, merged_pipeline=merged
+            )
+        assert out == topics
+        mock_r.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # run_daily_newsletter integration
 # ---------------------------------------------------------------------------
+
+
+def _assemble_topics_legacy_stub(
+    subscriber: object,
+    eligible_topics: list,
+    db=None,
+    **kwargs: object,
+) -> list:
+    """Scheduler tests use MagicMock DB — article-aware assembly needs a real session."""
+    cohort = email_service._domain_topics_for_subscriber(eligible_topics, subscriber)
+    return sorted(cohort, key=lambda t: t.urgency_score, reverse=True)
 
 
 class TestRunDailyNewsletter:
@@ -260,6 +291,11 @@ class TestRunDailyNewsletter:
         with (
             patch.object(email_service.settings, "sendgrid_api_key", "test-key-for-ci"),
             patch.object(email_service, "build_hot_of_day", return_value={"hot_topic": None}),
+            patch.object(
+                email_service,
+                "assemble_newsletter_topics",
+                side_effect=_assemble_topics_legacy_stub,
+            ),
             patch.object(email_service, "send_daily_newsletter") as mock_send,
             patch.object(email_service, "set_last_newsletter_sent_at"),
         ):
@@ -277,6 +313,11 @@ class TestRunDailyNewsletter:
             patch.object(email_service.settings, "sendgrid_api_key", "test-key-for-ci"),
             patch.object(email_service, "build_hot_of_day", return_value={"hot_topic": None}),
             patch.object(
+                email_service,
+                "assemble_newsletter_topics",
+                side_effect=_assemble_topics_legacy_stub,
+            ),
+            patch.object(
                 email_service, "send_daily_newsletter", return_value=(True, None)
             ) as mock_send,
             patch.object(email_service, "set_last_newsletter_sent_at"),
@@ -290,6 +331,7 @@ class TestRunDailyNewsletter:
         assert call.kwargs["db"] is mock_db
         assert "promoted_content" in call.kwargs
         assert call.kwargs.get("hot_of_day") == {"hot_topic": None}
+        assert call.kwargs.get("merged_pipeline") is not None
 
     def test_skips_subscriber_with_no_matching_domains(self):
         sub = _sub(domains=["Finance"])
@@ -300,6 +342,11 @@ class TestRunDailyNewsletter:
         with (
             patch.object(email_service.settings, "sendgrid_api_key", "test-key-for-ci"),
             patch.object(email_service, "build_hot_of_day", return_value={"hot_topic": None}),
+            patch.object(
+                email_service,
+                "assemble_newsletter_topics",
+                side_effect=_assemble_topics_legacy_stub,
+            ),
             patch.object(email_service, "send_daily_newsletter") as mock_send,
             patch.object(email_service, "set_last_newsletter_sent_at"),
         ):
@@ -332,7 +379,12 @@ def test_send_test_newsletter_rejects_when_no_pipeline_topics():
 def test_send_test_newsletter_dispatches():
     topic = _topic()
     mock_db = _mock_db_for_daily_newsletter(topic_rows=[topic], subscriber_rows=[])
-    merged = SimpleNamespace(newsletter_article_lookback_days=7)
+    merged = SimpleNamespace(
+        newsletter_top_ingest_hours=24,
+        newsletter_deep_dive_ingest_hours=72,
+        newsletter_article_lookback_days=7,
+        newsletter_enabled=True,
+    )
     with (
         patch.object(email_service.settings, "sendgrid_api_key", "k"),
         patch.object(email_service, "merge_pipeline_settings", return_value=merged),
@@ -442,6 +494,7 @@ def test_build_html_hot_topic_lead_when_subscriber_includes_hot_topic():
     assert "Microsoft agent story" in html
     assert "Pulse of Technology Daily" in html
     assert "pots_logo_new.png" in html
+    assert 'href="https://pulseone.com"' in html
     assert "twitter.com/intent/tweet" in html
     assert "mailto:?" in html
     assert "Hot on your radar" in html
@@ -450,11 +503,12 @@ def test_build_html_hot_topic_lead_when_subscriber_includes_hot_topic():
     assert html.count("<img") == 2
 
 
-def test_build_html_no_hot_lead_when_hot_topic_not_in_subscriber_topics():
+def test_build_html_hot_lead_shows_when_hot_topic_not_in_subscriber_topics():
+    """Global hot lead is editorial: subscribers see it even if that topic is outside their rollup."""
     hot = {
         "hot_topic": {"id": 99, "name": "Other", "domain": "AI", "subdomain": ""},
         "hot_article": {
-            "title": "Should not appear",
+            "title": "Breaking global briefing lead",
             "url": "https://example.com/y",
             "source_name": "X",
             "ingested_at": datetime(2026, 4, 13, tzinfo=UTC),
@@ -470,8 +524,8 @@ def test_build_html_no_hot_lead_when_hot_topic_not_in_subscriber_topics():
         db=MagicMock(),
         hot_of_day=hot,
     )
-    assert "Should not appear" not in html
-    assert "Hot on your radar" not in html
+    assert "Breaking global briefing lead" in html
+    assert "Hot on your radar" in html
     assert "Pulse of Technology Daily" in html
     assert "pots_logo_new.png" in html
 

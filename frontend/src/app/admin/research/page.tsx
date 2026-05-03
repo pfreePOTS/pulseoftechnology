@@ -18,13 +18,13 @@ interface ArticleRow {
   archived_at?: string | null;
 }
 
-type StatusFilter = "all" | "raw" | "processed" | "skipped";
+type StatusFilter = "all" | "raw" | "retry" | "processed" | "review" | "skipped";
 type ArchiveView = "active" | "archived";
 
 const PAGE_LIMIT = 200;
 
 function statusQueryParam(filter: StatusFilter): string {
-  if (filter === "all") return "raw,processed,skipped";
+  if (filter === "all") return "raw,retry,processed,review,skipped";
   return filter;
 }
 
@@ -41,8 +41,10 @@ type JobState = "idle" | "running" | "success" | "error";
 
 interface PipelineProgress {
   raw: number;
+  retry?: number;
   processed: number;
   skipped: number;
+  review: number;
   total: number;
 }
 
@@ -190,8 +192,10 @@ export default function ResearchCollectionPage() {
           </strong>{" "}
           (APScheduler, not Celery): RSS fetch + AI processing run{" "}
           <strong className="font-medium text-gray-400">every hour</strong>.
-          Signal scoring runs daily at 06:00 UTC; newsletter at 07:00 UTC. Use
-          the buttons below for manual runs — large batches may take minutes.
+          Each pass processes at most a capped batch of raw/retry articles so the
+          API stays responsive; leftovers continue on the next tick or when you
+          click <em>Process raw articles</em>. Signal scoring runs daily at
+          06:00 UTC; newsletter at 07:00 UTC.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <button
@@ -259,7 +263,9 @@ export default function ResearchCollectionPage() {
             [
               ["all", "All"],
               ["raw", "Raw"],
+              ["retry", "Retry"],
               ["processed", "Processed"],
+              ["review", "Review"],
               ["skipped", "Skipped"],
             ] as const
           ).map(([value, label]) => (
@@ -404,10 +410,11 @@ export default function ResearchCollectionPage() {
 }
 
 function PipelineTicker({ progress }: { progress: PipelineProgress }) {
-  const { raw, processed, skipped, total } = progress;
-  const done = processed + skipped;
+  const { raw, retry = 0, processed, skipped, review, total } = progress;
+  const queued = raw + retry;
+  const done = Math.max(0, total - queued);
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-  const isProcessing = raw > 0;
+  const isProcessing = queued > 0;
 
   return (
     <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
@@ -425,8 +432,8 @@ function PipelineTicker({ progress }: { progress: PipelineProgress }) {
         )}
         <span className="font-medium text-gray-300">
           {isProcessing
-            ? `Processing ${done} of ${total}`
-            : "All articles processed"}
+            ? `Queue: ${queued} raw/retry · ${done} of ${total} past queue`
+            : "No articles waiting on the AI pipeline"}
         </span>
       </div>
       <div className="flex items-center gap-3 text-xs text-gray-500">
@@ -438,9 +445,19 @@ function PipelineTicker({ progress }: { progress: PipelineProgress }) {
             <span className="text-gray-400">{skipped}</span> skipped
           </span>
         )}
+        {review > 0 && (
+          <span>
+            <span className="text-fuchsia-300">{review}</span> review
+          </span>
+        )}
         {raw > 0 && (
           <span>
             <span className="text-amber-400">{raw}</span> raw
+          </span>
+        )}
+        {retry > 0 && (
+          <span>
+            <span className="text-sky-400">{retry}</span> retry
           </span>
         )}
       </div>
@@ -468,6 +485,13 @@ function StatusBadge({ status }: { status: string }) {
       </span>
     );
   }
+  if (s === "retry") {
+    return (
+      <span className="inline-flex rounded-full bg-sky-500/15 px-2.5 py-0.5 text-xs font-medium text-sky-400">
+        retry
+      </span>
+    );
+  }
   if (s === "processed") {
     return (
       <span className="inline-flex rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-medium text-emerald-400">
@@ -479,6 +503,13 @@ function StatusBadge({ status }: { status: string }) {
     return (
       <span className="inline-flex rounded-full bg-gray-500/15 px-2.5 py-0.5 text-xs font-medium text-gray-400">
         skipped
+      </span>
+    );
+  }
+  if (s === "review") {
+    return (
+      <span className="inline-flex rounded-full bg-fuchsia-500/15 px-2.5 py-0.5 text-xs font-medium text-fuchsia-300">
+        review
       </span>
     );
   }

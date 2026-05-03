@@ -16,6 +16,7 @@ class AgentRun(Base):
     is_success: Mapped[bool] = mapped_column(Boolean, nullable=False)
     fallback_used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     context_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    failure_detail: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     article_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("articles.id"), nullable=True, index=True
     )

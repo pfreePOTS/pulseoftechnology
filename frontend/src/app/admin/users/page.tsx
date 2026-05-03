@@ -21,7 +21,7 @@ export default function AdminUsersPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [invitePages, setInvitePages] = useState<Record<string, boolean>>(() => {
     const o: Record<string, boolean> = {};
-    for (const n of INVITABLE_NAV) o[n.slug] = false;
+    for (const n of INVITABLE_NAV) o[n.href] = false;
     return o;
   });
   const [inviteIsSuperuser, setInviteIsSuperuser] = useState(false);
@@ -47,16 +47,18 @@ export default function AdminUsersPage() {
     void load();
   }, [load]);
 
-  function togglePage(slug: string) {
-    setInvitePages((prev) => ({ ...prev, [slug]: !prev[slug] }));
+  function togglePageByHref(href: string) {
+    setInvitePages((prev) => ({ ...prev, [href]: !prev[href] }));
   }
 
   async function invite(e: React.FormEvent) {
     e.preventDefault();
     setInviteMessage(null);
-    const page_permissions = Object.entries(invitePages)
-      .filter(([, v]) => v)
-      .map(([k]) => k);
+    const page_permissions = Array.from(
+      new Set(
+        INVITABLE_NAV.filter((n) => invitePages[n.href]).map((n) => n.slug),
+      ),
+    );
     if (!inviteIsSuperuser && page_permissions.length === 0) {
       setInviteMessage("Select at least one page for this user.");
       return;
@@ -234,16 +236,16 @@ export default function AdminUsersPage() {
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {INVITABLE_NAV.map((n) => (
                 <label
-                  key={n.slug}
+                  key={n.href}
                   className={`flex items-center gap-2 text-sm ${
                     inviteIsSuperuser ? "text-gray-600" : "text-gray-300"
                   }`}
                 >
                   <input
                     type="checkbox"
-                    checked={invitePages[n.slug] ?? false}
+                    checked={invitePages[n.href] ?? false}
                     disabled={inviteIsSuperuser}
-                    onChange={() => togglePage(n.slug)}
+                    onChange={() => togglePageByHref(n.href)}
                     className="rounded border-gray-600"
                   />
                   {n.label}

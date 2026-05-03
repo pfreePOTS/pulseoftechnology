@@ -32,6 +32,9 @@ def _cors_allow_origins() -> list[str]:
 
 
 logging.basicConfig(level=logging.INFO)
+# Routine per-request lines from RSS and other httpx clients add a lot of noise at INFO.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 @asynccontextmanager

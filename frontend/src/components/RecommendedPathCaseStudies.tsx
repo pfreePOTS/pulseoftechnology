@@ -4,13 +4,18 @@ import { CaseStudyHeroIcon, caseStudyHeroPanelClass } from "@/components/CaseStu
 
 import { useEffect, useRef, useState } from "react";
 
-import { RECOMMENDED_PATH_CASE_STUDIES, type RecommendedCaseStudy } from "@/lib/recommendedPathCaseStudiesPlaceholder";
+import type { RecommendedCaseStudy } from "@/lib/recommendedPathCaseStudies";
+import { recommendedCaseStudiesForIndustry } from "@/lib/recommendedPathCaseStudies";
 
 export default function RecommendedPathCaseStudies({
   industry,
+  issue,
 }: {
   industry?: string;
+  issue?: string;
 }) {
+  const studies = recommendedCaseStudiesForIndustry(industry);
+  const issueLead = issueLeadFromIntake(issue);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [active, setActive] = useState<RecommendedCaseStudy | null>(null);
 
@@ -48,13 +53,13 @@ export default function RecommendedPathCaseStudies({
           </h2>
           <p className="mx-auto mt-2 max-w-[640px] font-sans text-base leading-relaxed text-[#646464]">
             {industry
-              ? `Illustrative composites — patterns we often emphasize alongside ${industry.trim()} initiatives. Tap a card for approach, solution, and outcomes.`
-              : "Illustrative composites — tap any card for approach, solution, and how PulseOne partnered. Content can later load from your knowledgebase."}
+              ? `${issueLead}These are illustrative composites—examples of projects we steer on ${industry.trim()} mandates, not transcripts of named clients. Open a card for approach, solution, and how PulseOne tends to plug in.`
+              : `${issueLead}Illustrative composites—examples tuned to mandates like yours, not named-client writeups. Tap a card for detail; later this section can hydrate from your knowledgebase.`}
           </p>
         </div>
 
         <ul className="mx-auto grid max-w-[1040px] gap-7 sm:grid-cols-2 lg:grid-cols-3">
-          {RECOMMENDED_PATH_CASE_STUDIES.map((cs) => (
+          {studies.map((cs) => (
             <li key={cs.id} className="flex min-h-[100%]">
               <button
                 type="button"
@@ -121,6 +126,14 @@ export default function RecommendedPathCaseStudies({
       </dialog>
     </section>
   );
+}
+
+function issueLeadFromIntake(issue: string | undefined): string {
+  const t = issue?.trim();
+  if (!t) return "";
+  const max = 110;
+  const shown = t.length <= max ? t : `${t.slice(0, max - 1).trimEnd()}…`;
+  return `Reflecting priorities you shared (“${shown}”), `;
 }
 
 function ModalBlock({ label, text, isLast }: { label: string; text: string; isLast?: boolean }) {

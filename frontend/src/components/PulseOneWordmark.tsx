@@ -1,6 +1,6 @@
 /**
- * Typographic PulseOne wordmark — DESIGN.md: IBM Plex Sans, red accent (#d5171e / pulse-red).
- * The raster asset `pulseone_logo_official.png` is not in `public/`; this avoids broken images on deploy.
+ * Typographic PulseOne wordmark — DESIGN.md: IBM Plex Sans, red accent (pulse-red).
+ * Marketing chrome uses `PulseOneOfficialLogo` (`public/pulseone_logo_official.png`); this remains for typography-only layouts.
  */
 
 type Props = {

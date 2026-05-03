@@ -7,6 +7,10 @@ Requires: pillow, numpy
     pip install pillow numpy
     python scripts/generate_frontend_placeholders.py
 
+WARNING: Running this overwrote production marketing/partner binaries in commit 80507af
+(staging placeholders). Prefer restoring originals from git (parent of that commit or your
+backup) instead of committing this script output for production-like deploys.
+
 Raster assets are abstract brand-toned meshes (not stock photography).
 Partner carousel files are neutral monogram placeholders — swap for real logos.
 Raster SVG logos: pulseone_logo_official.svg, pulseone_logo_dark.svg

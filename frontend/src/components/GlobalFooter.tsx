@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { PulseOneWordmark } from "@/components/PulseOneWordmark";
+import { PulseOneOfficialLogo } from "@/components/PulseOneOfficialLogo";
 
 export default function GlobalFooter() {
   const year = new Date().getFullYear();
@@ -11,7 +11,7 @@ export default function GlobalFooter() {
           <div>
             <div className="mb-4">
               <Link href="/" className="inline-block" aria-label="PulseOne">
-                <PulseOneWordmark variant="dark" className="text-[clamp(1.125rem,1.9vw,1.5rem)] leading-none" />
+                <PulseOneOfficialLogo variant="onDark" size="footer" />
               </Link>
             </div>
             <p className="font-sans text-sm leading-relaxed text-white/55">

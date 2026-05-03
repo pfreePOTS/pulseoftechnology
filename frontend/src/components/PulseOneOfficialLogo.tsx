@@ -7,16 +7,15 @@ const OFFICIAL_PNG = {
 } as const;
 
 type Props = {
-  /** PNG is authored for light backgrounds — filters for charcoal admin shells. */
+  /** PNG for light surfaces; `onDark` inverts for charcoal backgrounds. */
   variant?: "onDark" | "onLight";
-  /** Sidebar vs login / password gate. */
-  size?: "md" | "sm";
+  size?: "sm" | "md" | "header" | "footer";
   className?: string;
 };
 
 /**
- * Official PulseOne raster wordmark (`public/pulseone_logo_official.png`).
- * Marketing header keeps typography `PulseOneWordmark`; admin uses this lockup.
+ * Official PulseOne lockup in `public/pulseone_logo_official.png`
+ * (typically includes tagline below the wordmark).
  */
 export function PulseOneOfficialLogo({
   variant = "onDark",
@@ -25,18 +24,40 @@ export function PulseOneOfficialLogo({
 }: Props) {
   const filter = variant === "onDark" ? "brightness-0 invert opacity-95" : "";
 
-  const sizeCls =
-    size === "sm"
-      ? "h-9 w-auto max-w-[9.75rem] object-contain object-left"
-      : "h-[2.875rem] w-auto max-w-[272px] object-contain object-left sm:h-12 md:h-[3.5rem] md:max-w-[300px]";
+  let sizeCls: string;
+  if (size === "sm") {
+    sizeCls = "h-9 w-auto max-w-[9.75rem] object-contain object-left";
+  } else if (size === "header") {
+    sizeCls =
+      "h-12 w-auto max-w-[min(72vw,340px)] object-contain object-left sm:h-[3.25rem] md:h-[3.5rem] md:max-w-[380px]";
+  } else if (size === "footer") {
+    sizeCls =
+      "h-10 w-auto max-w-[220px] object-contain object-left sm:h-11 sm:max-w-[240px]";
+  } else {
+    sizeCls =
+      "h-[2.875rem] w-auto max-w-[272px] object-contain object-left sm:h-12 md:h-[3.5rem] md:max-w-[300px]";
+  }
+
+  let sizesAttr: string;
+  if (size === "sm") {
+    sizesAttr = "156px";
+  } else if (size === "header") {
+    sizesAttr = "(max-width:768px) 72vw,380px";
+  } else if (size === "footer") {
+    sizesAttr = "240px";
+  } else {
+    sizesAttr = "300px";
+  }
+
+  const priority = size === "header" || size === "md";
 
   return (
     <Image
       {...OFFICIAL_PNG}
       alt="PulseOne — People | Technology | Progress"
       className={[filter, sizeCls, className].filter(Boolean).join(" ")}
-      priority={size !== "sm"}
-      sizes={size === "sm" ? "156px" : "300px"}
+      priority={priority}
+      sizes={sizesAttr}
     />
   );
 }

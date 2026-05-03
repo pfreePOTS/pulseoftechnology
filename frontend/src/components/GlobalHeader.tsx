@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { PulseOneWordmark } from "@/components/PulseOneWordmark";
+import { PulseOneOfficialLogo } from "@/components/PulseOneOfficialLogo";
 
 function NavCaret() {
   return (
@@ -30,13 +30,10 @@ export default function GlobalHeader() {
       <div className="mx-auto flex min-h-[80px] max-w-[1200px] items-center justify-between gap-4 px-6 py-2.5 sm:py-3">
         <Link
           href="/"
-          className="flex shrink-0 flex-col gap-1 leading-none"
+          className="shrink-0 py-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-pulse-teal focus-visible:ring-offset-2"
           aria-label="PulseOne — People | Technology | Progress"
         >
-          <PulseOneWordmark variant="light" className="text-[clamp(1.75rem,3.75vw,2.875rem)] leading-[1] tracking-[0.1em]" />
-          <span className="font-sans text-[9px] font-medium tracking-[0.22em] text-[#605F5F] sm:text-[10px] sm:tracking-[0.26em]">
-            PEOPLE | TECHNOLOGY | PROGRESS
-          </span>
+          <PulseOneOfficialLogo variant="onLight" size="header" />
         </Link>
         <nav className="nav flex min-w-0 flex-1 items-center justify-end gap-0.5 overflow-x-auto text-[13.5px] font-semibold whitespace-nowrap [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <Link

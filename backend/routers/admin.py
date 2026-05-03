@@ -148,9 +148,18 @@ class LoginRequest(BaseModel):
     password: str
 
 
+def _admin_cookie_cross_site_settings() -> tuple[bool, str]:
+    """Railsway / split-host deploys: SPA on frontend host, API on another — cross-origin fetches."""
+    env = app_settings.environment.strip().lower()
+    if env in ("production", "staging"):
+        # Lax cookies are not sent on credentialed cross-origin fetches → login succeeds but session is empty.
+        return True, "none"
+    return False, "lax"
+
+
 def _issue_admin_cookie_response(user: AdminUser) -> JSONResponse:
     token = create_admin_access_token(user)
-    secure = app_settings.environment in ("production", "staging")
+    secure, samesite = _admin_cookie_cross_site_settings()
     response = JSONResponse(
         {
             "access_token": token,
@@ -163,7 +172,7 @@ def _issue_admin_cookie_response(user: AdminUser) -> JSONResponse:
         value=token,
         httponly=True,
         max_age=app_settings.admin_token_expire_minutes * 60,
-        samesite="lax",
+        samesite=samesite,  # type: ignore[arg-type]
         path="/",
         secure=secure,
     )
@@ -192,8 +201,15 @@ def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)
 @router.post("/logout")
 def logout() -> JSONResponse:
     """Clear admin session cookie."""
+    secure, samesite = _admin_cookie_cross_site_settings()
     response = JSONResponse({"ok": True})
-    response.delete_cookie(key=ADMIN_COOKIE_NAME, path="/")
+    response.delete_cookie(
+        key=ADMIN_COOKIE_NAME,
+        path="/",
+        secure=secure,
+        httponly=True,
+        samesite=samesite,  # type: ignore[arg-type]
+    )
     return response
 
 

@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import type { DragEvent } from "react";
 import { useEffect, useState } from "react";
 
-import { PulseOneWordmark } from "@/components/PulseOneWordmark";
+import { PulseOneOfficialLogo } from "@/components/PulseOneOfficialLogo";
 import {
   ADMIN_NAV,
   canAccessAdminPath,
@@ -195,7 +195,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* Brand — same asset as GlobalHeader; inverted like GlobalFooter for dark rail */}
         <div className="border-b border-gray-800 px-4 py-4">
           <Link href="/admin" className="inline-block shrink-0" aria-label="PulseOne admin">
-            <PulseOneWordmark variant="dark" className="text-[1.25rem] leading-none opacity-95" />
+            <PulseOneOfficialLogo variant="onDark" size="sm" />
           </Link>
         </div>
 

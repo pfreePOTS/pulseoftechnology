@@ -88,7 +88,7 @@ Backend must **restart** after you set those variables **if `admin_users` was em
 
 Then sign in at:
 
-`PUBLIC_SITE_URL` + **`/admin/login`** (cookie auth — use the same browser origin listed in **`CORS_ORIGINS`**).
+`PUBLIC_SITE_URL` + **`/admin/login`** (cookie auth — use the same browser origin listed in **`CORS_ORIGINS`**). With **`staging`/`production`** the API sets **`SameSite=None; Secure`** on the admin cookie so split Railway hosts keep the session (`backend/routers/admin.py`).
 
 ### If bootstrap did not create a row
 
@@ -138,3 +138,9 @@ Railway inferred **Railpack/Nix-style** builds because the **service root direct
 **Fix:** In each app service (**Settings → Service** / **Source** depending on Railway UI version), set **Root Directory** to **`backend`** (backend service only) or **`frontend`** (frontend service only). Redeploy. You should then see a **Docker** build path, not a Railpack trace of `./backend`, `./frontend`, etc. together at the repository root.
 
 If offered an explicit builder choice, choose **Dockerfile** and **`Dockerfile.prod`**.
+
+### Admin login never sticks (successful POST then bounced to login)
+
+- Frontend must call the correct **`NEXT_PUBLIC_API_URL`** (HTTPS); rebuild after changing build vars.
+- **`CORS_ORIGINS`** must include the exact frontend **`https://…`** origin.
+- **`ENVIRONMENT`** on the backend must be **`staging`** or **`production`** on Railway — not **`development`** — so the cookie uses **`SameSite=None`** for cross-origin credentialed fetches between your two Railway URLs.

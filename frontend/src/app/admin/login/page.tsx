@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { PulseOneWordmark } from "@/components/PulseOneWordmark";
+import { PulseOneOfficialLogo } from "@/components/PulseOneOfficialLogo";
 import { API_BASE } from "@/lib/api";
 
 export default function AdminLoginPage() {
@@ -51,7 +51,7 @@ export default function AdminLoginPage() {
             className="mb-5 inline-block rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#019E7C] focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950"
             aria-label="PulseOne — home"
           >
-            <PulseOneWordmark variant="dark" className="text-[1.625rem] leading-none opacity-95" />
+            <PulseOneOfficialLogo variant="onDark" size="md" />
           </Link>
           <h1 className="text-2xl font-bold text-white">Admin</h1>
           <p className="mt-1 text-sm text-gray-500">

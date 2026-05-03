@@ -483,7 +483,7 @@ export default function AssessmentsPage() {
 
         <section
           id="schedule"
-          className="relative overflow-hidden scroll-mt-[72px] border-t-[3px] border-pulse-red bg-dark-bg px-8 pt-[80px]"
+          className="relative overflow-hidden scroll-mt-[96px] border-t-[3px] border-pulse-red bg-dark-bg px-8 pt-[80px]"
         >
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_60%_50%,rgba(213,23,30,0.10)_0%,transparent_70%)]" />
           <div className="relative mx-auto flex max-w-[760px] flex-col items-center text-center pb-24">

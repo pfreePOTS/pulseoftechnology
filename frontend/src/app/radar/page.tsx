@@ -102,10 +102,9 @@ export default async function RadarPage() {
             bar + full radar visible below) instead of jumping past the
             gradient and clipping it.
 
-            `scroll-mt-[72px]` matches the `h-[72px]` `sticky top-0 z-[100]`
-            `GlobalHeader`, so the anchor target clears the floating header
-            exactly. Update both numbers together if header height changes. */}
-        <div id="radar" className="scroll-mt-[72px]">
+            `scroll-mt-[96px]` approximates stacked logo + tagline in `GlobalHeader`
+            (`min-h-[80px]` + vertical padding); update together if header height changes. */}
+        <div id="radar" className="scroll-mt-[96px]">
           <div
             className="h-[5px] w-full bg-gradient-to-r from-pulse-red to-pulse-teal"
             aria-hidden

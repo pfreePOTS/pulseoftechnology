@@ -1,5 +1,6 @@
-import Image from "next/image";
 import Link from "next/link";
+
+import { PulseOneWordmark } from "@/components/PulseOneWordmark";
 
 export default function GlobalFooter() {
   const year = new Date().getFullYear();
@@ -9,13 +10,9 @@ export default function GlobalFooter() {
         <div className="grid gap-12 border-b border-white/10 pb-12 md:grid-cols-2 lg:grid-cols-4">
           <div>
             <div className="mb-4">
-              <Image
-                src="/pulseone_logo_official.png"
-                alt="PulseOne"
-                width={180}
-                height={40}
-                className="h-10 w-auto brightness-0 invert"
-              />
+              <Link href="/" className="inline-block" aria-label="PulseOne">
+                <PulseOneWordmark variant="dark" className="text-[clamp(1.125rem,1.9vw,1.5rem)] leading-none" />
+              </Link>
             </div>
             <p className="font-sans text-sm leading-relaxed text-white/55">
               A strategic technology advisory firm and managed service provider. Helping

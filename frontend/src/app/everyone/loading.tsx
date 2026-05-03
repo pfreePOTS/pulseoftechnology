@@ -10,7 +10,7 @@ export default function EveryoneLoading() {
       <span className="sr-only">Loading the broad executive overview…</span>
 
       {/* Header bar */}
-      <div className="h-[72px] animate-pulse bg-gray-200" />
+      <div className="h-[96px] animate-pulse bg-gray-200" />
 
       {/* Hero */}
       <div className="border-b-4 border-pulse-teal bg-[#111] px-8 py-16">

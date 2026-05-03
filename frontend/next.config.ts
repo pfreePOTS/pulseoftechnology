@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Smaller Railway image and default `frontend/Dockerfile.prod` runner.
+  output: "standalone",
 };
 
 export default nextConfig;

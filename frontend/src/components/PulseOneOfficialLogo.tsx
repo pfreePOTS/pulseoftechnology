@@ -1,15 +1,18 @@
 import Image from "next/image";
 
+// Both assets are confirmed RGBA with a real alpha channel (transparent surround,
+// not a baked-in white rectangle). `pulseone_logo_official.png` and the *_white
+// derivative were 100% opaque despite being RGBA — do not reintroduce them.
 const OFFICIAL_PNG_LIGHT = {
-  src: "/pulseone_logo_official.png",
-  width: 524,
-  height: 152,
+  src: "/pots_logo_new.png",
+  width: 386,
+  height: 83,
 } as const;
 
 const OFFICIAL_PNG_DARK = {
-  src: "/pulseone_logo_official_white.png",
-  width: 524,
-  height: 152,
+  src: "/pulseone_logo_white.png",
+  width: 386,
+  height: 83,
 } as const;
 
 type Props = {
@@ -41,8 +44,8 @@ function sizesAttr(size: NonNullable<Props["size"]>): string {
 
 /**
  * Official PulseOne lockup with proper red-ring "ONE":
- *  - light surfaces → ``pulseone_logo_official.png`` (the canonical asset used on the marketing site)
- *  - dark surfaces  → ``pulseone_logo_official_white.png`` (white wordmark + same red ONE for charcoal/admin)
+ *  - light surfaces → ``pots_logo_new.png`` (dark wordmark, real transparent surround)
+ *  - dark surfaces  → ``pulseone_logo_white.png`` (white wordmark + red ONE, real transparent surround)
  */
 export function PulseOneOfficialLogo({
   variant = "onDark",

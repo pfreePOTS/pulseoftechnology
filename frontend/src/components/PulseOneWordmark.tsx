@@ -1,6 +1,6 @@
 /**
  * Typographic PulseOne wordmark — DESIGN.md: IBM Plex Sans, red accent (pulse-red).
- * Marketing chrome uses `PulseOneOfficialLogo` (`public/pulseone_logo_official.png`); this remains for typography-only layouts.
+ * Marketing chrome uses `PulseOneOfficialLogo` (`public/pots_logo_new.png` light / `public/pulseone_logo_white.png` dark — both genuinely transparent); this remains for typography-only layouts.
  */
 
 type Props = {

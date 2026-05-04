@@ -49,12 +49,14 @@ export default async function RadarPage() {
     <div className="flex min-h-screen flex-col bg-white text-gray-900">
       <GlobalHeader />
       <main className="flex-1">
-        {/* HERO — sizing/padding/gradient kept identical to HeroSection.tsx so
-            the homepage and /radar heroes feel like one design system. Update
-            both together. */}
+        {/* HERO — sizing/padding/gradient match HeroSection.tsx so the homepage
+            and /radar heroes feel like one design system, but each owns its
+            own background asset (radar → /pulse_of_technology_hero.png;
+            homepage → /FrontPage_SecurityImage.png). Update layout/gradient
+            together. */}
         <section className="relative flex min-h-[560px] items-center justify-center overflow-hidden text-center">
           <Image
-            src="/FrontPage_SecurityImage.png"
+            src="/pulse_of_technology_hero.png"
             alt=""
             fill
             priority

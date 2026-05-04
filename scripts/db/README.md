@@ -2,8 +2,13 @@
 
 Use this when you need a **clone of whatever is currently in Postgres** (articles, topics, sources, subscribers, etc.) **without rerunning ingestion** or hand-writing seeds.
 
-- **Curated bootstrap only** (RSS list + radar topics definitions): existing modules `backend.seed_sources` and `backend.seed_topics` remain the right tools for empty environments with no historical data.
+- **Curated bootstrap only** (RSS list + radar topics + standard roles):
 
+  ```bash
+  docker compose exec backend python -m backend.seed_local_dev
+  ```
+
+  Equivalent to running `backend.seed_sources`, `backend.seed_topics`, and `backend.seed_roles` individually.
 ## Requirements
 
 - **Export** (developer machine): Docker Compose stack with `db` running; Postgres tools run inside the `db` image.

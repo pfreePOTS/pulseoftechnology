@@ -52,7 +52,7 @@ Backend container runs **`alembic upgrade head`** on start (`Dockerfile.prod` `C
 
 ## 5. Bootstrapping real content from another environment
 
-To copy **everything currently in Postgres** (not only the curated RSS/topic defaults in `backend.seed_sources` / `backend.seed_topics`), use the **data-only** archive workflow in **`scripts/db/README.md`**:
+To copy **everything currently in Postgres** (not only curated seeds), use the **data-only** archive workflow in **`scripts/db/README.md`**:
 
 1. On dev: `./scripts/db/export_data.sh` (Compose `db` must be running).
 2. Deploy the backend once so migrations create empty tables at head.
@@ -96,7 +96,7 @@ Ensure you did **not** only set **`ADMIN_PASSWORD_HASH`** with **`ADMIN_PASSWORD
 
 Still stuck? Confirm in Postgres (**Query** tab): **`SELECT COUNT(*) FROM admin_users;`** If you need to re-run bootstrap on purpose, truncate that table in a **staging-only** DB, fix env, and restart backend (do not expose this workflow to production blindly).
 
-## 9. Seed RSS feeds and curated topics (staging)
+## 9. Seed RSS feeds, radar topics, and roles (staging)
 
 Empty **`sources`** ⇒ logs show ingestion for **0** feeds. Runs from any environment that can reach `DATABASE_URL` with the backend’s Python deps.
 
@@ -104,18 +104,17 @@ Empty **`sources`** ⇒ logs show ingestion for **0** feeds. Runs from any envir
 
 `docker compose up -d backend` first so the **`backend`** container exists. Railway Postgres URLs often require **`?sslmode=require`** on the URI string.
 
-Railway Postgres may block direct connections from your home IP unless public networking allows it — if so, open **Railway → Backend → Shell** and run the two `python -m …` lines there (omit `DATABASE_URL` if the shell injects Postgres automatically).
+Railway Postgres may block direct connections from your home IP unless public networking allows it — if so, open **Railway → Backend → Shell** and run the `python -m …` line there (omit `DATABASE_URL` if the shell injects Postgres automatically).
 
 From the repo root:
 
 ```bash
 export DATABASE_URL='postgresql://…from Railway Postgres Connect…'
 
-docker compose exec -T -e DATABASE_URL="$DATABASE_URL" backend python -m backend.seed_sources
-docker compose exec -T -e DATABASE_URL="$DATABASE_URL" backend python -m backend.seed_topics
+docker compose exec -T -e DATABASE_URL="$DATABASE_URL" backend python -m backend.seed_local_dev
 ```
 
-**`seed_sources`** installs the RSS feed catalog (ingestion loops over **`sources`**). **`seed_topics`** loads the PulseOne radar topic definitions. Ingest runs on the hourly job after sources exist.
+That installs **`sources`**, publishes **core radar `topics`**, and upserts **standard `roles`**. For ingestion you still need scheduler ticks or manual processing; **`seed_*` modules do not load historical articles.**
 
 Alternatively: restore a **`pg_restore` data-only** archive (`scripts/db/README.md`) instead of curated seeds alone.
 
@@ -125,8 +124,7 @@ Backend variables expose **`DATABASE_URL`** that points at **`*.railway.internal
 
 ```bash
 cd /path/to/pulseoftechnology   # repo root (after railway link …)
-railway ssh -- python -m backend.seed_sources
-railway ssh -- python -m backend.seed_topics
+railway ssh -- python -m backend.seed_local_dev
 ```
 
 ## Troubleshooting

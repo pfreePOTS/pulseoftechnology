@@ -104,6 +104,20 @@ Generate a new migration after model changes:
 docker compose exec -w /app/backend backend alembic revision --autogenerate -m "describe change"
 ```
 
+### Curated bootstrap (sources, radar topics, roles)
+
+Compose does **not** auto-load editorial data: only migrations run first, plus the empty-table **first admin** bootstrap (`FIRST_ADMIN_EMAIL` / `ADMIN_PASSWORD`).
+
+After a **`docker compose down -v`** or new Railway Postgres plugin, apply reference content:
+
+```bash
+docker compose exec backend python -m backend.seed_local_dev
+```
+
+That wraps **`seed_sources`** (RSS catalogue), **`seed_topics`** (core domains, radar‑visible), and **`seed_roles`** (CEO/CFO/CTO/CISO/COO/CMO tags).
+
+To copy **everything** already in someone’s Postgres (articles, prompts, subscribers, etc.), see **`scripts/db/README.md`** — `export_data.sh` / `import_data.sh` (**data-only pg_restore**, not committed to Git).
+
 ---
 
 ## Testing

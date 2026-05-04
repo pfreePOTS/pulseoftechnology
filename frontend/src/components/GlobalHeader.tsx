@@ -27,7 +27,7 @@ export default function GlobalHeader() {
 
   return (
     <header className="sticky top-0 z-[100] bg-white shadow-[0_2px_8px_rgba(0,0,0,0.08)]">
-      <div className="mx-auto flex min-h-[80px] max-w-[1200px] items-center justify-between gap-4 px-6 py-2.5 sm:py-3">
+      <div className="mx-auto flex min-h-[96px] max-w-[1200px] items-center justify-between gap-4 px-6 py-3 sm:py-3.5">
         <Link
           href="/"
           className="shrink-0 py-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-pulse-teal focus-visible:ring-offset-2"

@@ -24,7 +24,7 @@ function sizeClasses(size: NonNullable<Props["size"]>): string {
     return "h-9 w-auto max-w-[9.75rem] object-contain object-left";
   }
   if (size === "header") {
-    return "h-12 w-auto max-w-[min(72vw,340px)] object-contain object-left sm:h-[3.25rem] md:h-[3.5rem] md:max-w-[380px]";
+    return "h-[3.75rem] w-auto max-w-[min(80vw,425px)] object-contain object-left sm:h-[4.0625rem] md:h-[4.375rem] md:max-w-[475px]";
   }
   if (size === "footer") {
     return "h-10 w-auto max-w-[220px] object-contain object-left sm:h-11 sm:max-w-[240px]";
@@ -34,7 +34,7 @@ function sizeClasses(size: NonNullable<Props["size"]>): string {
 
 function sizesAttr(size: NonNullable<Props["size"]>): string {
   if (size === "sm") return "156px";
-  if (size === "header") return "(max-width:768px) 72vw,380px";
+  if (size === "header") return "(max-width:768px) 80vw,475px";
   if (size === "footer") return "240px";
   return "300px";
 }

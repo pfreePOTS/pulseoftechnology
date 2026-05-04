@@ -132,9 +132,8 @@ export default function ApproachPage() {
                 People · Technology · Progress
               </div>
               <h1 className="mb-5 font-sans text-[clamp(2.125rem,5vw,58px)] leading-[1.1] font-bold tracking-tight text-white xl:whitespace-nowrap">
-                Our{" "}
-                <span className="text-pulse-red [text-shadow:0_0_40px_rgba(213,23,30,0.4)]">Approach</span> to
-                better IT
+                Our Approach to{" "}
+                <span className="text-pulse-red [text-shadow:0_0_40px_rgba(213,23,30,0.4)]">Better IT</span>
               </h1>
               <p className="mx-auto max-w-[580px] font-sans text-lg leading-relaxed text-white/78">
                 Your success is our success. PulseOne is your &quot;get IT done&quot; people.

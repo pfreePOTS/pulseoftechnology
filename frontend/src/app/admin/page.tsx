@@ -957,11 +957,21 @@ function TrendDiscoveryInner() {
         setError(await res.text().catch(() => res.statusText));
         return;
       }
-      const data = (await res.json()) as { errors?: { id: number; detail: string }[] };
-      if (data.errors?.length) {
-        setError(`${data.errors.length} topic(s) could not get a sub-domain (see server logs).`);
-      }
-      await loadTopics();
+      const data = (await res.json()) as { topic_count?: number; message?: string };
+      const n = data.topic_count ?? 0;
+      setActionSuccess(
+        n > 0
+          ? `Labelling ${n} topic(s) in the background. The table will refresh every few seconds; check server logs for any failures.`
+          : (data.message ?? "Sub-domain labelling started."),
+      );
+      window.setTimeout(() => setActionSuccess(null), 12000);
+      await loadTopics({ quiet: true });
+      void (async () => {
+        for (let i = 0; i < 36; i++) {
+          await new Promise((r) => setTimeout(r, 5000));
+          await loadTopics({ quiet: true });
+        }
+      })();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Bulk sub-domain labelling failed");
     } finally {

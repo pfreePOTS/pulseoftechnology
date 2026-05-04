@@ -9,6 +9,7 @@ interface Summary {
   success_rate: number;
   avg_latency_ms: number | null;
   total_tokens: number;
+  primary_model?: string | null;
 }
 
 interface ByAgentRow {
@@ -18,6 +19,7 @@ interface ByAgentRow {
   fallback_count: number;
   avg_latency_ms: number | null;
   avg_tokens: number | null;
+  primary_model?: string | null;
 }
 
 interface RunRow {
@@ -370,7 +372,11 @@ export default function AiPerformancePage() {
           AI Performance
         </h1>
         <p className="mt-2 text-sm text-gray-400">
-          Agent telemetry for the last 24 hours (summary auto-refreshes every 30s).
+          Agent telemetry for the last 24 hours (summary auto-refreshes every 30s).{" "}
+          <span className="text-gray-500">
+            <strong className="font-medium text-gray-400">Model</strong> is the provider id stored on each run
+            (DeepSeek or Claude after fallback)—also the most common id in the breakdown window.
+          </span>
         </p>
       </div>
 
@@ -393,7 +399,7 @@ export default function AiPerformancePage() {
           <span>Loading summary…</span>
         </div>
       ) : summary ? (
-        <div className="mb-10 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="mb-10 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
           <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
               Total runs
@@ -435,6 +441,18 @@ export default function AiPerformancePage() {
             </p>
             <p className="mt-1 text-xs text-gray-500">Sum where recorded</p>
           </div>
+          <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+              Top model (24h)
+            </p>
+            <p
+              className="mt-2 break-all font-mono text-base font-semibold leading-snug text-indigo-200"
+              title="Most frequent model id on recorded runs in the last 24 hours"
+            >
+              {summary.primary_model?.trim() ? summary.primary_model : "—"}
+            </p>
+            <p className="mt-1 text-xs text-gray-500">Recorded on AgentRun rows</p>
+          </div>
         </div>
       ) : summaryBlockError ? (
         <div
@@ -458,7 +476,9 @@ export default function AiPerformancePage() {
         <h2 className="text-lg font-semibold text-white">Per-agent breakdown</h2>
         <p className="mt-2 max-w-3xl text-sm text-gray-500">
           Fallback means the model output did not parse as strict JSON, so safe defaults ran.
-          Rows recorded before detail fields were added may show fallback without an issue message.
+          Rows recorded before detail fields were added may show fallback without an issue message.{" "}
+          <strong className="font-medium text-gray-400">Primary model</strong> is the most common provider id
+          recorded for that agent in the selected window (when runs store a model).
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           {(
@@ -496,10 +516,11 @@ export default function AiPerformancePage() {
         <p className="mb-10 text-sm text-gray-500">No agent runs in this window.</p>
       ) : (
         <div className="mb-10 overflow-x-auto rounded-xl border border-gray-800">
-          <table className="w-full min-w-[720px] text-left text-sm">
+            <table className="w-full min-w-[860px] text-left text-sm">
             <thead className="bg-gray-900">
               <tr>
                 <th className="px-4 py-3 font-medium text-gray-300">Agent</th>
+                <th className="px-4 py-3 font-medium text-gray-300">Primary model</th>
                 <th className="px-4 py-3 font-medium text-gray-300">Runs</th>
                 <th className="px-4 py-3 font-medium text-gray-300">Success %</th>
                 <th className="px-4 py-3 font-medium text-gray-300">Fallbacks</th>
@@ -512,6 +533,15 @@ export default function AiPerformancePage() {
                 <tr key={row.agent_name}>
                   <td className="px-4 py-3">
                     <AgentPill name={row.agent_name} />
+                  </td>
+                  <td className="max-w-[200px] px-4 py-3 align-top font-mono text-xs text-indigo-200/95">
+                    {row.primary_model?.trim() ? (
+                      <span className="break-all" title={row.primary_model}>
+                        {row.primary_model}
+                      </span>
+                    ) : (
+                      <span className="text-gray-500">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 tabular-nums text-gray-300">
                     {row.total_runs}
@@ -730,6 +760,14 @@ export default function AiPerformancePage() {
                     <span className="rounded-md bg-gray-800 px-2 py-1 font-mono text-gray-300">
                       {detailPayload.agent_name}
                     </span>
+                    {detailPayload.model?.trim() ? (
+                      <span
+                        className="rounded-md bg-indigo-950/80 px-2 py-1 font-mono text-indigo-200"
+                        title="Provider model id for this run"
+                      >
+                        {detailPayload.model}
+                      </span>
+                    ) : null}
                     <span>{new Date(detailPayload.created_at).toLocaleString()}</span>
                     {truncateTitle(detailPayload.article_title) !== "—" ? (
                       <span className="max-w-[18rem] truncate">

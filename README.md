@@ -116,7 +116,7 @@ docker compose exec backend python -m backend.seed_local_dev
 
 That wraps **`seed_sources`** (RSS catalogue), **`seed_topics`** (core domains, radar‑visible), and **`seed_roles`** (CEO/CFO/CTO/CISO/COO/CMO tags).
 
-To copy **everything** already in someone’s Postgres (articles, prompts, subscribers, etc.), see **`scripts/db/README.md`** — `export_data.sh` / `import_data.sh` (**data-only pg_restore**, not committed to Git).
+To copy data already in Postgres (articles, radar, roles, prompts, etc.), see **`scripts/db/README.md`** — `export_data.sh` / `export_data_from_url.sh` / `import_data.sh` (**data-only** `pg_dump` / `pg_restore`, not committed to Git). Use **`--without-account-subscriber-data`** when you want Dev editorial/radar parity **without** copying admin users or subscribers.
 
 ---
 

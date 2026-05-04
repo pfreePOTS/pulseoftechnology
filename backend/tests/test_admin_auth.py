@@ -237,6 +237,7 @@ def test_agent_runs_summary_ok_for_superuser_empty_table(client):
     assert data["total_runs"] == 0
     assert data["success_rate"] == 0.0
     assert data["total_tokens"] == 0
+    assert data.get("primary_model") in (None, "")
 
 
 def test_agent_run_detail_ok_for_superuser(client, db_session):

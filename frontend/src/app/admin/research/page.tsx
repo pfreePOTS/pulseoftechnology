@@ -46,6 +46,8 @@ interface PipelineProgress {
   skipped: number;
   review: number;
   total: number;
+  /** From API; omit on older backends — default 80 in UI */
+  max_per_pass?: number;
 }
 
 export default function ResearchCollectionPage() {
@@ -192,9 +194,11 @@ export default function ResearchCollectionPage() {
           </strong>{" "}
           (APScheduler, not Celery): RSS fetch + AI processing run{" "}
           <strong className="font-medium text-gray-400">every hour</strong>.
-          Each pass processes at most a capped batch of raw/retry articles so the
-          API stays responsive; leftovers continue on the next tick or when you
-          click <em>Process raw articles</em>. Signal scoring runs daily at
+          Each pass processes at most a capped batch of raw/retry articles so the API stays responsive (see{" "}
+          <strong className="font-medium text-gray-400">max_per_pass</strong> /{" "}
+          <span className="font-mono text-gray-500">ARTICLE_PIPELINE_MAX_PER_PASS</span>
+          ); leftovers continue on the next tick or when you click <em>Process raw articles</em>. The progress line
+          moves in steps — it can stay flat for up to an hour between automated runs. Signal scoring runs daily at
           06:00 UTC; newsletter at 07:00 UTC.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -410,68 +414,73 @@ export default function ResearchCollectionPage() {
 }
 
 function PipelineTicker({ progress }: { progress: PipelineProgress }) {
-  const { raw, retry = 0, processed, skipped, review, total } = progress;
+  const { raw, retry = 0, processed, skipped, review, total, max_per_pass = 200 } = progress;
+  const cap = max_per_pass > 0 ? max_per_pass : 200;
   const queued = raw + retry;
   const done = Math.max(0, total - queued);
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-  const isProcessing = queued > 0;
+  const backlog = queued > 0;
 
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-      <div className="flex items-center gap-2">
-        {isProcessing ? (
+    <div className="mt-3 flex flex-col gap-1.5 text-sm">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex items-center gap-2">
           <span
-            className="inline-block size-2.5 animate-pulse rounded-full bg-amber-400"
+            className={`inline-block size-2.5 rounded-full ${backlog ? "bg-amber-400" : "bg-emerald-500"}`}
+            title={backlog ? "Raw/retry backlog" : "No raw/retry backlog"}
             aria-hidden
           />
-        ) : (
-          <span
-            className="inline-block size-2.5 rounded-full bg-emerald-500"
-            aria-hidden
-          />
-        )}
-        <span className="font-medium text-gray-300">
-          {isProcessing
-            ? `Queue: ${queued} raw/retry · ${done} of ${total} past queue`
-            : "No articles waiting on the AI pipeline"}
-        </span>
-      </div>
-      <div className="flex items-center gap-3 text-xs text-gray-500">
-        <span>
-          <span className="text-emerald-400">{processed}</span> processed
-        </span>
-        {skipped > 0 && (
-          <span>
-            <span className="text-gray-400">{skipped}</span> skipped
+          <span className="font-medium text-gray-300">
+            {backlog
+              ? `Backlog: ${queued} raw/retry · ${done} of ${total} through the pipeline`
+              : "No articles waiting on the AI pipeline"}
           </span>
-        )}
-        {review > 0 && (
-          <span>
-            <span className="text-fuchsia-300">{review}</span> review
-          </span>
-        )}
-        {raw > 0 && (
-          <span>
-            <span className="text-amber-400">{raw}</span> raw
-          </span>
-        )}
-        {retry > 0 && (
-          <span>
-            <span className="text-sky-400">{retry}</span> retry
-          </span>
-        )}
-      </div>
-      {total > 0 && (
-        <div className="flex w-48 items-center gap-2">
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-800">
-            <div
-              className="h-full rounded-full bg-emerald-500 transition-all duration-700"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-          <span className="text-xs tabular-nums text-gray-500">{pct}%</span>
         </div>
-      )}
+        <div className="flex items-center gap-3 text-xs text-gray-500">
+          <span>
+            <span className="text-emerald-400">{processed}</span> processed
+          </span>
+          {skipped > 0 && (
+            <span>
+              <span className="text-gray-400">{skipped}</span> skipped
+            </span>
+          )}
+          {review > 0 && (
+            <span>
+              <span className="text-fuchsia-300">{review}</span> review
+            </span>
+          )}
+          {raw > 0 && (
+            <span>
+              <span className="text-amber-400">{raw}</span> raw
+            </span>
+          )}
+          {retry > 0 && (
+            <span>
+              <span className="text-sky-400">{retry}</span> retry
+            </span>
+          )}
+        </div>
+        {total > 0 && (
+          <div className="flex w-48 items-center gap-2">
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-800">
+              <div
+                className="h-full rounded-full bg-emerald-500 transition-all duration-700"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <span className="text-xs tabular-nums text-gray-500">{pct}%</span>
+          </div>
+        )}
+      </div>
+      {backlog ? (
+        <p className="max-w-3xl text-xs leading-relaxed text-gray-500">
+          Each run takes at most <strong className="text-gray-400">{cap}</strong> raw/retry articles (~hourly and
+          each &quot;Process raw articles&quot; click). These totals move in steps; staying flat for a while
+          usually means you&apos;re between runs, not a frozen pipeline. Tune{" "}
+          <span className="font-mono text-gray-600">ARTICLE_PIPELINE_MAX_PER_PASS</span> to raise the cap.
+        </p>
+      ) : null}
     </div>
   );
 }

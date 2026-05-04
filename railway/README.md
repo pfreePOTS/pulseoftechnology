@@ -120,14 +120,70 @@ That installs **`sources`**, publishes **core radar `topics`**, and upserts **st
 
 Alternatively: restore a **`pg_restore` data-only** archive (`scripts/db/README.md`) instead of curated seeds alone.
 
-### Railway CLI (recommended once `railway login` / `railway link` are set)
+### Railway CLI + SSH (recommended)
 
-Backend variables expose **`DATABASE_URL`** that points at **`*.railway.internal`**. **`railway run`** injects those into your **laptop**, where that hostname does not resolve — use **`railway ssh`** into the Backend deployment instead:
+Link the **Staging** project and select the **Backend** service (`railway link`, then choose the backend). The backend image has `PYTHONPATH=/app` and the package lives under `/app/backend`; run modules as below.
+
+**Important:** Variables like `DATABASE_URL` on the backend usually point at **`*.railway.internal`**. That hostname resolves **inside** Railway (e.g. `railway ssh`), but **not** on your laptop. Prefer **`railway ssh`** for seed/sync commands instead of `railway run` unless you switch Staging `DATABASE_URL` to a **public** Postgres URL.
+
+#### A) Curated seeds only (same as repo — not a literal copy of Dev edits)
+
+Installs **`sources`**, published core **`topics`**, and standard **`roles`**. Does **not** copy **`content_items`** or articles from Dev.
 
 ```bash
-cd /path/to/pulseoftechnology   # repo root (after railway link …)
 railway ssh -- python -m backend.seed_local_dev
 ```
+
+Idempotent; safe to rerun.
+
+#### B) Role Profiles + Content Library **exactly as on Dev**
+
+1. In the **Dev** Railway project → **Postgres** → **Connect** → copy a **public** connection URL (must include `sslmode=require` if Railway shows it). Dev’s **private** `*.railway.internal` URL from the Dev backend usually cannot be reached from the **Staging** backend.
+2. Link CLI to **Staging** → **Backend** and run:
+
+```bash
+railway ssh -- /bin/sh -c 'SOURCE_DATABASE_URL="postgresql://USER:PASS@DEV_HOST:PORT/DEV_DB?sslmode=require" TARGET_DATABASE_URL="$DATABASE_URL" python -m backend.sync_newsletter_cms_between'
+```
+
+Replace the `SOURCE_DATABASE_URL` value with your **Dev** public URL. `TARGET_DATABASE_URL` uses Staging’s injected `DATABASE_URL` (private Postgres in the same project — reachable from the Staging container).
+
+This runs **`copy_roles`** + **`copy_content_items`** (upsert by name / UUID).
+
+#### C) **Almost everything** in one Postgres **into Staging** (articles, radar, roles, analysis — **no** admin/subscriber PII)
+
+**Export** runs **read-only** against the database that **has** the data (often your Staging Postgres plugin in this project — not necessarily “production”). **Import** must use **Staging** variables so `pg_restore` writes **only** to Staging:
+
+```bash
+# 1) Dump from the Postgres instance that actually contains rows (example: Staging plugin service).
+railway run -e staging -s "Postgres-p6LC" -- ./scripts/db/export_data_from_url.sh --without-account-subscriber-data
+
+# 2) Restore into Staging (Staging backend → Staging DB URL).
+railway run -e staging -s "Backend - Staging" -- ./scripts/db/import_data.sh scripts/db/artifacts/pulse_db_data_latest_nousers.dump
+```
+
+Replace **`Postgres-p6LC`** with your project’s Staging Postgres service name if different (`railway status --json` lists services per environment).
+
+This copies all table data **except** `admin_users`, `subscribers`, HubSpot sync audit rows, survey responses, and per-recipient `newsletter_issues`. Staging keeps its own empty (or existing) accounts/subscribers unless you truncate those tables first.
+
+For a **literal full clone** including subscribers and admins, omit `--without-account-subscriber-data` **and** use a **fresh** Staging database so primary keys do not collide.
+
+The production backend image does **not** include `pg_restore` or a full `pg_dump` workflow; run export/import on your laptop or CI, not inside `railway ssh`. Details: **`scripts/db/README.md`**.
+
+### One-shot: catalog seeds **and** Dev CMS on Staging
+
+If you want **repo** `sources` / `topics` / standard `roles` **and** Dev’s **role + content library** rows, run **both** inside `railway ssh` (same session):
+
+```bash
+railway ssh -- /bin/sh -c 'python -m backend.seed_local_dev && SOURCE_DATABASE_URL="postgresql://DEV_PUBLIC_URL" TARGET_DATABASE_URL="$DATABASE_URL" python -m backend.sync_newsletter_cms_between'
+```
+
+Replace `DEV_PUBLIC_URL` with the full Dev Postgres URL string (user, password, host, db, `sslmode`). `sync_newsletter_cms_between` **overrides** standard roles with Dev’s tags where names match and adds any extra roles from Dev; content items are upserted by id.
+
+### Railway CLI (quick reference)
+
+· **`railway ssh`** runs inside the latest **Backend** deploy and sees that service’s env (`DATABASE_URL`, etc.).  
+· Use **`seed_local_dev`** for in-repo catalog parity.  
+· Use **`sync_newsletter_cms_between`** (with a **public** Dev `SOURCE_DATABASE_URL`) to match Dev’s **roles + content library** on Staging.
 
 ## Troubleshooting
 

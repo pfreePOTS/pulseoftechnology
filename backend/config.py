@@ -97,11 +97,13 @@ class Settings(BaseSettings):
     # Article retention / archiving
     article_retention_days: int = Field(default=30, ge=1, le=3650)
     article_archive_enabled: bool = True
-    # Max raw+retry articles evaluated per pipeline invocation (hourly job + manual
-    # "Process raw"). Without a cap, a large backlog can hold the worker for tens of
-    # minutes and makes the admin UI look frozen; remaining rows are picked up on
-    # subsequent ticks or "Process raw" clicks.
-    article_pipeline_max_per_pass: int = Field(default=80, ge=1, le=2000)
+    # Max raw+retry articles evaluated per pipeline invocation (hourly ingest +
+    # manual "Process raw"). Each article runs the full agentic LLM path sequentially,
+    # so a very large cap can (a) push the hourly job past the next tick, (b) tie up
+    # one worker/API instance, (c) spike cost and provider rate limits. Default 200
+    # balances backlog drain vs predictable run time; raise via ARTICLE_PIPELINE_MAX_PER_PASS
+    # (up to 2000) if your host and LLM quotas allow.
+    article_pipeline_max_per_pass: int = Field(default=200, ge=1, le=2000)
 
     # Newsletter — ingest windows for daily briefing (narrow → wider fallback chains)
     # Top rollup + topic-rank peaks: prioritize very fresh ingests (hours).

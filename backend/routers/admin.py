@@ -547,6 +547,10 @@ class PipelineProgressOut(BaseModel):
     skipped: int
     review: int = 0
     total: int
+    max_per_pass: int = Field(
+        ...,
+        description="Max raw/retry articles processed in one scheduler or manual pipeline run",
+    )
 
 
 @router.get("/articles/stats", response_model=ArticleStatsOut)
@@ -566,8 +570,13 @@ def article_pipeline_progress(
     db: Session = Depends(get_db),
     _: AdminUser = Depends(require_admin),
 ):
-    """Lightweight counts by article status for the live progress ticker."""
-    rows = db.query(Article.status, func.count(Article.id)).group_by(Article.status).all()
+    """Lightweight counts by article status for the live progress ticker (non-archived only)."""
+    rows = (
+        db.query(Article.status, func.count(Article.id))
+        .filter(Article.archived_at.is_(None))
+        .group_by(Article.status)
+        .all()
+    )
     counts = {str(status.value): cnt for status, cnt in rows}
     raw = counts.get("raw", 0)
     retry = counts.get("retry", 0)
@@ -577,7 +586,13 @@ def article_pipeline_progress(
     published = counts.get("published", 0)
     total = raw + retry + processed + skipped + review + published
     return PipelineProgressOut(
-        raw=raw, retry=retry, processed=processed, skipped=skipped, review=review, total=total
+        raw=raw,
+        retry=retry,
+        processed=processed,
+        skipped=skipped,
+        review=review,
+        total=total,
+        max_per_pass=int(app_settings.article_pipeline_max_per_pass),
     )
 
 
@@ -1342,24 +1357,49 @@ def suggest_subdomain(
     return {"id": topic_id, "subdomain": subdomain}
 
 
+def _run_bulk_suggest_subdomains(topic_ids: list[int]) -> None:
+    """
+    Sequential LLM calls per topic — keep out of the HTTP request so proxies
+    (Railway, etc.) do not time out and the admin UI does not freeze for minutes.
+    """
+    db = SessionLocal()
+    try:
+        n = len(topic_ids)
+        logger.info("bulk_suggest_subdomains: starting %d topic(s)", n)
+        ok = 0
+        for i, tid in enumerate(topic_ids, start=1):
+            try:
+                sub = suggest_subdomain_for_topic(tid, db)
+                ok += 1
+                logger.info(
+                    "bulk_suggest_subdomains: %d/%d topic id=%s -> %s",
+                    i,
+                    n,
+                    tid,
+                    sub,
+                )
+            except Exception as exc:
+                logger.warning("bulk suggest_subdomain failed for topic %s: %s", tid, exc)
+        logger.info("bulk_suggest_subdomains: finished %d/%d ok", ok, n)
+    finally:
+        db.close()
+
+
 @router.post("/topics/bulk-suggest-subdomains")
 def bulk_suggest_subdomains(
     payload: BulkSubdomainBody,
-    db: Session = Depends(get_db),
+    background_tasks: BackgroundTasks,
     _: AdminUser = Depends(require_admin),
 ):
-    """Run subdomain labelling for many topics (sequential; max 50 ids per request)."""
-    ids = payload.topic_ids[:50]
-    updated: list[dict[str, int | str]] = []
-    errors: list[dict[str, int | str]] = []
-    for tid in ids:
-        try:
-            sub = suggest_subdomain_for_topic(tid, db)
-            updated.append({"id": tid, "subdomain": sub})
-        except Exception as exc:
-            logger.warning("bulk suggest_subdomain failed for topic %s: %s", tid, exc)
-            errors.append({"id": tid, "detail": str(exc)})
-    return {"updated": updated, "errors": errors}
+    """Queue subdomain labelling for up to 50 topics (background; avoids long request hangs)."""
+    ids = list(dict.fromkeys(int(x) for x in payload.topic_ids[:50]))
+    if not ids:
+        raise HTTPException(status_code=400, detail="No topic ids provided")
+    background_tasks.add_task(_run_bulk_suggest_subdomains, ids)
+    return {
+        "message": "Sub-domain labelling started in the background.",
+        "topic_count": len(ids),
+    }
 
 
 @router.post("/topics/{topic_id}/trend-analysis")
@@ -2073,11 +2113,52 @@ def _apply_agent_run_status_filter(q, status: str | None):
     return q
 
 
+def _overall_primary_model(db: Session, cutoff: datetime) -> str | None:
+    """Model id with highest run count since ``cutoff`` (non-empty `AgentRun.model` only)."""
+    rows = (
+        db.query(AgentRun.model, func.count(AgentRun.id))
+        .filter(AgentRun.created_at >= cutoff)
+        .filter(AgentRun.model.isnot(None))
+        .filter(func.trim(AgentRun.model) != "")
+        .group_by(AgentRun.model)
+        .all()
+    )
+    best: str | None = None
+    best_n = -1
+    for model, n in rows:
+        m = str(model).strip()
+        cn = int(n or 0)
+        if cn > best_n or (cn == best_n and best is not None and m < best):
+            best_n = cn
+            best = m
+    return best
+
+
+def _primary_models_by_agent(db: Session, cutoff: datetime) -> dict[str, str]:
+    rows = (
+        db.query(AgentRun.agent_name, AgentRun.model, func.count(AgentRun.id))
+        .filter(AgentRun.created_at >= cutoff)
+        .filter(AgentRun.model.isnot(None))
+        .filter(func.trim(AgentRun.model) != "")
+        .group_by(AgentRun.agent_name, AgentRun.model)
+        .all()
+    )
+    best: dict[str, tuple[str, int]] = {}
+    for agent_name, model, n in rows:
+        m = str(model).strip()
+        prev = best.get(agent_name)
+        cn = int(n or 0)
+        if prev is None or cn > prev[1] or (cn == prev[1] and m < prev[0]):
+            best[agent_name] = (m, cn)
+    return {a: t[0] for a, t in best.items()}
+
+
 class AgentRunSummaryOut(BaseModel):
     total_runs: int
     success_rate: float
     avg_latency_ms: float | None
     total_tokens: int
+    primary_model: str | None = None  # most common AgentRun.model in window
 
 
 @router.get("/agent-runs/summary", response_model=AgentRunSummaryOut)
@@ -2105,11 +2186,13 @@ def agent_runs_summary(
         .scalar()
     )
     total_tokens = int(total_tokens_row or 0)
+    primary = _overall_primary_model(db, cutoff)
     return AgentRunSummaryOut(
         total_runs=total_runs,
         success_rate=round(success_rate, 2),
         avg_latency_ms=float(avg_lat) if avg_lat is not None else None,
         total_tokens=total_tokens,
+        primary_model=primary,
     )
 
 
@@ -2120,6 +2203,7 @@ class AgentRunByAgentRow(BaseModel):
     fallback_count: int
     avg_latency_ms: float | None
     avg_tokens: float | None
+    primary_model: str | None = None
 
 
 @router.get("/agent-runs/by-agent", response_model=list[AgentRunByAgentRow])
@@ -2151,6 +2235,7 @@ def agent_runs_by_agent(
         .order_by(func.count(AgentRun.id).desc())
         .all()
     )
+    models_by_agent = _primary_models_by_agent(db, cutoff)
     out: list[AgentRunByAgentRow] = []
     for name, total, sn, fn, avg_lat, avg_tok in rows:
         total = int(total or 0)
@@ -2165,6 +2250,7 @@ def agent_runs_by_agent(
                 fallback_count=fn_i,
                 avg_latency_ms=float(avg_lat) if avg_lat is not None else None,
                 avg_tokens=float(avg_tok) if avg_tok is not None else None,
+                primary_model=models_by_agent.get(name),
             )
         )
     return out

@@ -39,14 +39,14 @@ export default function HeroSection() {
           alt=""
           fill
           priority
-          className="object-cover object-[center_30%]"
+          className="object-cover object-[center_12%]"
           sizes="100vw"
         />
         <div
           className="absolute inset-0 bg-gradient-to-b from-[rgba(10,10,10,0.72)] via-[rgba(10,10,10,0.55)] to-[rgba(10,10,10,0.75)]"
           aria-hidden
         />
-        <div className="relative z-[2] mx-auto w-full max-w-[1100px] px-6 py-16">
+        <div className="relative z-[2] mx-auto w-full max-w-[1320px] px-6 py-16">
           <div className="mb-4 inline-block rounded-full border border-pulse-teal/35 bg-pulse-teal/12 px-3.5 py-1.5 font-sans text-[13px] font-semibold tracking-[4px] text-pulse-teal uppercase">
             The Pulse of Technology
           </div>

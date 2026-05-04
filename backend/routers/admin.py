@@ -363,14 +363,81 @@ def patch_admin_user(
     u = db.get(AdminUser, user_id)
     if u is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    if u.is_superuser and (
-        payload.is_active is False
-        or payload.page_permissions is not None
-        or payload.is_superuser is False
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot modify superuser access"
+
+    def other_active_superusers() -> int:
+        return (
+            db.query(func.count(AdminUser.id))
+            .filter(
+                AdminUser.is_superuser.is_(True),
+                AdminUser.is_active.is_(True),
+                AdminUser.id != user_id,
+            )
+            .scalar()
+            or 0
         )
+
+    if u.is_superuser and payload.is_superuser is False:
+        if actor.id == user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot remove your own admin access",
+            )
+        if other_active_superusers() < 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot demote the last active superuser",
+            )
+        if not payload.page_permissions:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="When demoting a superuser, include page_permissions with at least one page",
+            )
+        _validate_invite_permissions(payload.page_permissions)
+        u.is_superuser = False
+        u.page_permissions = list(payload.page_permissions)
+        if payload.is_active is not None:
+            if actor.id == user_id and not payload.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot deactivate yourself",
+                )
+            u.is_active = payload.is_active
+        db.add(u)
+        db.commit()
+        db.refresh(u)
+        return u
+
+    if u.is_superuser:
+        if payload.page_permissions is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Superusers have all pages; demote this user first "
+                    "(send is_superuser: false with page_permissions)"
+                ),
+            )
+        if payload.is_superuser is False:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="When demoting a superuser, include page_permissions with at least one page",
+            )
+        if payload.is_active is not None:
+            if actor.id == user_id and not payload.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot deactivate yourself",
+                )
+            if not payload.is_active and other_active_superusers() < 1:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot deactivate the last active superuser",
+                )
+            u.is_active = payload.is_active
+        db.add(u)
+        db.commit()
+        db.refresh(u)
+        return u
+
     if payload.is_superuser is not None:
         if actor.id == user_id and not payload.is_superuser:
             raise HTTPException(
@@ -410,9 +477,21 @@ def delete_admin_user(
     if u is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     if u.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete a superuser account"
+        other_active_super = (
+            db.query(func.count(AdminUser.id))
+            .filter(
+                AdminUser.is_superuser.is_(True),
+                AdminUser.is_active.is_(True),
+                AdminUser.id != user_id,
+            )
+            .scalar()
+            or 0
         )
+        if other_active_super < 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot delete the last active superuser",
+            )
     db.delete(u)
     db.commit()
     return {"ok": True}

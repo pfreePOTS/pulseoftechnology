@@ -34,6 +34,7 @@ export default function AdminUsersPage() {
   const [meId, setMeId] = useState<number | null>(null);
   const [editingUser, setEditingUser] = useState<AdminUserRow | null>(null);
   const [editPages, setEditPages] = useState<Record<string, boolean>>({});
+  const [editIsSuperuser, setEditIsSuperuser] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
 
   const loadMe = useCallback(async () => {
@@ -81,24 +82,54 @@ export default function AdminUsersPage() {
       next[n.href] = (u.page_permissions || []).includes(n.slug);
     }
     setEditPages(next);
+    setEditIsSuperuser(Boolean(u.is_superuser));
     setEditingUser(u);
   }
 
   async function saveEdit() {
     if (!editingUser) return;
+    if (editIsSuperuser) {
+      if (editingUser.is_superuser) {
+        setEditingUser(null);
+        return;
+      }
+      setSavingEdit(true);
+      try {
+        const res = await adminFetch(`${API_BASE}/api/admin/users/${editingUser.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ is_superuser: true }),
+        });
+        if (!res.ok) {
+          alert(await adminResponseErrorDetail(res));
+          return;
+        }
+        setEditingUser(null);
+        await load();
+      } catch {
+        alert("Could not save changes.");
+      } finally {
+        setSavingEdit(false);
+      }
+      return;
+    }
     const page_permissions = Array.from(
       new Set(INVITABLE_NAV.filter((n) => editPages[n.href]).map((n) => n.slug)),
     );
     if (page_permissions.length === 0) {
-      alert("Select at least one page for this user.");
+      alert("Select at least one page for this user, or enable full admin access.");
       return;
     }
+    const body =
+      editingUser.is_superuser && !editIsSuperuser
+        ? { is_superuser: false, page_permissions }
+        : { page_permissions };
     setSavingEdit(true);
     try {
       const res = await adminFetch(`${API_BASE}/api/admin/users/${editingUser.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ page_permissions }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         alert(await adminResponseErrorDetail(res));
@@ -226,13 +257,12 @@ export default function AdminUsersPage() {
     }
   }
 
-  async function removeUser(id: number, email: string, is_superuser: boolean) {
-    if (is_superuser) return;
+  async function removeUser(id: number, email: string) {
     if (!confirm(`Delete admin user ${email}? This cannot be undone.`)) return;
     try {
       const res = await adminFetch(`${API_BASE}/api/admin/users/${id}`, { method: "DELETE" });
       if (!res.ok) {
-        alert(await res.text());
+        alert(await adminResponseErrorDetail(res));
         return;
       }
       await load();
@@ -384,15 +414,13 @@ export default function AdminUsersPage() {
                   </td>
                   <td className="px-4 py-3 text-right align-top">
                     <div className="flex flex-wrap items-center justify-end gap-2">
-                      {!isSuperuser && (
-                        <button
-                          type="button"
-                          onClick={() => openEdit(u)}
-                          className={`${actionBtn} border-[#019E7C]/45 bg-[#019E7C]/10 text-[#019E7C] hover:bg-[#019E7C]/18`}
-                        >
-                          Edit pages
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => openEdit(u)}
+                        className={`${actionBtn} border-[#019E7C]/45 bg-[#019E7C]/10 text-[#019E7C] hover:bg-[#019E7C]/18`}
+                      >
+                        Edit
+                      </button>
                       <button
                         type="button"
                         onClick={() => void resetPassword(u.id)}
@@ -400,40 +428,32 @@ export default function AdminUsersPage() {
                       >
                         Reset password
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => void setActive(u.id, !u.is_active)}
+                        className={`${actionBtn} border-gray-600 bg-gray-800/50 text-gray-200 hover:bg-gray-800`}
+                      >
+                        {u.is_active ? "Deactivate" : "Activate"}
+                      </button>
                       {!isSuperuser && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => void setActive(u.id, !u.is_active)}
-                            className={`${actionBtn} border-gray-600 bg-gray-800/50 text-gray-200 hover:bg-gray-800`}
-                          >
-                            {u.is_active ? "Deactivate" : "Activate"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void makeAdmin(u.id, u.email)}
-                            className={`${actionBtn} border-teal-500/35 bg-teal-950/40 text-teal-200 hover:bg-teal-950/70`}
-                          >
-                            Make admin
-                          </button>
-                          {meId !== null && u.id !== meId && (
-                            <button
-                              type="button"
-                              onClick={() => void removeUser(u.id, u.email, isSuperuser)}
-                              className={`${actionBtn} border-red-500/40 bg-red-950/25 text-red-300 hover:bg-red-950/45`}
-                            >
-                              Delete
-                            </button>
-                          )}
-                        </>
+                        <button
+                          type="button"
+                          onClick={() => void makeAdmin(u.id, u.email)}
+                          className={`${actionBtn} border-teal-500/35 bg-teal-950/40 text-teal-200 hover:bg-teal-950/70`}
+                        >
+                          Make admin
+                        </button>
+                      )}
+                      {meId !== null && u.id !== meId && (
+                        <button
+                          type="button"
+                          onClick={() => void removeUser(u.id, u.email)}
+                          className={`${actionBtn} border-red-500/40 bg-red-950/25 text-red-300 hover:bg-red-950/45`}
+                        >
+                          Delete
+                        </button>
                       )}
                     </div>
-                    {isSuperuser && (
-                      <p className="mt-2 max-w-[260px] text-[10px] leading-snug text-gray-500 ml-auto text-right">
-                        Superuser: use <strong className="text-gray-400">Reset password</strong> if locked out.
-                        Page access is fixed for this role.
-                      </p>
-                    )}
                   </td>
                 </tr>
               );
@@ -456,13 +476,32 @@ export default function AdminUsersPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <h2 id="edit-user-title" className="text-lg font-semibold text-white">
-              Edit pages
+              Edit user
             </h2>
             <p className="mt-1 text-sm text-gray-400 font-mono break-all">{editingUser.email}</p>
-            <p className="mt-2 text-xs text-gray-500">
-              Choose which admin areas this user can open. Users and Settings stay superuser-only.
+            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-gray-700 bg-gray-800/40 px-3 py-3 text-sm text-gray-200">
+              <input
+                type="checkbox"
+                checked={editIsSuperuser}
+                onChange={(e) => setEditIsSuperuser(e.target.checked)}
+                className="mt-0.5 rounded border-gray-600"
+              />
+              <span>
+                <span className="block font-semibold text-white">Full admin access (superuser)</span>
+                <span className="text-gray-500">
+                  Uncheck to limit this user to specific pages (another active superuser must exist before demoting).
+                </span>
+              </span>
+            </label>
+            <p className="mt-3 text-xs text-gray-500">
+              Page access (when not superuser):
             </p>
-            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <div
+              className={`mt-2 grid gap-2 sm:grid-cols-2 ${
+                editIsSuperuser ? "pointer-events-none opacity-40" : ""
+              }`}
+              aria-disabled={editIsSuperuser}
+            >
               {INVITABLE_NAV.map((n) => (
                 <label key={n.href} className="flex items-center gap-2 text-sm text-gray-300">
                   <input

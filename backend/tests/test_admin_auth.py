@@ -317,3 +317,57 @@ def test_analysis_background_jobs_queue_when_authed(client):
     r_per = client.post("/api/admin/topics/analysis/persona-suggest-all-background")
     assert r_per.status_code == 200
     assert r_per.json().get("status") == "queued"
+
+
+def test_superuser_demote_delete_and_last_superuser_guard_one_login(client):
+    """Single login to avoid hitting /api/admin/login rate limit in a full test run."""
+    assert (
+        client.post(
+            "/api/admin/login",
+            json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
+        ).status_code
+        == 200
+    )
+
+    inv = client.post(
+        "/api/admin/users/invite",
+        json={
+            "email": "second-super@example.com",
+            "page_permissions": [],
+            "is_superuser": True,
+            "send_email": False,
+        },
+    )
+    assert inv.status_code == 200
+    uid = inv.json()["id"]
+
+    assert client.patch(f"/api/admin/users/{uid}", json={"is_superuser": False}).status_code == 400
+    ok = client.patch(
+        f"/api/admin/users/{uid}",
+        json={"is_superuser": False, "page_permissions": ["research", "trending"]},
+    )
+    assert ok.status_code == 200
+    row = next(u for u in client.get("/api/admin/users").json() if u["email"] == "second-super@example.com")
+    assert row["is_superuser"] is False
+    assert "research" in row["page_permissions"]
+
+    inv2 = client.post(
+        "/api/admin/users/invite",
+        json={
+            "email": "third-super@example.com",
+            "page_permissions": [],
+            "is_superuser": True,
+            "send_email": False,
+        },
+    )
+    assert inv2.status_code == 200
+    uid2 = inv2.json()["id"]
+    assert client.delete(f"/api/admin/users/{uid2}").status_code == 200
+
+    assert (
+        client.patch(
+            "/api/admin/users/1",
+            json={"is_superuser": False, "page_permissions": ["research"]},
+        ).status_code
+        == 400
+    )

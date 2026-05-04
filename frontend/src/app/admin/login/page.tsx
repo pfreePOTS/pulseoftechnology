@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { PulseOneOfficialLogo } from "@/components/PulseOneOfficialLogo";
-import { API_BASE, apiBaseLooksUnsetForProductionDeploy } from "@/lib/api";
+import { adminResponseErrorDetail, API_BASE, apiBaseLooksUnsetForProductionDeploy } from "@/lib/api";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -26,7 +26,16 @@ export default function AdminLoginPage() {
         body: JSON.stringify({ email: email.trim(), password }),
       });
       if (!res.ok) {
-        setError("Invalid email or password. Please try again.");
+        const detail = (await adminResponseErrorDetail(res)).trim();
+        if (res.status === 401) {
+          setError(
+            detail && !/^HTTP \d+$/i.test(detail)
+              ? detail
+              : "Invalid email or password. Please try again.",
+          );
+        } else {
+          setError(detail || `Sign-in failed (HTTP ${res.status}). Please try again.`);
+        }
         return;
       }
       const data = (await res.json()) as { must_change_password?: boolean };
@@ -97,6 +106,29 @@ export default function AdminLoginPage() {
             {loading ? "Signing in…" : "Sign In"}
           </button>
         </form>
+
+        <details className="mt-6 rounded-lg border border-gray-800 bg-gray-900/40 px-3 py-2 text-left">
+          <summary className="cursor-pointer text-xs font-medium text-gray-400 hover:text-gray-300">
+            Trouble signing in?
+          </summary>
+          <ul className="mt-3 list-disc space-y-2 pl-4 text-xs leading-relaxed text-gray-500">
+            <li>
+              If an admin used <strong className="text-gray-400">Reset password</strong> for your account, your{" "}
+              <strong className="text-gray-400">previous password stops working</strong>. You must use the{" "}
+              <strong className="text-gray-400">temporary password</strong> from that step, then choose a new password.
+            </li>
+            <li>
+              If your account was <strong className="text-gray-400">deactivated</strong>, a superuser must activate you
+              under <strong className="text-gray-400">Users</strong> before sign-in works again.
+            </li>
+            <li className="break-words">
+              Server CLI (Railway shell / Docker):{" "}
+              <code className="text-[11px] text-gray-400">
+                python -m backend.manage_admin reset-password --email your@email.com
+              </code>
+            </li>
+          </ul>
+        </details>
 
         {process.env.NODE_ENV === "development" && (
           <p className="mt-6 rounded-lg border border-dashed border-gray-700 bg-gray-900/50 px-3 py-2 text-center text-xs text-gray-500">

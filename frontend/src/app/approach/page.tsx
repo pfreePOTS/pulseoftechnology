@@ -116,7 +116,7 @@ export default function ApproachPage() {
             fill
             priority
             sizes="100vw"
-            className="object-cover object-[center_30%]"
+            className="object-cover object-[center_12%]"
           />
           <div
             className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[rgba(10,10,15,0.82)] via-[rgba(10,10,15,0.55)] to-[rgba(10,10,15,0.45)]"
@@ -126,13 +126,15 @@ export default function ApproachPage() {
             className="pointer-events-none absolute -bottom-[60px] -left-[60px] size-[300px] rounded-full bg-[radial-gradient(circle,rgba(19,195,189,0.08)_0%,transparent_70%)]"
             aria-hidden
           />
-          <div className="relative z-[1] mx-auto w-full max-w-[1100px] px-6 py-16">
-            <div className="mx-auto max-w-[760px]">
+          <div className="relative z-[1] mx-auto w-full max-w-[1320px] px-6 py-16">
+            <div className="mx-auto max-w-[920px]">
               <div className="mx-auto mb-4 inline-block rounded-full border border-pulse-teal/35 bg-pulse-teal/12 px-3.5 py-1.5 font-sans text-[13px] font-semibold tracking-[4px] text-pulse-teal uppercase">
                 People · Technology · Progress
               </div>
-              <h1 className="mb-5 font-sans text-[clamp(2.125rem,5vw,58px)] leading-[1.1] font-bold tracking-tight text-white">
-                Our Approach
+              <h1 className="mb-5 font-sans text-[clamp(2.125rem,5vw,58px)] leading-[1.1] font-bold tracking-tight text-white xl:whitespace-nowrap">
+                Our{" "}
+                <span className="text-pulse-red [text-shadow:0_0_40px_rgba(213,23,30,0.4)]">Approach</span> to
+                better IT
               </h1>
               <p className="mx-auto max-w-[580px] font-sans text-lg leading-relaxed text-white/78">
                 Your success is our success. PulseOne is your &quot;get IT done&quot; people.

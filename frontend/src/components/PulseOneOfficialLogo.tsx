@@ -27,7 +27,8 @@ function sizeClasses(size: NonNullable<Props["size"]>): string {
     return "h-9 w-auto max-w-[9.75rem] object-contain object-left";
   }
   if (size === "header") {
-    return "h-[3.75rem] w-auto max-w-[min(80vw,425px)] object-contain object-left sm:h-[4.0625rem] md:h-[4.375rem] md:max-w-[475px]";
+    // Header lockup heights: 54 / 58.5 / 63 px (10% smaller than the prior 60 / 65 / 70 px scale).
+    return "h-[3.375rem] w-auto max-w-[min(80vw,382px)] object-contain object-left sm:h-[3.6563rem] md:h-[3.9375rem] md:max-w-[427px]";
   }
   if (size === "footer") {
     return "h-10 w-auto max-w-[220px] object-contain object-left sm:h-11 sm:max-w-[240px]";
@@ -37,7 +38,7 @@ function sizeClasses(size: NonNullable<Props["size"]>): string {
 
 function sizesAttr(size: NonNullable<Props["size"]>): string {
   if (size === "sm") return "156px";
-  if (size === "header") return "(max-width:768px) 80vw,475px";
+  if (size === "header") return "(max-width:768px) 80vw,427px";
   if (size === "footer") return "240px";
   return "300px";
 }

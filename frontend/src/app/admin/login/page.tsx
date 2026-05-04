@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { PulseOneOfficialLogo } from "@/components/PulseOneOfficialLogo";
-import { API_BASE } from "@/lib/api";
+import { API_BASE, apiBaseLooksUnsetForProductionDeploy } from "@/lib/api";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -36,7 +36,12 @@ export default function AdminLoginPage() {
       }
       router.replace("/admin");
     } catch {
-      setError("Login failed. Check your connection.");
+      const mis = apiBaseLooksUnsetForProductionDeploy();
+      setError(
+        mis
+          ? "Cannot reach API: NEXT_PUBLIC_API_URL was not baked into this build (still localhost). On Railway, set NEXT_PUBLIC_API_URL and SERVER_API_URL to your backend HTTPS URL, enable them during the Docker/build step, redeploy Frontend, hard-refresh the browser."
+          : `Cannot contact the login API at ${API_BASE}. Confirm NEXT_PUBLIC_API_URL matches your live backend URL (rebuild frontend if wrong) and add ${typeof window !== "undefined" ? window.location.origin : "this site's origin"} to CORS_ORIGINS on the backend (comma-separated HTTPS origins).`,
+      );
     } finally {
       setLoading(false);
     }

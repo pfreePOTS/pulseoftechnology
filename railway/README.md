@@ -46,6 +46,8 @@ Frontend Docker build needs `NEXT_PUBLIC_API_URL` and `SERVER_API_URL` at **buil
 
 In Railway: **Frontend service → Variables** — mark these as **available during build**, or define equivalent **Docker build arguments** in the UI if Railway exposes them for Dockerfile `ARG`s.
 
+Without `NEXT_PUBLIC_API_URL` baked at build, the deployed admin UI still calls **`http://localhost:8100`** (see `frontend/Dockerfile.prod` ARG default) → login shows “cannot contact API” even though Railway is reachable. **`server.js`** also needs **`SERVER_API_URL`** for SSR/server fetches pointing at `https://…your-backend…`.
+
 ## 4. Postgres migrations
 
 Backend container runs **`alembic upgrade head`** on start (`Dockerfile.prod` `CMD`). No separate release phase is required unless you prefer Railway’s optional pre-deploy step.

@@ -6,36 +6,52 @@ const OFFICIAL_PNG = {
   height: 152,
 } as const;
 
+/** Vector lockup authored for charcoal / dark admins — avoids ``brightness-0 invert`` on the PNG (shows as a flat white slab). */
+const DARK_SVG = "/pulseone_logo_dark.svg";
+
 type Props = {
-  /** PNG for light surfaces; `onDark` inverts for charcoal backgrounds. */
+  /** PNG on light backgrounds; branded SVG on charcoal (footer, admin). */
   variant?: "onDark" | "onLight";
   size?: "sm" | "md" | "header" | "footer";
   className?: string;
 };
 
+function sizeClasses(size: NonNullable<Props["size"]>): string {
+  if (size === "sm") {
+    return "h-9 w-auto max-w-[9.75rem] object-contain object-left";
+  }
+  if (size === "header") {
+    return "h-12 w-auto max-w-[min(72vw,340px)] object-contain object-left sm:h-[3.25rem] md:h-[3.5rem] md:max-w-[380px]";
+  }
+  if (size === "footer") {
+    return "h-10 w-auto max-w-[220px] object-contain object-left sm:h-11 sm:max-w-[240px]";
+  }
+  return "h-[2.875rem] w-auto max-w-[272px] object-contain object-left sm:h-12 md:h-[3.5rem] md:max-w-[300px]";
+}
+
 /**
- * Official PulseOne lockup in `public/pulseone_logo_official.png`
- * (typically includes tagline below the wordmark).
+ * PulseOne lockup: raster ``pulseone_logo_official.png`` on light UI; SVG ``pulseone_logo_dark.svg`` on dark
+ * (invert-on-PNG is wrong for rectangular assets — produces a blank white rectangle).
  */
 export function PulseOneOfficialLogo({
   variant = "onDark",
   size = "md",
   className = "",
 }: Props) {
-  const filter = variant === "onDark" ? "brightness-0 invert opacity-95" : "";
+  const sizeCls = sizeClasses(size);
 
-  let sizeCls: string;
-  if (size === "sm") {
-    sizeCls = "h-9 w-auto max-w-[9.75rem] object-contain object-left";
-  } else if (size === "header") {
-    sizeCls =
-      "h-12 w-auto max-w-[min(72vw,340px)] object-contain object-left sm:h-[3.25rem] md:h-[3.5rem] md:max-w-[380px]";
-  } else if (size === "footer") {
-    sizeCls =
-      "h-10 w-auto max-w-[220px] object-contain object-left sm:h-11 sm:max-w-[240px]";
-  } else {
-    sizeCls =
-      "h-[2.875rem] w-auto max-w-[272px] object-contain object-left sm:h-12 md:h-[3.5rem] md:max-w-[300px]";
+  if (variant === "onDark") {
+    return (
+      <Image
+        src={DARK_SVG}
+        width={440}
+        height={118}
+        alt="PulseOne — People | Technology | Progress"
+        unoptimized
+        priority={size === "md"}
+        className={[sizeCls, "block shrink-0", className].filter(Boolean).join(" ")}
+      />
+    );
   }
 
   let sizesAttr: string;
@@ -55,7 +71,7 @@ export function PulseOneOfficialLogo({
     <Image
       {...OFFICIAL_PNG}
       alt="PulseOne — People | Technology | Progress"
-      className={[filter, sizeCls, className].filter(Boolean).join(" ")}
+      className={[sizeCls, className].filter(Boolean).join(" ")}
       priority={priority}
       sizes={sizesAttr}
     />

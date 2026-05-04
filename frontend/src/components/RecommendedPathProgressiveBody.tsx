@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import ExperienceItemIcon from "@/components/ExperienceItemIcon";
 import RecommendedPathBuildingScreen from "@/components/RecommendedPathBuildingScreen";
@@ -12,6 +12,7 @@ import type { RecommendedHeroImage } from "@/lib/recommendedPathHero";
 import { fallbackHeadlineFromIntake, roleLabelPluralHeadline } from "@/lib/recommendedPathIntakeCopy";
 import SynthesisCardBandImages from "@/components/SynthesisCardBandImages";
 import type { RecommendedPathIntake, RecommendedPathPayload } from "@/lib/recommendedPathTypes";
+import { distinctTopicSlugsForCards } from "@/lib/synthesisFocusBanner";
 
 type Props = {
   intake: RecommendedPathIntake;
@@ -93,6 +94,14 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
 
   const synthesisHtml = data?.synthesis_html ?? "";
   const synthesisCards = data?.synthesis_cards ?? [];
+  const synthesisCardTopicSlugs = useMemo(() => {
+    const cards = data?.synthesis_cards;
+    if (!cards?.length) return [];
+    return distinctTopicSlugsForCards(
+      cards.map((c) => c.title),
+      issue,
+    );
+  }, [data?.synthesis_cards, issue]);
   const experienceItems = data?.experience_items ?? [];
   const watchBrief = data?.watch_brief ?? "";
   const watchPosture = data?.watch_posture ?? "";
@@ -110,9 +119,7 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
   } else if ((fetchFailed || !data) && !buildingOverlay) {
     heroSubtext = (
       <>
-        PulseOne could not finish loading your briefing after two attempts—including an automatic backup response matched
-        to your intake. That usually means a short network or service interruption. Your answers are still in the URL;
-        try{" "}
+        We couldn&rsquo;t finish loading your briefing. Your answers are still in the URL—try{" "}
         <button
           type="button"
           onClick={() => globalThis.location.reload()}
@@ -120,13 +127,13 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
         >
           reload this page
         </button>{" "}
-        in a moment, or jump to &ldquo;Talk with an expert&rdquo; below.
+        in a moment, or use &ldquo;Talk with an expert&rdquo; below.
       </>
     );
   } else if (!data || buildingOverlay) {
     heroSubtext = (
       <>
-        We&rsquo;re tailoring your briefing from your intake and the live Pulse radar. The loading screen hides until the API returns a complete recommendation—timing depends on synthesis and radar context—and the PulseOne header stays visible.
+        We&rsquo;re tailoring your briefing from your intake and the live Pulse radar. This usually takes a moment.
       </>
     );
   } else {
@@ -304,10 +311,9 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
                 >
                   <div className="relative isolate h-[120px] w-full shrink-0 overflow-hidden md:h-[132px]">
                     <SynthesisCardBandImages
-                      key={`${industry}:${issue}:${idx}`}
+                      key={`${card.title}-${idx}-${synthesisCardTopicSlugs[idx] ?? idx}`}
                       industry={industry}
-                      issue={issue}
-                      cardIndex={idx}
+                      topicSlug={synthesisCardTopicSlugs[idx]!}
                       sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 340px"
                     />
                     <div

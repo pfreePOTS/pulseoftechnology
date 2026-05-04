@@ -8,51 +8,53 @@ import {
   industrySynthesisBannerSrc,
   industrySynthesisBannerSvgFallback,
 } from "@/lib/industrySynthesisBanner";
-import { synthesisFocusBannerSrc } from "@/lib/synthesisFocusBanner";
-
-const BAND_OBJECT_POSITIONS = ["object-[center_18%]", "object-center", "object-[center_82%]"] as const;
+import {
+  type SynthesisFocusBannerSlug,
+  synthesisFocusBannerSrcFromSlug,
+} from "@/lib/synthesisFocusBanner";
 
 type Props = {
   industry: string;
-  issue: string;
-  cardIndex: number;
+  topicSlug: SynthesisFocusBannerSlug;
   sizes: string;
 };
 
-export default function SynthesisCardBandImages({ industry, issue, cardIndex, sizes }: Props) {
-  const pos = BAND_OBJECT_POSITIONS[cardIndex % BAND_OBJECT_POSITIONS.length];
-
+/**
+ * “What we think” card hero: sector wash (industry strip, low opacity) +
+ * a topic-specific band (Focus library) on top. Both use object-center so
+ * adjacent cards don’t look like the same photo cropped three ways.
+ */
+export default function SynthesisCardBandImages({ industry, topicSlug, sizes }: Props) {
   const industryPrimary = useMemo(() => industrySynthesisBannerSrc(industry), [industry]);
   const industrySvg = useMemo(() => industrySynthesisBannerSvgFallback(industry), [industry]);
   const [industrySrc, setIndustrySrc] = useState(industryPrimary);
 
-  const focusUrl = useMemo(() => synthesisFocusBannerSrc(issue), [issue]);
-  const [focusActive, setFocusActive] = useState(focusUrl !== null);
-
-  const showFocus = focusActive && focusUrl;
+  const topicSrc = useMemo(() => synthesisFocusBannerSrcFromSlug(topicSlug), [topicSlug]);
+  const [topicFailed, setTopicFailed] = useState(false);
 
   return (
     <>
-      {showFocus ? (
-        <Image
-          src={focusUrl}
-          alt=""
-          fill
-          sizes={sizes}
-          className={`object-cover ${pos} scale-105 opacity-[0.42] blur-[0.5px]`}
-          aria-hidden
-          onError={() => setFocusActive(false)}
-        />
-      ) : null}
       <Image
         src={industrySrc}
         alt=""
         fill
         sizes={sizes}
-        className={`z-[1] object-cover ${pos}`}
+        className={`object-cover object-center transition-opacity duration-300 ${
+          topicFailed ? "z-[1] opacity-100" : "opacity-[0.38]"
+        }`}
         unoptimized={industrySynthesisBannerDisableOptimization(industrySrc)}
         onError={() => setIndustrySrc(industrySvg)}
       />
+      {!topicFailed ? (
+        <Image
+          src={topicSrc}
+          alt=""
+          fill
+          sizes={sizes}
+          className="z-[1] object-cover object-center"
+          onError={() => setTopicFailed(true)}
+        />
+      ) : null}
     </>
   );
 }

@@ -67,7 +67,8 @@ body {
 
 /* ─────────────────────────────────────────────────────────────────────
    Recommended-path "Building your specific solution" loading screen.
-   Indeterminate bar — no scripted % / duration tied to imaginary phases.
+   Step list + determinate-style bar (CSS-only timings). Indeterminate bar
+   variant kept for other surfaces if needed.
    ───────────────────────────────────────────────────────────────────── */
 @keyframes pulse-ring {
   0% {
@@ -98,6 +99,36 @@ body {
   }
 }
 
+@keyframes loading-step-illuminate {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes loading-icon-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes loading-icon-in {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes loading-bar-fill {
+  0% {
+    width: 6%;
+  }
+  60% {
+    width: 68%;
+  }
+  100% {
+    width: 92%;
+  }
+}
+
 @keyframes loading-bar-shimmer-slide {
   0% {
     transform: translateX(-100%);
@@ -120,6 +151,39 @@ body {
   animation: spinner-rotate 1s linear infinite;
   transform-origin: center;
 }
+.loading-bar {
+  width: 6%;
+  animation: loading-bar-fill 10s cubic-bezier(0.2, 0.6, 0.3, 1) forwards;
+}
+
+.loading-step {
+  opacity: 0.45;
+  animation: loading-step-illuminate 400ms ease-out var(--complete-at, 0ms) forwards;
+}
+
+.loading-step .step-spinner {
+  animation: loading-icon-out 400ms ease-out var(--complete-at, 0ms) forwards;
+}
+
+.loading-step .step-check {
+  opacity: 0;
+  animation: loading-icon-in 400ms ease-out var(--complete-at, 0ms) forwards;
+}
+
+/* Final step stays spinning until the route unmounts — avoids "all done" while still waiting. */
+.loading-step.is-final {
+  opacity: 1;
+  animation: none;
+}
+.loading-step.is-final .step-spinner {
+  opacity: 1;
+  animation: none;
+}
+.loading-step.is-final .step-check {
+  opacity: 0;
+  animation: none;
+}
+
 .loading-bar-indeterminate {
   width: 42%;
   transform: translateX(-100%);
@@ -131,8 +195,36 @@ body {
   .loading-pulse-ring,
   .loading-pulse-ring-2,
   .loading-pulse-dot,
-  .loading-spinner {
+  .loading-spinner,
+  .loading-bar,
+  .loading-step,
+  .loading-step .step-spinner,
+  .loading-step .step-check {
     animation: none;
+  }
+
+  .loading-bar {
+    width: 50%;
+  }
+
+  .loading-step {
+    opacity: 1;
+  }
+
+  .loading-step .step-spinner {
+    opacity: 0;
+  }
+
+  .loading-step .step-check {
+    opacity: 1;
+  }
+
+  .loading-step.is-final .step-check {
+    opacity: 0;
+  }
+
+  .loading-step.is-final .step-spinner {
+    opacity: 1;
   }
 
   .loading-bar-indeterminate {

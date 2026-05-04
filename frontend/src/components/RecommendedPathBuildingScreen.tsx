@@ -1,12 +1,24 @@
 /**
- * Full-page / overlay messaging while `/recommended-path` waits for one complete API
- * response. No phased “fake progress” checklist — turnaround is purely server-bound.
+ * Full-page (or embedded) loader while `/recommended-path` content is prepared.
+ * Animated step list + bar — pure CSS (`globals.css`); works as RSC without client JS.
  */
+
+import type { CSSProperties } from "react";
 
 type Props = {
   /** Omit full-viewport backdrop when rendered inside an overlay shell (progressive loader). */
   embedded?: boolean;
 };
+
+type LoadingStep = { label: string; completeAtMs: number; final?: boolean };
+
+const STEPS: LoadingStep[] = [
+  { label: "Reviewing your situation", completeAtMs: 600 },
+  { label: "Mapping our experience to your industry", completeAtMs: 2400 },
+  { label: "Synthesising what we think", completeAtMs: 6200 },
+  { label: "Pulling what we're watching", completeAtMs: 8000 },
+  { label: "Preparing how to engage", completeAtMs: 9500, final: true },
+];
 
 export default function RecommendedPathBuildingScreen({ embedded = false }: Props) {
   return (
@@ -20,8 +32,7 @@ export default function RecommendedPathBuildingScreen({ embedded = false }: Prop
       aria-live="polite"
     >
       <span className="sr-only">
-        Waiting for PulseOne servers. When the assisted response is unavailable or incomplete, a second fully formed
-        briefing is requested automatically before any error state appears.
+        Building your personalised path. This usually takes about ten seconds.
       </span>
 
       <div className="relative mb-10 flex h-32 w-32 items-center justify-center">
@@ -38,39 +49,56 @@ export default function RecommendedPathBuildingScreen({ embedded = false }: Prop
       <h1 className="mb-3 text-center font-sans text-[clamp(1.625rem,3.5vw,2.25rem)] leading-tight font-extrabold text-white">
         Building your specific solution.
       </h1>
-      <p className="mb-8 max-w-[540px] text-center font-sans text-[15px] leading-relaxed text-white/55">
-        We hide the recommendation until the Pulse API returns{" "}
-        <strong className="text-white/78">everything</strong>—headline, synthesis, radar tie-ins, and curated resources.
-        Duration depends on synthesis load and radar context size, not staged UI timings.
+      <p className="mb-10 max-w-[540px] text-center font-sans text-[15px] leading-relaxed text-white/55">
+        We&rsquo;re tailoring radar signals, resources, and a recommendation to your situation. This usually takes
+        about ten seconds.
       </p>
 
-      <ul className="mb-10 w-full max-w-[460px] space-y-2.5 rounded-lg border border-white/10 bg-white/[0.04] px-5 py-4 text-left font-sans text-[14px] leading-snug text-white/72">
-        <li className="flex gap-2.5">
-          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-pulse-teal" aria-hidden />
-          Holds until the briefing is fully composed—no halfway page.
-        </li>
-        <li className="flex gap-2.5">
-          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-pulse-teal" aria-hidden />
-          Spinner only marks “waiting”; it is not timed to mimic internal steps.
-        </li>
-        <li className="flex gap-2.5">
-          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-pulse-teal" aria-hidden />
-          If the AI-assisted response does not complete, we automatically ask the API again for a deterministic,
-          intake-tuned briefing—still one full page, same parameters.
-        </li>
-      </ul>
+      <ol className="w-full max-w-[460px] space-y-2.5">
+        {STEPS.map((step) => (
+          <li
+            key={step.label}
+            className={`loading-step flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3${
+              step.final ? " is-final" : ""
+            }`}
+            style={{ "--complete-at": `${step.completeAtMs}ms` } as CSSProperties}
+          >
+            <span className="relative inline-flex h-5 w-5 shrink-0 items-center justify-center">
+              <span className="step-spinner absolute inset-0 flex items-center justify-center">
+                <svg className="loading-spinner h-5 w-5 text-pulse-teal" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.18" strokeWidth="3" />
+                  <path
+                    d="M21 12a9 9 0 0 1-9 9"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </span>
+              <span className="step-check absolute inset-0 flex items-center justify-center">
+                <svg className="h-5 w-5 text-pulse-teal" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <path
+                    d="M5 12.5l4.5 4.5L19 7.5"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </span>
+            </span>
+            <span className="font-sans text-[14px] text-white/85">{step.label}</span>
+          </li>
+        ))}
+      </ol>
 
-      <div className="h-1 w-full max-w-[460px] overflow-hidden rounded-full bg-white/10">
-        <div
-          className="loading-bar-indeterminate h-full rounded-full bg-gradient-to-r from-pulse-red to-pulse-teal"
-          aria-hidden
-        />
+      <div className="mt-10 h-1 w-full max-w-[460px] overflow-hidden rounded-full bg-white/10">
+        <div className="loading-bar h-full rounded-full bg-gradient-to-r from-pulse-red to-pulse-teal" aria-hidden />
       </div>
 
       <p className="mt-6 max-w-[460px] text-center font-sans text-[12px] leading-relaxed text-white/35">
-        Your intake stays in this page&rsquo;s URL—safe to bookmark or reload. We do not time out the browser while an
-        answer is still in flight. If neither response succeeds, reload in a moment; your URL still carries everything we
-        need.
+        Synthesis is generated by AI grounded in PulseOne&rsquo;s live radar — your specific recommendations will be
+        ready in a moment.
       </p>
     </div>
   );

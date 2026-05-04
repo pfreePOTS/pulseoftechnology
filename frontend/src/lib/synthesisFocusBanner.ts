@@ -55,5 +55,76 @@ export function synthesisFocusBannerSlug(issueRaw: string): SynthesisFocusBanner
 export function synthesisFocusBannerSrc(issueRaw: string): string | null {
   const slug = synthesisFocusBannerSlug(issueRaw);
   if (!slug) return null;
+  return synthesisFocusBannerSrcFromSlug(slug);
+}
+
+export function synthesisFocusBannerSrcFromSlug(slug: SynthesisFocusBannerSlug): string {
   return `/images/synthesis-focus/${slug}.jpg`;
+}
+
+/**
+ * Map a synthesis card headline to a topic band image (same assets as intake “Focus”).
+ * Order matters — e.g. “readiness & risk” should prefer security over generic “AI”.
+ */
+export function synthesisTopicSlugFromCardTitle(title: string): SynthesisFocusBannerSlug | null {
+  const t = title.trim();
+  if (!t) return null;
+  const lo = t.toLowerCase();
+
+  if (
+    /\bgovernance\b|oversight|ethics|board|monitoring|drift|bias|\bhipaa\b|regulator|audit\b|compliance/.test(lo)
+  ) {
+    return "compliance";
+  }
+  if (/roadmap|phased|adoption|rollout|\bplan\b|priorit/.test(lo)) {
+    return "strategy";
+  }
+  if (/readiness|\brisk\b|threat|security|ransom|zero[\s-]?trust|nist/.test(lo)) {
+    return "cybersecurity";
+  }
+  if (/\bai\b|generative|llm|machine\s+learning|genai|\bgpt\b/.test(lo)) {
+    return "ai";
+  }
+  if (/cloud|kubernetes|\bsaas\b|aws|azure|\bgcp\b|infra/.test(lo)) {
+    return "cloud";
+  }
+  if (/it\s*management|\bmsp\b|service\s*desk|help\s*desk/.test(lo)) {
+    return "it-management";
+  }
+  return null;
+}
+
+const TOPIC_SLUG_POOL: SynthesisFocusBannerSlug[] = [
+  "cybersecurity",
+  "ai",
+  "strategy",
+  "compliance",
+  "cloud",
+  "it-management",
+  "other",
+];
+
+/** One distinct topic visual per card; prefers title / intake issue, then rotates through the pool. */
+export function distinctTopicSlugsForCards(cardTitles: string[], issueRaw: string): SynthesisFocusBannerSlug[] {
+  const issueSlug = synthesisFocusBannerSlug(issueRaw);
+  const used = new Set<SynthesisFocusBannerSlug>();
+
+  return cardTitles.map((title, i) => {
+    const slug = synthesisTopicSlugFromCardTitle(title) ?? issueSlug ?? TOPIC_SLUG_POOL[i % TOPIC_SLUG_POOL.length]!;
+
+    if (!used.has(slug)) {
+      used.add(slug);
+      return slug;
+    }
+
+    for (const candidate of TOPIC_SLUG_POOL) {
+      if (!used.has(candidate)) {
+        used.add(candidate);
+        return candidate;
+      }
+    }
+
+    used.add(slug);
+    return slug;
+  });
 }

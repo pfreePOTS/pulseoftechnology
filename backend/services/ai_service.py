@@ -260,10 +260,11 @@ INDUSTRY_GRID_LABELS: tuple[str, ...] = (
 )
 
 _INDUSTRY_NAME_ALIASES: dict[str, str] = {
-    # Legacy prompts / model variants → canonical grid keys
+    # Legacy prompts / seed_topics / model variants → canonical grid keys
     "Finance & Banking": "Financial Services",
     "Government & Public Sector": "Government",
     "Retail & E-Commerce": "Retail",
+    "Energy & Utilities": "Energy",
 }
 
 _INDUSTRY_GRID_LABELS_SET = frozenset(INDUSTRY_GRID_LABELS)

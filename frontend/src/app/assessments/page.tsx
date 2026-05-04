@@ -259,7 +259,10 @@ export default function AssessmentsPage() {
                 IT Assessments
               </span>
               <h1 className="mb-5 font-sans text-[clamp(2.125rem,5vw,58px)] leading-[1.1] font-bold tracking-tight text-white">
-                Find Your Starting Point
+                Find Your{" "}
+                <span className="text-pulse-red [text-shadow:0_0_40px_rgba(213,23,30,0.4)]">
+                  Starting Point
+                </span>
               </h1>
               <p className="mx-auto max-w-[600px] font-sans text-lg leading-relaxed text-white/78">
                 Our assessments give you a clear picture of your technology environment and a prioritized path

@@ -37,6 +37,9 @@ Thumbs.db
 # Docker
 *.log
 
+# Local Postgres data exports (large binary dumps)
+scripts/db/artifacts/
+
 # Misc
 coverage/
 .pytest_cache/

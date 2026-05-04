@@ -148,9 +148,18 @@ class LoginRequest(BaseModel):
     password: str
 
 
+def _admin_cookie_cross_site_settings() -> tuple[bool, str]:
+    """Railsway / split-host deploys: SPA on frontend host, API on another — cross-origin fetches."""
+    env = app_settings.environment.strip().lower()
+    if env in ("production", "staging"):
+        # Lax cookies are not sent on credentialed cross-origin fetches → login succeeds but session is empty.
+        return True, "none"
+    return False, "lax"
+
+
 def _issue_admin_cookie_response(user: AdminUser) -> JSONResponse:
     token = create_admin_access_token(user)
-    secure = app_settings.environment in ("production", "staging")
+    secure, samesite = _admin_cookie_cross_site_settings()
     response = JSONResponse(
         {
             "access_token": token,
@@ -163,7 +172,7 @@ def _issue_admin_cookie_response(user: AdminUser) -> JSONResponse:
         value=token,
         httponly=True,
         max_age=app_settings.admin_token_expire_minutes * 60,
-        samesite="lax",
+        samesite=samesite,  # type: ignore[arg-type]
         path="/",
         secure=secure,
     )
@@ -192,8 +201,15 @@ def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)
 @router.post("/logout")
 def logout() -> JSONResponse:
     """Clear admin session cookie."""
+    secure, samesite = _admin_cookie_cross_site_settings()
     response = JSONResponse({"ok": True})
-    response.delete_cookie(key=ADMIN_COOKIE_NAME, path="/")
+    response.delete_cookie(
+        key=ADMIN_COOKIE_NAME,
+        path="/",
+        secure=secure,
+        httponly=True,
+        samesite=samesite,  # type: ignore[arg-type]
+    )
     return response
 
 
@@ -347,14 +363,81 @@ def patch_admin_user(
     u = db.get(AdminUser, user_id)
     if u is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    if u.is_superuser and (
-        payload.is_active is False
-        or payload.page_permissions is not None
-        or payload.is_superuser is False
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot modify superuser access"
+
+    def other_active_superusers() -> int:
+        return (
+            db.query(func.count(AdminUser.id))
+            .filter(
+                AdminUser.is_superuser.is_(True),
+                AdminUser.is_active.is_(True),
+                AdminUser.id != user_id,
+            )
+            .scalar()
+            or 0
         )
+
+    if u.is_superuser and payload.is_superuser is False:
+        if actor.id == user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot remove your own admin access",
+            )
+        if other_active_superusers() < 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot demote the last active superuser",
+            )
+        if not payload.page_permissions:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="When demoting a superuser, include page_permissions with at least one page",
+            )
+        _validate_invite_permissions(payload.page_permissions)
+        u.is_superuser = False
+        u.page_permissions = list(payload.page_permissions)
+        if payload.is_active is not None:
+            if actor.id == user_id and not payload.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot deactivate yourself",
+                )
+            u.is_active = payload.is_active
+        db.add(u)
+        db.commit()
+        db.refresh(u)
+        return u
+
+    if u.is_superuser:
+        if payload.page_permissions is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Superusers have all pages; demote this user first "
+                    "(send is_superuser: false with page_permissions)"
+                ),
+            )
+        if payload.is_superuser is False:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="When demoting a superuser, include page_permissions with at least one page",
+            )
+        if payload.is_active is not None:
+            if actor.id == user_id and not payload.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot deactivate yourself",
+                )
+            if not payload.is_active and other_active_superusers() < 1:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot deactivate the last active superuser",
+                )
+            u.is_active = payload.is_active
+        db.add(u)
+        db.commit()
+        db.refresh(u)
+        return u
+
     if payload.is_superuser is not None:
         if actor.id == user_id and not payload.is_superuser:
             raise HTTPException(
@@ -394,9 +477,21 @@ def delete_admin_user(
     if u is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     if u.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete a superuser account"
+        other_active_super = (
+            db.query(func.count(AdminUser.id))
+            .filter(
+                AdminUser.is_superuser.is_(True),
+                AdminUser.is_active.is_(True),
+                AdminUser.id != user_id,
+            )
+            .scalar()
+            or 0
         )
+        if other_active_super < 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot delete the last active superuser",
+            )
     db.delete(u)
     db.commit()
     return {"ok": True}

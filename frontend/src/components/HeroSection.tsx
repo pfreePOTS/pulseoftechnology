@@ -29,8 +29,10 @@ export default function HeroSection() {
 
   return (
     <>
-      {/* Hero shell — sizing/padding/gradient kept identical to the /radar hero
-          so the two heroes feel like one design system. Update both together. */}
+      {/* Hero shell — sizing/padding/gradient match the /radar hero so the two
+          feel like one design system, but each page owns its own background
+          asset (homepage → /FrontPage_SecurityImage.png; radar →
+          /pulse_of_technology_hero.png). Update layout/gradient together. */}
       <section className="relative flex min-h-[560px] items-center justify-center overflow-hidden text-center">
         <Image
           src="/FrontPage_SecurityImage.png"

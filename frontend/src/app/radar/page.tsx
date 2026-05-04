@@ -49,12 +49,14 @@ export default async function RadarPage() {
     <div className="flex min-h-screen flex-col bg-white text-gray-900">
       <GlobalHeader />
       <main className="flex-1">
-        {/* HERO — sizing/padding/gradient kept identical to HeroSection.tsx so
-            the homepage and /radar heroes feel like one design system. Update
-            both together. */}
+        {/* HERO — sizing/padding/gradient match HeroSection.tsx so the homepage
+            and /radar heroes feel like one design system, but each owns its
+            own background asset (radar → /pulse_of_technology_hero.png;
+            homepage → /FrontPage_SecurityImage.png). Update layout/gradient
+            together. */}
         <section className="relative flex min-h-[560px] items-center justify-center overflow-hidden text-center">
           <Image
-            src="/FrontPage_SecurityImage.png"
+            src="/pulse_of_technology_hero.png"
             alt=""
             fill
             priority
@@ -102,10 +104,9 @@ export default async function RadarPage() {
             bar + full radar visible below) instead of jumping past the
             gradient and clipping it.
 
-            `scroll-mt-[72px]` matches the `h-[72px]` `sticky top-0 z-[100]`
-            `GlobalHeader`, so the anchor target clears the floating header
-            exactly. Update both numbers together if header height changes. */}
-        <div id="radar" className="scroll-mt-[72px]">
+            `scroll-mt-[96px]` approximates stacked logo + tagline in `GlobalHeader`
+            (`min-h-[80px]` + vertical padding); update together if header height changes. */}
+        <div id="radar" className="scroll-mt-[96px]">
           <div
             className="h-[5px] w-full bg-gradient-to-r from-pulse-red to-pulse-teal"
             aria-hidden

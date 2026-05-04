@@ -171,7 +171,7 @@ def _complete_deepseek(
         max_tokens=max_tokens,
     )
     if json_response:
-        # OpenAI-compatible JSON mode — DeepSeek API supports this; harmless to retry without.
+        # OpenAI-compatible JSON mode — some DeepSeek builds return null/blank content in this mode.
         kwargs["response_format"] = {"type": "json_object"}
     try:
         resp = client.chat.completions.create(**kwargs)
@@ -184,22 +184,34 @@ def _complete_deepseek(
             raise
 
     tokens = _deepseek_usage_total_tokens(resp)
-    ch = resp.choices[0].message.content
-    if ch is None:
-        if json_response:
+    ch = getattr(resp.choices[0].message, "content", None)
+    raw_len = len(str(ch)) if ch is not None else 0
+    text = ""
+    if ch is not None:
+        text = _strip_code_fences(str(ch))
+
+    # Retry once without JSON mode when the completion body is unusable — same workaround as OpenAIError path.
+    if json_response and (ch is None or not text.strip()):
+        if ch is None:
             logger.warning(
-                "DeepSeek returned null message.content with response_format=json_object (model=%s)",
+                "DeepSeek returned null message.content with response_format=json_object (model=%s); "
+                "retrying without JSON mode.",
                 model,
             )
-        return "", tokens
-    text = _strip_code_fences(str(ch))
-    if not text and json_response:
-        logger.warning(
-            "DeepSeek returned empty text after strip/fences with response_format=json_object "
-            "(model=%s; raw_len=%s)",
-            model,
-            len(str(ch)),
-        )
+        else:
+            logger.warning(
+                "DeepSeek returned empty text after strip/fences with response_format=json_object "
+                "(model=%s; raw_len=%s); retrying without JSON mode.",
+                model,
+                raw_len,
+            )
+        kwargs_retry = dict(kwargs)
+        kwargs_retry.pop("response_format", None)
+        resp2 = client.chat.completions.create(**kwargs_retry)
+        tokens = _deepseek_usage_total_tokens(resp2) or tokens
+        ch2 = getattr(resp2.choices[0].message, "content", None)
+        if ch2 is not None:
+            text = _strip_code_fences(str(ch2))
     return text, tokens
 
 

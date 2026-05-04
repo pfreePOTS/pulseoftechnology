@@ -25,19 +25,19 @@ pytest
 - The `backend/` directory is mounted into the container at `/app/backend/` for hot reload
 - Database connection uses the `db` service hostname inside Compose — `localhost:5432` will NOT work from inside the container
 
-## Seeding RSS sources
+## Seeding curated data
 
-The ingestion engine requires at least one active source. Run the seed script once after the database is up:
+After **`alembic upgrade head`** you have tables but no RSS rows unless you seeded before. Postgres is **not** auto-filled on startup (except the empty **`admin_users`** bootstrap).
+
+One command for local or remote DB reachable from `DATABASE_URL`:
 
 ```bash
-# Via Docker (recommended — uses the container's DATABASE_URL automatically)
-docker compose exec backend python -m backend.seed_sources
-
-# Locally (requires a .env with DATABASE_URL pointing at your DB)
-cd backend && python -m seed_sources
+docker compose exec backend python -m backend.seed_local_dev
 ```
 
-The script inserts 10 real-world technology RSS feeds and is idempotent — running it again skips any URL that already exists.
+That runs **`seed_sources`** (RSS catalogue), **`seed_topics`** (core radar domains, published on `/radar`), and **`seed_roles`** (CEO/CFO/CTO/CISO/COO/CMO personas). Scripts are **idempotent** — safe to rerun.
+
+Alternatively run modules individually (`backend.seed_sources`, etc.). Scripts do **not** insert **articles**; use ingestion (`scripts/db/import_data.sh` for a full mirror).
 
 ## Running standalone (debugging only)
 

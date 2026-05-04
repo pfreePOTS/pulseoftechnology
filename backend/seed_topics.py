@@ -4,15 +4,27 @@ Seed the topics table with the core PulseOne radar domains.
 Re-runnable: if a topic already exists its industry_positions are updated
 so you can tweak the data without wiping the database.
 
+Each topic receives all 20 ``INDUSTRY_GRID_LABELS`` sectors: legacy aliases in ``CORE_TOPICS``
+(e.g. ``Finance & Banking``) normalize to canonical names; any missing sectors get placeholders
+matching topic-level urgency/adoption via ``fill_missing_industry_grid_rows``.
+
 Run from inside Docker:
     docker compose exec backend python -m backend.seed_topics
 """
 
+from __future__ import annotations
+
+from typing import Any
+
 from .database import SessionLocal
 from .models.topic import Topic, TopicStatus
+from .services.ai_service import (
+    _canonical_industry_key,
+    _prefer_richer_industry_row,
+    fill_missing_industry_grid_rows,
+)
 
-# Industry keys should align with `INDUSTRY_GRID_LABELS` / `frontend/src/lib/industryGrid.ts`.
-# Per-topic: {industry: {urgency_score, adoption_state, rationale}}
+# Curated rationales keyed by legacy or canonical strings; normalized before persist.
 
 CORE_TOPICS = [
     {
@@ -537,6 +549,38 @@ CORE_TOPICS = [
 ]
 
 
+def _industry_positions_for_seed(entry: dict[str, Any]) -> dict[str, Any]:
+    """Normalize CORE_TOPICS industry keys onto the 20-label grid and backfill blanks."""
+    raw = entry.get("industry_positions") or {}
+    merged: dict[str, Any] = {}
+    if not isinstance(raw, dict):
+        raw = {}
+
+    for key, row in raw.items():
+        if not isinstance(row, dict):
+            continue
+        canon = _canonical_industry_key(str(key))
+        if canon is None:
+            continue
+        if canon in merged:
+            merged[canon] = _prefer_richer_industry_row(merged[canon], row)
+        else:
+            merged[canon] = row
+
+    shell = Topic(
+        name=entry["name"],
+        domain=entry["domain"],
+        subdomain="",
+        urgency_score=entry["urgency_score"],
+        summary=entry.get("summary") or "",
+        status=TopicStatus.selected,
+        adoption_state=entry["adoption_state"],
+        industry_positions={},
+        is_published=False,
+    )
+    return fill_missing_industry_grid_rows(shell, merged)
+
+
 def seed() -> None:
     db = SessionLocal()
     try:
@@ -544,8 +588,9 @@ def seed() -> None:
         updated = 0
         for entry in CORE_TOPICS:
             existing = db.query(Topic).filter(Topic.name == entry["name"]).first()
+            positions = _industry_positions_for_seed(entry)
             if existing:
-                existing.industry_positions = entry["industry_positions"]
+                existing.industry_positions = positions
                 existing.urgency_score = entry["urgency_score"]
                 existing.adoption_state = entry["adoption_state"]
                 existing.is_published = True
@@ -561,7 +606,7 @@ def seed() -> None:
                     summary=entry["summary"],
                     status=TopicStatus.selected,
                     adoption_state=entry["adoption_state"],
-                    industry_positions=entry["industry_positions"],
+                    industry_positions=positions,
                     is_published=True,
                 )
                 db.add(topic)

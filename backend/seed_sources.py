@@ -92,6 +92,8 @@ def seed() -> None:
                 row.name = new_name
                 row.url = new_url
                 updated += 1
+        db.flush()
+
         for entry in SOURCES:
             by_url = db.query(Source).filter(Source.url == entry["url"]).first()
             if by_url:

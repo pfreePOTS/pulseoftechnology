@@ -16,6 +16,12 @@ function resolveApiBase(): string {
 
 export const API_BASE = resolveApiBase();
 
+/** `NEXT_PUBLIC_*` baked at build — unset on Railway ⇒ browser still hits localhost → login fetch fails. */
+export function apiBaseLooksUnsetForProductionDeploy(): boolean {
+  if (process.env.NODE_ENV !== "production") return false;
+  return /\blocalhost\b|^http:\/\/127\./i.test(API_BASE);
+}
+
 /** Parse FastAPI `{ "detail": ... }` or plain text from a failed admin response. */
 export async function adminResponseErrorDetail(res: Response): Promise<string> {
   const raw = await res.text();

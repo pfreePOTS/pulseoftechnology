@@ -3,16 +3,19 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { INVITABLE_NAV } from "@/lib/admin-nav";
-import { adminFetch, API_BASE } from "@/lib/api";
+import { adminFetch, adminResponseErrorDetail, API_BASE } from "@/lib/api";
 
 type AdminUserRow = {
   id: number;
   email: string;
-  is_superuser: boolean;
+  is_superuser?: boolean;
   is_active: boolean;
   must_change_password: boolean;
   page_permissions: string[];
 };
+
+const actionBtn =
+  "inline-flex items-center rounded-md border px-2.5 py-1.5 text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#019E7C]/60";
 
 export default function AdminUsersPage() {
   const [rows, setRows] = useState<AdminUserRow[]>([]);
@@ -28,6 +31,22 @@ export default function AdminUsersPage() {
   const [sendEmail, setSendEmail] = useState(true);
   const [inviting, setInviting] = useState(false);
   const [inviteMessage, setInviteMessage] = useState<string | null>(null);
+  const [meId, setMeId] = useState<number | null>(null);
+  const [editingUser, setEditingUser] = useState<AdminUserRow | null>(null);
+  const [editPages, setEditPages] = useState<Record<string, boolean>>({});
+  const [editIsSuperuser, setEditIsSuperuser] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const loadMe = useCallback(async () => {
+    try {
+      const res = await adminFetch(`${API_BASE}/api/admin/me`);
+      if (!res.ok) return;
+      const d = (await res.json()) as { id: number };
+      setMeId(d.id);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -45,7 +64,85 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadMe();
+  }, [load, loadMe]);
+
+  useEffect(() => {
+    if (!editingUser) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setEditingUser(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editingUser]);
+
+  function openEdit(u: AdminUserRow) {
+    const next: Record<string, boolean> = {};
+    for (const n of INVITABLE_NAV) {
+      next[n.href] = (u.page_permissions || []).includes(n.slug);
+    }
+    setEditPages(next);
+    setEditIsSuperuser(Boolean(u.is_superuser));
+    setEditingUser(u);
+  }
+
+  async function saveEdit() {
+    if (!editingUser) return;
+    if (editIsSuperuser) {
+      if (editingUser.is_superuser) {
+        setEditingUser(null);
+        return;
+      }
+      setSavingEdit(true);
+      try {
+        const res = await adminFetch(`${API_BASE}/api/admin/users/${editingUser.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ is_superuser: true }),
+        });
+        if (!res.ok) {
+          alert(await adminResponseErrorDetail(res));
+          return;
+        }
+        setEditingUser(null);
+        await load();
+      } catch {
+        alert("Could not save changes.");
+      } finally {
+        setSavingEdit(false);
+      }
+      return;
+    }
+    const page_permissions = Array.from(
+      new Set(INVITABLE_NAV.filter((n) => editPages[n.href]).map((n) => n.slug)),
+    );
+    if (page_permissions.length === 0) {
+      alert("Select at least one page for this user, or enable full admin access.");
+      return;
+    }
+    const body =
+      editingUser.is_superuser && !editIsSuperuser
+        ? { is_superuser: false, page_permissions }
+        : { page_permissions };
+    setSavingEdit(true);
+    try {
+      const res = await adminFetch(`${API_BASE}/api/admin/users/${editingUser.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        alert(await adminResponseErrorDetail(res));
+        return;
+      }
+      setEditingUser(null);
+      await load();
+    } catch {
+      alert("Could not save changes.");
+    } finally {
+      setSavingEdit(false);
+    }
+  }
 
   function togglePageByHref(href: string) {
     setInvitePages((prev) => ({ ...prev, [href]: !prev[href] }));
@@ -160,13 +257,12 @@ export default function AdminUsersPage() {
     }
   }
 
-  async function removeUser(id: number, email: string, is_superuser: boolean) {
-    if (is_superuser) return;
+  async function removeUser(id: number, email: string) {
     if (!confirm(`Delete admin user ${email}? This cannot be undone.`)) return;
     try {
       const res = await adminFetch(`${API_BASE}/api/admin/users/${id}`, { method: "DELETE" });
       if (!res.ok) {
-        alert(await res.text());
+        alert(await adminResponseErrorDetail(res));
         return;
       }
       await load();
@@ -294,12 +390,14 @@ export default function AdminUsersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
-              {rows.map((u) => (
+              {rows.map((u) => {
+                const isSuperuser = Boolean(u.is_superuser);
+                return (
                 <tr key={u.id} className="text-gray-200">
                   <td className="px-4 py-3 font-mono text-xs sm:text-sm">{u.email}</td>
-                  <td className="px-4 py-3">{u.is_superuser ? "Superuser" : "User"}</td>
+                  <td className="px-4 py-3">{isSuperuser ? "Superuser" : "User"}</td>
                   <td className="px-4 py-3 max-w-xs text-xs text-gray-400">
-                    {u.is_superuser
+                    {isSuperuser
                       ? "All pages"
                       : (u.page_permissions || []).length
                         ? (u.page_permissions || []).join(", ")
@@ -314,46 +412,131 @@ export default function AdminUsersPage() {
                       <span className="text-red-400">Inactive</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right space-x-2 whitespace-nowrap">
-                    {!u.is_superuser && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => void resetPassword(u.id)}
-                          className="text-[#019E7C] hover:underline text-xs"
-                        >
-                          Reset password
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void setActive(u.id, !u.is_active)}
-                          className="text-gray-400 hover:underline text-xs"
-                        >
-                          {u.is_active ? "Deactivate" : "Activate"}
-                        </button>
+                  <td className="px-4 py-3 text-right align-top">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openEdit(u)}
+                        className={`${actionBtn} border-[#019E7C]/45 bg-[#019E7C]/10 text-[#019E7C] hover:bg-[#019E7C]/18`}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void resetPassword(u.id)}
+                        className={`${actionBtn} border-[#019E7C]/45 bg-[#019E7C]/10 text-[#019E7C] hover:bg-[#019E7C]/18`}
+                      >
+                        Reset password
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void setActive(u.id, !u.is_active)}
+                        className={`${actionBtn} border-gray-600 bg-gray-800/50 text-gray-200 hover:bg-gray-800`}
+                      >
+                        {u.is_active ? "Deactivate" : "Activate"}
+                      </button>
+                      {!isSuperuser && (
                         <button
                           type="button"
                           onClick={() => void makeAdmin(u.id, u.email)}
-                          className="text-teal-300 hover:underline text-xs"
+                          className={`${actionBtn} border-teal-500/35 bg-teal-950/40 text-teal-200 hover:bg-teal-950/70`}
                         >
                           Make admin
                         </button>
+                      )}
+                      {meId !== null && u.id !== meId && (
                         <button
                           type="button"
-                          onClick={() => void removeUser(u.id, u.email, u.is_superuser)}
-                          className="text-red-400 hover:underline text-xs"
+                          onClick={() => void removeUser(u.id, u.email)}
+                          className={`${actionBtn} border-red-500/40 bg-red-950/25 text-red-300 hover:bg-red-950/45`}
                         >
                           Delete
                         </button>
-                      </>
-                    )}
+                      )}
+                    </div>
                   </td>
                 </tr>
-              ))}
+              );
+              })}
             </tbody>
           </table>
         </div>
       </section>
+
+      {editingUser && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-user-title"
+          onClick={() => setEditingUser(null)}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-gray-700 bg-gray-900 p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="edit-user-title" className="text-lg font-semibold text-white">
+              Edit user
+            </h2>
+            <p className="mt-1 text-sm text-gray-400 font-mono break-all">{editingUser.email}</p>
+            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-gray-700 bg-gray-800/40 px-3 py-3 text-sm text-gray-200">
+              <input
+                type="checkbox"
+                checked={editIsSuperuser}
+                onChange={(e) => setEditIsSuperuser(e.target.checked)}
+                className="mt-0.5 rounded border-gray-600"
+              />
+              <span>
+                <span className="block font-semibold text-white">Full admin access (superuser)</span>
+                <span className="text-gray-500">
+                  Uncheck to limit this user to specific pages (another active superuser must exist before demoting).
+                </span>
+              </span>
+            </label>
+            <p className="mt-3 text-xs text-gray-500">
+              Page access (when not superuser):
+            </p>
+            <div
+              className={`mt-2 grid gap-2 sm:grid-cols-2 ${
+                editIsSuperuser ? "pointer-events-none opacity-40" : ""
+              }`}
+              aria-disabled={editIsSuperuser}
+            >
+              {INVITABLE_NAV.map((n) => (
+                <label key={n.href} className="flex items-center gap-2 text-sm text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={editPages[n.href] ?? false}
+                    onChange={() =>
+                      setEditPages((prev) => ({ ...prev, [n.href]: !prev[n.href] }))
+                    }
+                    className="rounded border-gray-600"
+                  />
+                  {n.label}
+                </label>
+              ))}
+            </div>
+            <div className="mt-6 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingUser(null)}
+                className="rounded-lg border border-gray-600 px-4 py-2 text-sm text-gray-300 hover:bg-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={savingEdit}
+                onClick={() => void saveEdit()}
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                style={{ backgroundColor: "#019E7C" }}
+              >
+                {savingEdit ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

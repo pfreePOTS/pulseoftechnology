@@ -150,7 +150,7 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
       {hasIntake && buildingOverlay ? (
         <div
           ref={overlayScrollRef}
-          className="fixed inset-x-0 top-[72px] bottom-0 z-[95] overflow-y-auto bg-dark-bg shadow-[inset_0_8px_24px_rgba(0,0,0,0.12)]"
+          className="fixed inset-x-0 top-[96px] bottom-0 z-[95] overflow-y-auto bg-dark-bg shadow-[inset_0_8px_24px_rgba(0,0,0,0.12)]"
         >
           <RecommendedPathBuildingScreen embedded />
         </div>

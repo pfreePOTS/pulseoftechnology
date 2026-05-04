@@ -1,11 +1,11 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { DragEvent } from "react";
 import { useEffect, useState } from "react";
 
+import { PulseOneOfficialLogo } from "@/components/PulseOneOfficialLogo";
 import {
   ADMIN_NAV,
   canAccessAdminPath,
@@ -194,15 +194,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <aside className="flex w-56 shrink-0 flex-col border-r border-gray-800 bg-gray-900">
         {/* Brand — same asset as GlobalHeader; inverted like GlobalFooter for dark rail */}
         <div className="border-b border-gray-800 px-4 py-4">
-          <Link href="/admin" className="inline-block shrink-0">
-            <Image
-              src="/pulseone_logo_official.png"
-              alt="PulseOne"
-              width={176}
-              height={42}
-              className="h-9 w-auto max-w-[9.75rem] object-contain object-left brightness-0 invert opacity-95"
-              priority
-            />
+          <Link href="/admin" className="inline-block shrink-0" aria-label="PulseOne admin">
+            <PulseOneOfficialLogo variant="onDark" size="sm" />
           </Link>
         </div>
 

@@ -21,18 +21,19 @@ def test_preview_excludes_topics_outside_selected_domains(client, db_session):
             is_published=False,
         )
     )
-    db_session.add(
-        Topic(
-            name="Sandbox Leadership Only",
-            domain="Leadership",
-            subdomain="",
-            summary="Unique leadership sandbox marker.",
-            urgency_score=8.0,
-            status=TopicStatus.selected,
-            adoption_state=AdoptionState.learn_about,
-            is_published=False,
+    for i in range(5):
+        db_session.add(
+            Topic(
+                name=f"Sandbox Leadership Only {i}",
+                domain="Leadership",
+                subdomain="",
+                summary=f"Unique leadership sandbox marker {i}.",
+                urgency_score=8.0 - (i * 0.1),
+                status=TopicStatus.selected,
+                adoption_state=AdoptionState.learn_about,
+                is_published=False,
+            )
         )
-    )
     db_session.commit()
 
     r = client.get("/api/admin/newsletter/preview?domains=Leadership")

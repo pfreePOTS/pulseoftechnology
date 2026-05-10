@@ -3,6 +3,7 @@
 import jwt
 import pytest
 
+from ..admin_permissions import normalize_login_email
 from ..config import Settings, settings
 from ..dependencies import ADMIN_COOKIE_NAME, decode_admin_token
 from ..models.agent_run import AgentRun
@@ -144,6 +145,22 @@ def test_subscriber_preferences_token_cannot_authenticate_as_admin(client, db_se
 
     assert r.status_code == 200
     assert r.json()["authenticated"] is False
+
+
+@pytest.mark.parametrize(
+    "input_email, expected",
+    [
+        ("admin@pulseone.local", "admin@pulseone.local"),
+        ("pulseoneadmin", "pulseoneadmin@pulseone.local"),
+        ("  pulseoneadmin ", "pulseoneadmin@pulseone.local"),
+        ("PulseOneAdmin", "pulseoneadmin@pulseone.local"),
+        (" Admin@PulseOne.local ", "admin@pulseone.local"),
+        ("invalid admin", "invalid admin"),
+        ("admin@example.com", "admin@example.com"),
+    ],
+)
+def test_normalize_login_email(input_email: str, expected: str):
+    assert normalize_login_email(input_email) == expected
 
 
 def test_production_rejects_default_admin_and_subscriber_token_secrets():
@@ -348,7 +365,9 @@ def test_superuser_demote_delete_and_last_superuser_guard_one_login(client):
         json={"is_superuser": False, "page_permissions": ["research", "trending"]},
     )
     assert ok.status_code == 200
-    row = next(u for u in client.get("/api/admin/users").json() if u["email"] == "second-super@example.com")
+    row = next(
+        u for u in client.get("/api/admin/users").json() if u["email"] == "second-super@example.com"
+    )
     assert row["is_superuser"] is False
     assert "research" in row["page_permissions"]
 

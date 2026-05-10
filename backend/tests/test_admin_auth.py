@@ -348,7 +348,9 @@ def test_superuser_demote_delete_and_last_superuser_guard_one_login(client):
         json={"is_superuser": False, "page_permissions": ["research", "trending"]},
     )
     assert ok.status_code == 200
-    row = next(u for u in client.get("/api/admin/users").json() if u["email"] == "second-super@example.com")
+    row = next(
+        u for u in client.get("/api/admin/users").json() if u["email"] == "second-super@example.com"
+    )
     assert row["is_superuser"] is False
     assert "research" in row["page_permissions"]
 

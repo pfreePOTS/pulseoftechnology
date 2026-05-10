@@ -1,5 +1,4 @@
 import logging
-import secrets
 from datetime import UTC, datetime, timedelta
 
 import bcrypt

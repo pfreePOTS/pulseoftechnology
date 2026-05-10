@@ -1,17 +1,19 @@
-import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from backend.models.signal import SignalRecommendation
-from backend.models.topic import Topic
-from backend.database import Base
-from backend.routers.admin import list_signals
 import time
 from unittest.mock import MagicMock
-from sqlalchemy import event
+
+import pytest
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import sessionmaker
+
+from backend.database import Base
+from backend.models.signal import SignalRecommendation
+from backend.models.topic import Topic
+from backend.routers.admin import list_signals
 
 # Create in-memory SQLite database
 engine = create_engine("sqlite:///:memory:")
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
 
 @pytest.fixture()
 def db():
@@ -22,6 +24,7 @@ def db():
     finally:
         db.close()
         Base.metadata.drop_all(bind=engine)
+
 
 def test_list_signals_perf(db):
     # Setup test data
@@ -40,13 +43,14 @@ def test_list_signals_perf(db):
                 suggested_state="adopt",
                 suggested_action="watch",
                 rationale="Reason",
-                status="pending"
+                status="pending",
             )
             db.add(sr)
     db.commit()
 
     # Track queries
     query_count = 0
+
     @event.listens_for(engine, "before_cursor_execute")
     def receive_before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
         nonlocal query_count

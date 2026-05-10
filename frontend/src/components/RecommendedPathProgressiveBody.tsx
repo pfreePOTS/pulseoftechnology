@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import DOMPurify from "isomorphic-dompurify";
 
 import ExperienceItemIcon from "@/components/ExperienceItemIcon";
 import RecommendedPathBuildingScreen from "@/components/RecommendedPathBuildingScreen";
@@ -345,7 +346,7 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
             <div className="mx-auto max-w-[820px] rounded-lg border border-[#e0e0e0] border-l-4 border-l-pulse-teal bg-light-bg px-7 py-6">
               <div
                 className="font-sans text-[15px] leading-relaxed text-[#555] [&>p]:mb-4 [&>p:last-child]:mb-0"
-                dangerouslySetInnerHTML={{ __html: synthesisHtml }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(synthesisHtml) }}
               />
             </div>
           ) : (

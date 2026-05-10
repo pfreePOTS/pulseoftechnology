@@ -4,6 +4,7 @@ import jwt
 import pytest
 
 from ..config import Settings, settings
+from ..admin_permissions import normalize_login_email
 from ..dependencies import ADMIN_COOKIE_NAME, decode_admin_token
 from ..models.agent_run import AgentRun
 from ..models.article import Article, ArticleStatus
@@ -144,6 +145,22 @@ def test_subscriber_preferences_token_cannot_authenticate_as_admin(client, db_se
 
     assert r.status_code == 200
     assert r.json()["authenticated"] is False
+
+
+@pytest.mark.parametrize(
+    "input_email, expected",
+    [
+        ("admin@pulseone.local", "admin@pulseone.local"),
+        ("pulseoneadmin", "pulseoneadmin@pulseone.local"),
+        ("  pulseoneadmin ", "pulseoneadmin@pulseone.local"),
+        ("PulseOneAdmin", "pulseoneadmin@pulseone.local"),
+        (" Admin@PulseOne.local ", "admin@pulseone.local"),
+        ("invalid admin", "invalid admin"),
+        ("admin@example.com", "admin@example.com"),
+    ],
+)
+def test_normalize_login_email(input_email: str, expected: str):
+    assert normalize_login_email(input_email) == expected
 
 
 def test_production_rejects_default_admin_and_subscriber_token_secrets():

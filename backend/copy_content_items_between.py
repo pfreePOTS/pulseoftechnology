@@ -44,15 +44,19 @@ def copy_content_items(source_url: str, target_url: str) -> tuple[int, int, int]
     TgtSession = sessionmaker(autocommit=False, autoflush=False, bind=tgt_engine)
 
     with src_engine.connect() as conn:
-        rows = conn.execute(
-            text(
-                """
+        rows = (
+            conn.execute(
+                text(
+                    """
                 SELECT id, title, url, type, summary, image_url, tags, is_active, created_at
                 FROM content_items
                 ORDER BY created_at
                 """
+                )
             )
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
 
     if not rows:
         return 0, 0, 0

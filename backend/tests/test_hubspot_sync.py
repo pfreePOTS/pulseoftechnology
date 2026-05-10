@@ -14,6 +14,7 @@ def _mute_hubspot_sync_persistence():
     with patch.object(hubspot_sync, "_persist_sync_log"):
         yield
 
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

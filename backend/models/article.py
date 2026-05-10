@@ -53,7 +53,9 @@ class Article(Base):
     review_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     ai_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     ai_output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    review_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    review_attempts: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
 
     source: Mapped["Source"] = relationship("Source", back_populates="articles")
     topic: Mapped["Topic | None"] = relationship("Topic", back_populates="articles")

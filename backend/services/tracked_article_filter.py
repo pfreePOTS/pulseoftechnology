@@ -225,7 +225,9 @@ def _collaboration_stack_vendor_signal(low: str) -> bool:
 
 
 def _text_from_fields(title: str, what_is_it: str | None, content_head: str) -> str:
-    return "\n".join(s for s in (title or "", what_is_it or "", content_head or "") if (s or "").strip())
+    return "\n".join(
+        s for s in (title or "", what_is_it or "", content_head or "") if (s or "").strip()
+    )
 
 
 def _any_needle(low: str, needles: list[str]) -> bool:

@@ -67,9 +67,13 @@ def copy_content_items(source_url: str, target_url: str) -> tuple[int, int, int]
     added = 0
     updated = 0
     try:
+        uids = [_as_uuid(r["id"]) for r in rows]
+        existing_rows = db.query(ContentItem).filter(ContentItem.id.in_(uids)).all()
+        existing_map = {row.id: row for row in existing_rows}
+
         for r in rows:
             uid = _as_uuid(r["id"])
-            row = db.query(ContentItem).filter(ContentItem.id == uid).first()
+            row = existing_map.get(uid)
             tags = r["tags"] if r["tags"] is not None else []
             if row:
                 row.title = r["title"]

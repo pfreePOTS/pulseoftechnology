@@ -696,7 +696,8 @@ def _record_classification_feedback(
         action=action,
         article_title=article.title,
         content_excerpt=_feedback_excerpt(article),
-        original_domain=_original_ai_field(article, "domain") or (article.topic.domain if article.topic else None),
+        original_domain=_original_ai_field(article, "domain")
+        or (article.topic.domain if article.topic else None),
         original_subdomain=_original_ai_field(article, "subdomain") or article.subdomain or None,
         original_topic_name=_original_ai_field(article, "suggested_topic_name")
         or (article.topic.name if article.topic else None),
@@ -1191,11 +1192,7 @@ def get_topic(
     from ..services.archive_service import active_evidence_window_days
     from ..services.signal_service import _article_coverage_time, compute_topic_velocity_metrics
 
-    topic = (
-        db.query(Topic)
-        .filter(Topic.id == topic_id)
-        .first()
-    )
+    topic = db.query(Topic).filter(Topic.id == topic_id).first()
     if topic is None:
         raise HTTPException(status_code=404, detail="Topic not found")
 
@@ -1711,13 +1708,14 @@ def list_signals(
 ):
     rows = (
         db.query(SignalRecommendation)
+        .options(joinedload(SignalRecommendation.topic))
         .filter(SignalRecommendation.status == status)
         .order_by(SignalRecommendation.created_at.desc())
         .all()
     )
     result = []
     for row in rows:
-        topic = db.query(Topic).filter(Topic.id == row.topic_id).first()
+        topic = row.topic
         result.append(
             SignalOut(
                 id=row.id,
@@ -2352,7 +2350,12 @@ def get_agent_run_detail(
     db: Session = Depends(get_db),
     _: AdminUser = Depends(require_admin),
 ):
-    row = db.query(AgentRun, Article.title).outerjoin(Article, AgentRun.article_id == Article.id).filter(AgentRun.id == run_id).first()
+    row = (
+        db.query(AgentRun, Article.title)
+        .outerjoin(Article, AgentRun.article_id == Article.id)
+        .filter(AgentRun.id == run_id)
+        .first()
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="Agent run not found")
     ar, title = row
@@ -2547,7 +2550,9 @@ def create_subscriber(
     db.add(subscriber)
     db.commit()
     db.refresh(subscriber)
-    background_tasks.add_task(partial(sync_subscriber_to_hubspot, subscriber, source="admin_create"))
+    background_tasks.add_task(
+        partial(sync_subscriber_to_hubspot, subscriber, source="admin_create")
+    )
     return subscriber
 
 
@@ -2592,7 +2597,9 @@ def replace_subscriber(
     subscriber.is_active = payload.is_active
     db.commit()
     db.refresh(subscriber)
-    background_tasks.add_task(partial(sync_subscriber_to_hubspot, subscriber, source="admin_replace"))
+    background_tasks.add_task(
+        partial(sync_subscriber_to_hubspot, subscriber, source="admin_replace")
+    )
     return subscriber
 
 
@@ -2629,7 +2636,9 @@ def update_subscriber_role(
     subscriber.role_ids = rids
     db.commit()
     db.refresh(subscriber)
-    background_tasks.add_task(partial(sync_subscriber_to_hubspot, subscriber, source="admin_role_patch"))
+    background_tasks.add_task(
+        partial(sync_subscriber_to_hubspot, subscriber, source="admin_role_patch")
+    )
     return subscriber
 
 
@@ -3074,7 +3083,11 @@ class HubSpotLogsResponse(BaseModel):
 def hubspot_status(_: AdminUser = Depends(require_admin)):
     configured = bool((app_settings.hubspot_api_key or "").strip())
     key = app_settings.hubspot_api_key or ""
-    masked = ("••••" + key[-4:]) if configured and len(key) >= 4 else ("(configured)" if configured else "(not configured)")
+    masked = (
+        ("••••" + key[-4:])
+        if configured and len(key) >= 4
+        else ("(configured)" if configured else "(not configured)")
+    )
     from ..scheduler import scheduler as sched
 
     jid = "hubspot_batch_sync"
@@ -3111,9 +3124,7 @@ def hubspot_logs(
 ):
     q = db.query(HubSpotSyncLog)
     total = q.count()
-    rows = (
-        q.order_by(HubSpotSyncLog.created_at.desc()).offset(offset).limit(limit).all()
-    )
+    rows = q.order_by(HubSpotSyncLog.created_at.desc()).offset(offset).limit(limit).all()
     return HubSpotLogsResponse(total=total, logs=list(rows))
 
 

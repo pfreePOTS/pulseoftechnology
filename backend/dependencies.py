@@ -36,6 +36,9 @@ def hash_password(plain: str) -> str:
     return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt()).decode()
 
 
+_cached_fallback_hash: bytes | None = None
+
+
 def verify_admin_password(plain: str) -> bool:
     """
     Verify password against ADMIN_PASSWORD_HASH or ADMIN_PASSWORD (env only).
@@ -50,10 +53,17 @@ def verify_admin_password(plain: str) -> bool:
             )
         except (ValueError, TypeError):
             return False
-    return secrets.compare_digest(
-        plain.encode("utf-8"),
-        settings.admin_password.encode("utf-8"),
-    )
+
+    global _cached_fallback_hash
+    if _cached_fallback_hash is None:
+        _cached_fallback_hash = bcrypt.hashpw(
+            settings.admin_password.encode("utf-8"), bcrypt.gensalt()
+        )
+
+    try:
+        return bcrypt.checkpw(plain.encode("utf-8"), _cached_fallback_hash)
+    except (ValueError, TypeError):
+        return False
 
 
 def create_admin_access_token(user: AdminUser) -> str:

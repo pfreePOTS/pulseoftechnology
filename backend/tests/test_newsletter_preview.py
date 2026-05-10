@@ -21,18 +21,19 @@ def test_preview_excludes_topics_outside_selected_domains(client, db_session):
             is_published=False,
         )
     )
-    db_session.add(
-        Topic(
-            name="Sandbox Leadership Only",
-            domain="Leadership",
-            subdomain="",
-            summary="Unique leadership sandbox marker.",
-            urgency_score=8.0,
-            status=TopicStatus.selected,
-            adoption_state=AdoptionState.learn_about,
-            is_published=False,
+    for i in range(5):
+        db_session.add(
+            Topic(
+                name=f"Sandbox Leadership Only {i}",
+                domain="Leadership",
+                subdomain="",
+                summary="Unique leadership sandbox marker.",
+                urgency_score=8.0,
+                status=TopicStatus.selected,
+                adoption_state=AdoptionState.learn_about,
+                is_published=False,
+            )
         )
-    )
     db_session.commit()
 
     r = client.get("/api/admin/newsletter/preview?domains=Leadership")
@@ -47,18 +48,19 @@ def test_preview_domain_filter_is_case_insensitive(client, db_session):
         "/api/admin/login",
         json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
     )
-    db_session.add(
-        Topic(
-            name="Case Finance Topic",
-            domain="Finance",
-            subdomain="",
-            summary="Case finance summary.",
-            urgency_score=7.0,
-            status=TopicStatus.watched,
-            adoption_state=AdoptionState.learn_about,
-            is_published=False,
+    for i in range(5):
+        db_session.add(
+            Topic(
+                name=f"Case Finance Topic {i}",
+                domain="Finance",
+                subdomain="",
+                summary="Case finance summary.",
+                urgency_score=7.0,
+                status=TopicStatus.watched,
+                adoption_state=AdoptionState.learn_about,
+                is_published=False,
+            )
         )
-    )
     db_session.commit()
 
     r = client.get("/api/admin/newsletter/preview?domains=finance")

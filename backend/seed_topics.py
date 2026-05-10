@@ -584,8 +584,14 @@ def seed() -> None:
     try:
         added = 0
         updated = 0
+
+        # Bulk fetch existing topics to avoid N+1 queries
+        topic_names = [entry["name"] for entry in CORE_TOPICS]
+        existing_topics_list = db.query(Topic).filter(Topic.name.in_(topic_names)).all()
+        existing_topics = {t.name: t for t in existing_topics_list}
+
         for entry in CORE_TOPICS:
-            existing = db.query(Topic).filter(Topic.name == entry["name"]).first()
+            existing = existing_topics.get(entry["name"])
             positions = _industry_positions_for_seed(entry)
             if existing:
                 existing.industry_positions = positions

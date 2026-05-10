@@ -12,8 +12,6 @@ Run from inside Docker:
     docker compose exec backend python -m backend.seed_topics
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from .database import SessionLocal

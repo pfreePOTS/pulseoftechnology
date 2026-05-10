@@ -140,40 +140,28 @@ def test_leadership_tech_signals(title, what, content, expect):
 
 
 def test_tracked_finance_signals_helper():
-    assert (
-        tracked_finance_article_has_pulse_tech_signals(
-            "Quarterly outlook",
-            "Central bank policy",
-            "Rates unchanged; focus on inflation path.",
-        )
-        is False
-    )
+    assert tracked_finance_article_has_pulse_tech_signals(
+        "Quarterly outlook",
+        "Central bank policy",
+        "Rates unchanged; focus on inflation path.",
+    ) is False
 
-    assert (
-        tracked_finance_article_has_pulse_tech_signals(
-            "Core banking modernization",
-            "Cloud migration roadmap",
-            "API-first architecture for lending.",
-        )
-        is True
-    )
+    assert tracked_finance_article_has_pulse_tech_signals(
+        "Core banking modernization",
+        "Cloud migration roadmap",
+        "API-first architecture for lending.",
+    ) is True
 
 
 def test_tracked_leadership_signals_helper():
-    assert (
-        tracked_leadership_article_has_pulse_tech_signals(
-            "Store managers under pressure",
-            "Coaching and morale at risk",
-            "Layoffs and DEI backlash without new systems or tooling.",
-        )
-        is False
-    )
+    assert tracked_leadership_article_has_pulse_tech_signals(
+        "Store managers under pressure",
+        "Coaching and morale at risk",
+        "Layoffs and DEI backlash without new systems or tooling.",
+    ) is False
 
-    assert (
-        tracked_leadership_article_has_pulse_tech_signals(
-            "Collaboration stack shapes remote leadership",
-            "Microsoft Teams rollout and Slack adoption targets",
-            None,
-        )
-        is True
-    )
+    assert tracked_leadership_article_has_pulse_tech_signals(
+        "Collaboration stack shapes remote leadership",
+        "Microsoft Teams rollout and Slack adoption targets",
+        None,
+    ) is True

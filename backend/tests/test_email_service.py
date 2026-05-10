@@ -461,9 +461,7 @@ def test_newsletter_what_to_do_fallback_is_contextual_not_generic():
     assert briefing["what_to_do"] != (
         "Assign an owner to scan the sources and decide what warrants a pilot or policy update."
     )
-    assert (
-        "identity" in briefing["what_to_do"].lower() or "security" in briefing["what_to_do"].lower()
-    )
+    assert "identity" in briefing["what_to_do"].lower() or "security" in briefing["what_to_do"].lower()
     assert len([s for s in briefing["what_to_do"].split(".") if s.strip()]) <= 2
 
 

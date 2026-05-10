@@ -177,9 +177,7 @@ def _complete_deepseek(
         resp = client.chat.completions.create(**kwargs)
     except OpenAIError as e:
         if json_response:
-            logger.info(
-                "DeepSeek request with json_object failed (%s); retrying without JSON mode.", e
-            )
+            logger.info("DeepSeek request with json_object failed (%s); retrying without JSON mode.", e)
             kwargs.pop("response_format", None)
             resp = client.chat.completions.create(**kwargs)
         else:

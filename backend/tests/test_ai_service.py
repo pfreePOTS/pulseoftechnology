@@ -182,10 +182,7 @@ class TestEvaluateArticle:
 
         context = ai_service._classification_feedback_context(db_session)
 
-        assert (
-            "Classify as Security / Software Supply Chain / Package Registry Credential Theft"
-            in context
-        )
+        assert "Classify as Security / Software Supply Chain / Package Registry Credential Theft" in context
         assert "SAP npm packages compromised" in context
         assert "Reject as non-tech/noise: Today’s Wordle hints" in context
 
@@ -531,11 +528,7 @@ class TestProcessRawArticles:
             patch.object(
                 ai_service,
                 "_node_classify",
-                return_value={
-                    "domain": "Security",
-                    "subdomain": "Software Supply Chain",
-                    "tags": ["npm"],
-                },
+                return_value={"domain": "Security", "subdomain": "Software Supply Chain", "tags": ["npm"]},
             ),
             patch.object(
                 ai_service,
@@ -610,9 +603,7 @@ class TestProcessRawArticles:
         assert topic.name == "Other: Agentic AI Operations"
 
     def test_processes_finance_classification_with_technology_signal(self, db_session):
-        source = Source(
-            name="Industry Wire", url="https://example.com/tech-rss", type=SourceType.rss
-        )
+        source = Source(name="Industry Wire", url="https://example.com/tech-rss", type=SourceType.rss)
         article = Article(
             source=source,
             title="Bank rolls out API-first core banking platform",

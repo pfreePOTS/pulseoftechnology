@@ -33,17 +33,27 @@ def test_preview_excludes_topics_outside_selected_domains(client, db_session):
             is_published=False,
         )
     )
+    # Add dummy topics to meet the minimum pool size requirement (5)
+    # This prevents assemble_newsletter_topics from widening the pool back to 'all_pipeline_topics'
+    for i in range(5):
+        db_session.add(
+            Topic(
+                name=f"Filler Leadership Topic {i}",
+                domain="Leadership",
+                subdomain="",
+                summary="Filler summary.",
+                urgency_score=1.0,
+                status=TopicStatus.selected,
+                adoption_state=AdoptionState.learn_about,
+                is_published=False,
+            )
+        )
     db_session.commit()
 
     r = client.get("/api/admin/newsletter/preview?domains=Leadership")
     assert r.status_code == 200
     html = r.text
-    # When previewing, the email generator will default to the largest pool
-    # when the number of selected topics is low (fallback logic in assemble_newsletter_topics).
-    # Since there's only 2 topics in the DB during tests, it falls back to 'all_pipeline_topics'
-    # which ignores domain filters and shows both topics.
-    # To fix this test we need to add enough filler topics for the strict filtering to be applied.
-    assert "Sandbox Security Only" in html  # Temporary to allow other PRs to pass while fixing logic
+    assert "Sandbox Security Only" not in html
     assert "Sandbox Leadership Only" in html
 
 

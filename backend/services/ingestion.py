@@ -296,9 +296,7 @@ def run_article_processing_pipeline(db: Session) -> int:
     return processed
 
 
-def backfill_missing_article_images(
-    db: Session, *, limit: int = _OG_BACKFILL_PER_MANUAL_RUN
-) -> int:
+def backfill_missing_article_images(db: Session, *, limit: int = _OG_BACKFILL_PER_MANUAL_RUN) -> int:
     """Public entry point for the admin "Backfill story images" job.
 
     Thin wrapper over `_backfill_missing_article_images` so callers outside

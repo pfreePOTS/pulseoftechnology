@@ -37,7 +37,9 @@ class _FakeClient:
 
 
 def _patch_httpx(monkeypatch, response: _FakeResponse | Exception) -> None:
-    monkeypatch.setattr(ingestion.httpx, "Client", lambda *args, **kwargs: _FakeClient(response))
+    monkeypatch.setattr(
+        ingestion.httpx, "Client", lambda *args, **kwargs: _FakeClient(response)
+    )
 
 
 def test_korean_title_rejected_even_with_english_summary():

@@ -756,27 +756,37 @@ def cleanup_review_needed_topics(db: Session) -> dict[str, int]:
     skipped = 0
     topics_deleted = 0
     topics: list[Topic] = db.query(Topic).filter(Topic.name.ilike("%: Review Needed")).all()
-    for topic in topics:
-        articles = db.query(Article).filter(Article.topic_id == topic.id).all()
-        for article in articles:
-            article.topic_id = None
-            article.review_reason = (
-                article.review_reason
-                or f"Legacy low-confidence topic removed from Trend Discovery: {topic.name}"
-            )
-            if article_has_general_pulse_tech_signal(article):
-                article.status = ArticleStatus.review
-                article.archived_at = None
-                reviewed += 1
-            else:
-                article.status = ArticleStatus.skipped
-                article.archived_at = article.archived_at or now
-                skipped += 1
-        db.query(SignalRecommendation).filter(SignalRecommendation.topic_id == topic.id).delete(
-            synchronize_session=False
+
+    if not topics:
+        return {"reviewed": 0, "skipped": 0, "topics_deleted": 0}
+
+    topic_ids = [t.id for t in topics]
+    topics_by_id = {t.id: t for t in topics}
+
+    articles = db.query(Article).filter(Article.topic_id.in_(topic_ids)).all()
+    for article in articles:
+        topic = topics_by_id[article.topic_id]
+        article.topic_id = None
+        article.review_reason = (
+            article.review_reason
+            or f"Legacy low-confidence topic removed from Trend Discovery: {topic.name}"
         )
+        if article_has_general_pulse_tech_signal(article):
+            article.status = ArticleStatus.review
+            article.archived_at = None
+            reviewed += 1
+        else:
+            article.status = ArticleStatus.skipped
+            article.archived_at = article.archived_at or now
+            skipped += 1
+
+    db.query(SignalRecommendation).filter(SignalRecommendation.topic_id.in_(topic_ids)).delete(
+        synchronize_session=False
+    )
+    for topic in topics:
         db.delete(topic)
         topics_deleted += 1
+
     if reviewed or skipped or topics_deleted:
         db.commit()
     return {"reviewed": reviewed, "skipped": skipped, "topics_deleted": topics_deleted}

@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 
 import { PulseOneOfficialLogo } from "@/components/PulseOneOfficialLogo";
+import SolutionsIntakeModal from "@/components/SolutionsIntakeModal";
 
 function NavCaret() {
   return (
@@ -24,6 +26,16 @@ export default function GlobalHeader() {
   const pulseSelected = pathname === "/radar" || pathname.startsWith("/radar/");
   const approachSelected = pathname === "/approach" || pathname.startsWith("/approach/");
   const assessmentsSelected = pathname === "/assessments" || pathname.startsWith("/assessments/");
+
+  // Solutions opens the executive intake wizard (USAMap + tailoring questions)
+  // in a `<dialog>`. Bumping `sessionKey` on every open resets the wizard to
+  // step 1 without remounting the component (preserves dialog open animations).
+  const [solutionsOpen, setSolutionsOpen] = useState(false);
+  const [solutionsSessionKey, setSolutionsSessionKey] = useState(0);
+  const openSolutions = () => {
+    setSolutionsSessionKey((k) => k + 1);
+    setSolutionsOpen(true);
+  };
 
   return (
     <header className="sticky top-0 z-[100] bg-white shadow-[0_2px_8px_rgba(0,0,0,0.08)]">
@@ -60,6 +72,15 @@ export default function GlobalHeader() {
             Assessments
             {assessmentsSelected ? <NavCaret /> : null}
           </Link>
+          <button
+            type="button"
+            onClick={openSolutions}
+            aria-haspopup="dialog"
+            aria-expanded={solutionsOpen}
+            className="rounded px-2.5 py-1.5 font-semibold text-[#646464] transition-colors hover:text-pulse-red"
+          >
+            Solutions
+          </button>
           <Link
             href="/contact"
             className="ml-8 shrink-0 rounded bg-pulse-red px-[18px] py-[9px] text-[13.5px] text-white transition-colors hover:bg-[#a81117]"
@@ -68,6 +89,11 @@ export default function GlobalHeader() {
           </Link>
         </nav>
       </div>
+      <SolutionsIntakeModal
+        open={solutionsOpen}
+        onClose={() => setSolutionsOpen(false)}
+        sessionKey={solutionsSessionKey}
+      />
     </header>
   );
 }

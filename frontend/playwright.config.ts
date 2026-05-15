@@ -6,7 +6,8 @@ import { defineConfig, devices } from "@playwright/test";
  *
  * Env:
  * - `PLAYWRIGHT_BASE_URL` — frontend (default http://localhost:3100)
- * - `PLAYWRIGHT_API_URL` — API on host port (default http://localhost:8100)
+ * - `PLAYWRIGHT_API_URL` — API on host port (default http://localhost:8100; health/smoke checks)
+ * - `PLAYWRIGHT_USE_DIRECT_ADMIN_LOGIN` — `"1"` to POST login at `PLAYWRIGHT_API_URL` (legacy stacks without `/__pulse_api`)
  * - `E2E_ADMIN_EMAIL` / `E2E_ADMIN_PASSWORD` — admin login (`admin.spec.ts`)
  */
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3100";

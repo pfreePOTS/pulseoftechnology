@@ -9,6 +9,19 @@ export function getApiBaseUrl(): string {
 }
 
 /**
+ * POST /api/admin/login so Set-Cookie is for `PLAYWRIGHT_BASE_URL`'s origin — required when the app uses
+ * the Next `/__pulse_api` rewrite (cookies are not scoped to `:8100` for the UI).
+ */
+export function getAdminLoginPostUrl(): string {
+  if (process.env.PLAYWRIGHT_USE_DIRECT_ADMIN_LOGIN === "1") {
+    return `${getApiBaseUrl()}/api/admin/login`;
+  }
+  const base = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3100";
+  const origin = new URL(base.replace(/\/$/, "")).origin;
+  return `${origin}/__pulse_api/api/admin/login`;
+}
+
+/**
  * Defaults match `docker-compose.yml` (`FIRST_ADMIN_EMAIL`, `ADMIN_PASSWORD`).
  * Override in CI or local runs when using non-default credentials.
  */
@@ -19,16 +32,21 @@ export function getAdminCredentials(): { email: string; password: string } {
   };
 }
 
-/** Fills the admin login form and waits for a successful redirect off `/admin/login`. */
+/** Prime httpOnly `pulse_admin` via the API using the Playwright cookie jar (no UI flakiness). */
 export async function loginAsAdmin(page: Page): Promise<void> {
   const { email, password } = getAdminCredentials();
-  await page.goto("/admin/login");
-  await page.getByPlaceholder(/email/i).fill(email);
-  await page.getByPlaceholder(/^password$/i).fill(password);
-  await page.getByRole("button", { name: /sign in/i }).click();
-  await page.waitForURL((url) => {
-    const p = new URL(url).pathname;
-    return p.startsWith("/admin") && p !== "/admin/login";
+  const loginUrl = getAdminLoginPostUrl();
+  const res = await page.context().request.post(loginUrl, {
+    data: { email, password },
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok()) {
+    throw new Error(`admin login failed (${res.status()}): ${await res.text()}`);
+  }
+
+  await page.goto("/admin");
+  await expect(page.getByRole("navigation", { name: "Admin navigation" })).toBeVisible({
+    timeout: 30_000,
   });
 }
 

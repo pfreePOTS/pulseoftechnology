@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { PulseOneOfficialLogo } from "@/components/PulseOneOfficialLogo";
-import { adminResponseErrorDetail, API_BASE, apiBaseLooksUnsetForProductionDeploy } from "@/lib/api";
+import { adminResponseErrorDetail, absoluteApiUrl, apiBaseLooksUnsetForProductionDeploy } from "@/lib/api";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -19,7 +19,7 @@ export default function AdminLoginPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`${API_BASE}/api/admin/login`, {
+      const res = await fetch(absoluteApiUrl("/api/admin/login"), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -49,7 +49,7 @@ export default function AdminLoginPage() {
       setError(
         mis
           ? "Cannot reach API: NEXT_PUBLIC_API_URL was not baked into this build (still localhost). On Railway, set NEXT_PUBLIC_API_URL and SERVER_API_URL to your backend HTTPS URL, enable them during the Docker/build step, redeploy Frontend, hard-refresh the browser."
-          : `Cannot contact the login API at ${API_BASE}. Confirm NEXT_PUBLIC_API_URL matches your live backend URL (rebuild frontend if wrong) and add ${typeof window !== "undefined" ? window.location.origin : "this site's origin"} to CORS_ORIGINS on the backend (comma-separated HTTPS origins).`,
+          : `Cannot contact the login API at ${absoluteApiUrl("/")}. Confirm NEXT_PUBLIC_API_URL matches your live backend URL (rebuild frontend if wrong) and add ${typeof window !== "undefined" ? window.location.origin : "this site's origin"} to CORS_ORIGINS on the backend (comma-separated HTTPS origins).`,
       );
     } finally {
       setLoading(false);
@@ -78,6 +78,7 @@ export default function AdminLoginPage() {
             type="text"
             inputMode="email"
             autoComplete="username"
+            data-testid="admin-login-email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="Email (e.g. pulseoneadmin)"
@@ -89,6 +90,7 @@ export default function AdminLoginPage() {
           <input
             type="password"
             autoComplete="current-password"
+            data-testid="admin-login-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Password"
@@ -99,7 +101,8 @@ export default function AdminLoginPage() {
           {error && <p className="text-sm text-red-400">{error}</p>}
           <button
             type="submit"
-            disabled={loading || password.length === 0 || email.trim().length === 0}
+            data-testid="admin-login-submit"
+            disabled={loading}
             className="w-full rounded-lg py-3 text-sm font-semibold text-white transition-colors disabled:opacity-50"
             style={{ backgroundColor: "#E91D24" }}
           >

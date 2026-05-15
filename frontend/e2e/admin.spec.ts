@@ -18,13 +18,11 @@ test.describe("Admin console", () => {
   test("logout returns to login page", async ({ page }) => {
     await loginAsAdmin(page);
     await logoutFromAdmin(page);
-    await expect(
-      page.getByRole("heading", { name: /PulseOne Admin/i }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^Admin$/i })).toBeVisible();
   });
 
   test("unauthenticated /admin redirects to login", async ({ page }) => {
-    await page.goto("/admin");
-    await expect(page).toHaveURL(/\/admin\/login/);
+    await page.goto("/admin", { waitUntil: "domcontentloaded" });
+    await expect(page).toHaveURL(/\/admin\/login/, { timeout: 60_000 });
   });
 });

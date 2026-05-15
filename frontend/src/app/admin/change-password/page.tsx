@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { PulseOneOfficialLogo } from "@/components/PulseOneOfficialLogo";
-import { adminFetch, API_BASE } from "@/lib/api";
+import { adminFetch, API_BASE, apiOriginForBrowser } from "@/lib/api";
 import type { SessionUser } from "@/lib/admin-nav";
 
 export default function AdminChangePasswordPage() {
@@ -19,7 +19,7 @@ export default function AdminChangePasswordPage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/api/admin/session`, { credentials: "include" })
+    fetch(`${apiOriginForBrowser()}/api/admin/session`, { credentials: "include" })
       .then((r) => r.json())
       .then((data: { authenticated?: boolean; user?: SessionUser }) => {
         if (cancelled) return;

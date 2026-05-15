@@ -94,6 +94,9 @@ services:
     environment:
       # Browser-facing API URL (host port maps backend 8000 → 8100)
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8100}
+      # Same-origin browser API via next.config.ts rewrites (fixes admin cookies under 127.0.0.1 / headless Chromium)
+      BACKEND_PROXY_TARGET: http://backend:8000
+      NEXT_PUBLIC_USE_RELATIVE_API: "1"
       # RSC/SSR fetches from inside this container — must use Compose service name, not localhost
       SERVER_API_URL: ${SERVER_API_URL:-http://backend:8000}
     ports:

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { DragEvent } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { PulseOneOfficialLogo } from "@/components/PulseOneOfficialLogo";
 import {
@@ -13,7 +13,7 @@ import {
   type AdminNavItem,
   type SessionUser,
 } from "@/lib/admin-nav";
-import { API_BASE } from "@/lib/api";
+import { apiOriginForBrowser } from "@/lib/api";
 
 /** Remove legacy "1. " prefixes so list position is the only numbering (handles stale caches). */
 function navLabelText(label: string): string {
@@ -86,6 +86,11 @@ function firstAllowedHref(user: SessionUser): string {
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  // Stable ref so effects can navigate without re-running on every router identity change.
+  const routerRef = useRef(router);
+  useEffect(() => {
+    routerRef.current = router;
+  }, [router]);
   const isLoginPage = pathname === "/admin/login";
   const isChangePasswordPage = pathname === "/admin/change-password";
   /** null = not checked yet (protected routes only) */
@@ -113,49 +118,61 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   useEffect(() => {
     if (isLoginPage) return;
     let cancelled = false;
-    fetch(`${API_BASE}/api/admin/session`, { credentials: "include" })
-      .then((r) => r.json())
-      .then(
-        (data: {
-          authenticated?: boolean;
-          user?: SessionUser;
-        }) => {
-          if (cancelled) return;
-          if (!data.authenticated || !data.user) {
-            router.replace("/admin/login");
-            return;
-          }
-          setSessionUser(data.user);
-          setAuthenticated(true);
-        },
-      )
+    const timeoutMs = 12_000;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+
+    fetch(`${apiOriginForBrowser()}/api/admin/session`, { credentials: "include", signal: controller.signal })
+      .then(async (r) => {
+        if (cancelled) return null;
+        if (!r.ok) {
+          routerRef.current.replace("/admin/login");
+          return null;
+        }
+        return (await r.json()) as { authenticated?: boolean; user?: SessionUser };
+      })
+      .then((data) => {
+        if (cancelled || data === null) return;
+        if (!data.authenticated || !data.user) {
+          routerRef.current.replace("/admin/login");
+          return;
+        }
+        setSessionUser(data.user);
+        setAuthenticated(true);
+      })
       .catch(() => {
-        if (!cancelled) router.replace("/admin/login");
+        if (!cancelled) routerRef.current.replace("/admin/login");
+      })
+      .finally(() => {
+        window.clearTimeout(timer);
       });
+
     return () => {
       cancelled = true;
+      controller.abort();
+      window.clearTimeout(timer);
     };
-  }, [isLoginPage, router]);
+  }, [isLoginPage]);
 
   useEffect(() => {
     if (!sessionUser || isLoginPage || isChangePasswordPage) return;
     if (sessionUser.must_change_password) {
-      router.replace("/admin/change-password");
+      routerRef.current.replace("/admin/change-password");
       return;
     }
     if (!canAccessAdminPath(pathname, sessionUser)) {
-      router.replace(firstAllowedHref(sessionUser));
+      routerRef.current.replace(firstAllowedHref(sessionUser));
     }
-  }, [sessionUser, pathname, isLoginPage, isChangePasswordPage, router]);
+  }, [sessionUser, pathname, isLoginPage, isChangePasswordPage]);
 
   async function handleLogout() {
-    await fetch(`${API_BASE}/api/admin/logout`, {
+    await fetch(`${apiOriginForBrowser()}/api/admin/logout`, {
       method: "POST",
       credentials: "include",
     });
     setAuthenticated(null);
     setSessionUser(null);
-    router.replace("/admin/login");
+    routerRef.current.replace("/admin/login");
   }
 
   if (isLoginPage) {

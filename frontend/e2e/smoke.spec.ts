@@ -9,7 +9,7 @@ test.describe("Smoke", () => {
     await page.goto("/");
     await expect(
       page.getByRole("heading", {
-        name: /Technology Intelligence for C-Suite Leaders/i,
+        name: /Find where your organization/i,
       }),
     ).toBeVisible();
   });

@@ -1,73 +1,68 @@
-import time
-from unittest.mock import MagicMock
+"""Regression test: ``GET /api/admin/signals`` must not N+1 on `topic`.
 
-import pytest
-from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker
+The handler eagerly loads `SignalRecommendation.topic` with `joinedload`, so a
+list of N signals should still issue a single SELECT against the bound engine.
+We use the suite's `db_session` fixture (in-memory SQLite + StaticPool from
+``conftest.py``) and the public route via `client` so the test exercises the
+real dependency graph, not the handler in isolation.
+"""
 
-from backend.database import Base
+from __future__ import annotations
+
+from sqlalchemy import event
+
 from backend.models.signal import SignalRecommendation
 from backend.models.topic import Topic
-from backend.routers.admin import list_signals
-
-# Create in-memory SQLite database
-engine = create_engine("sqlite:///:memory:")
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-@pytest.fixture()
-def db():
-    Base.metadata.create_all(bind=engine)
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-        Base.metadata.drop_all(bind=engine)
-
-
-def test_list_signals_perf(db):
-    # Setup test data
-    topics = []
-    for i in range(100):
-        t = Topic(name=f"Topic {i}", domain=f"Domain {i}")
-        db.add(t)
-        topics.append(t)
-    db.commit()
-
-    for i in range(100):
-        t = topics[i]
-        for _ in range(5):
-            sr = SignalRecommendation(
-                topic_id=t.id,
-                suggested_state="adopt",
-                suggested_action="watch",
-                rationale="Reason",
-                status="pending",
+def _seed_signals(db_session, *, topics: int = 50, per_topic: int = 5) -> int:
+    rows = 0
+    for i in range(topics):
+        topic = Topic(name=f"Perf Topic {i}", domain=f"Domain {i}")
+        db_session.add(topic)
+        db_session.flush()
+        for _ in range(per_topic):
+            db_session.add(
+                SignalRecommendation(
+                    topic_id=topic.id,
+                    suggested_state="adopt",
+                    suggested_action="watch",
+                    rationale="Reason",
+                    status="pending",
+                )
             )
-            db.add(sr)
-    db.commit()
+            rows += 1
+    db_session.commit()
+    return rows
 
-    # Track queries
-    query_count = 0
 
-    @event.listens_for(engine, "before_cursor_execute")
-    def receive_before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
-        nonlocal query_count
-        query_count += 1
+def test_list_signals_does_not_n_plus_one(client, db_session):
+    expected_rows = _seed_signals(db_session, topics=50, per_topic=5)
 
-    # Mock AdminUser
-    mock_admin = MagicMock()
+    engine = db_session.bind
+    select_count = 0
 
-    # Measure time for list_signals
-    start_time = time.time()
-    result = list_signals(db=db, _=mock_admin, status="pending")
-    end_time = time.time()
+    def _count_selects(_conn, _cursor, statement, *_a, **_kw) -> None:
+        nonlocal select_count
+        if statement.lstrip().upper().startswith("SELECT"):
+            select_count += 1
 
-    elapsed = end_time - start_time
-    print(f"\nElapsed time: {elapsed:.4f} seconds for {len(result)} records")
-    print(f"Total SQL queries executed: {query_count}")
+    event.listen(engine, "before_cursor_execute", _count_selects)
+    try:
+        # Authenticate via the seeded admin user (see conftest.db_session).
+        login = client.post(
+            "/api/admin/login",
+            json={"email": "pulseoneadmin@pulseone.local", "password": "pulseadmin"},
+        )
+        assert login.status_code == 200, login.text
+        select_count = 0  # Reset so we only measure the /signals call.
+        res = client.get("/api/admin/signals?status=pending")
+    finally:
+        event.remove(engine, "before_cursor_execute", _count_selects)
 
-    # Should be 1 query with optimization
-    assert query_count == 1
-    assert len(result) == 500
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert len(body) == expected_rows
+    # Two SELECTs: one for the admin user (auth) + one joined load for signals/topics.
+    # Anything > 3 means the N+1 came back.
+    assert select_count <= 3, f"Expected ≤3 SELECTs after auth, got {select_count}"

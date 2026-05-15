@@ -974,8 +974,14 @@ def _parse(
     tokens: int | None = None,
     model: str | None = None,
     article_id: int | None = None,
+    record_parse_failure_telemetry: bool = True,
 ) -> dict | None:
-    """JSON-parse a node response (with repair fragments); logs and returns None on failure."""
+    """JSON-parse a node response (with repair fragments); logs and returns None on failure.
+
+    When ``record_parse_failure_telemetry`` is False, parse failures omit ``record_agent_run``
+    (used by cluster's first attempt so a successful second attempt avoids double failure rows).
+    """
+
     raw_s = raw or ""
     parsed, json_err, cand_idx = _loads_json_object_candidates(raw_s)
 
@@ -1032,17 +1038,18 @@ def _parse(
         else:
             detail = f"JSONDecodeError: {em}{pos_part}"
             ctx = raw_s[:16000] if raw_s else None
-        record_agent_run(
-            agent_name=agent_name_for_parse_node(node_name),
-            is_success=False,
-            fallback_used=True,
-            context_text=ctx,
-            failure_detail=detail,
-            article_id=article_id,
-            latency_ms=latency_ms,
-            tokens=tokens,
-            model=model,
-        )
+        if record_parse_failure_telemetry:
+            record_agent_run(
+                agent_name=agent_name_for_parse_node(node_name),
+                is_success=False,
+                fallback_used=True,
+                context_text=ctx,
+                failure_detail=detail,
+                article_id=article_id,
+                latency_ms=latency_ms,
+                tokens=tokens,
+                model=model,
+            )
     except Exception:
         logger.debug("AgentRun telemetry skipped for [%s]", node_name, exc_info=True)
     return None
@@ -1217,6 +1224,22 @@ def _node_score(
         return default
 
 
+_CLUSTER_JSON_SUFFIX = (
+    "\n\n## Output rule (critical)\n"
+    "Respond with exactly one UTF-8 JSON object and nothing else "
+    '(no prose, no markdown, no "```" fences).\n'
+    'Shape: {"suggested_topic_name": "<concise topical label>"}\n'
+    "Prefer matching a trusted topic name when one clearly applies; "
+    'otherwise propose a concise new label. Keys and string values MUST use ASCII double quotes (").'
+)
+
+_CLUSTER_JSON_RETRY_SUFFIX = (
+    "\n\nYour previous completion was rejected: it was not valid JSON.\n"
+    "Reply once with ONLY a JSON object, one line acceptable, literally: "
+    '{"suggested_topic_name":"..."}'
+)
+
+
 def _node_cluster(
     db: Session,
     content: str,
@@ -1227,12 +1250,15 @@ def _node_cluster(
     article_id: int | None = None,
 ) -> str:
     """
-    Node 4 — Cluster (Sonnet).
-    Returns a topic name string. Malformed AI JSON requests retry; empty topic names are review.
+    Node 4 — Cluster (Sonnet-tier model in config).
+
+    Prefer a ``suggested_topic_name`` from trusted topic names when applicable.
+    Bad model JSON is retried once with stricter instructions; if parsing still fails we return
+    ``""`` so ``process_raw_articles`` synthesizes a topic from classify + title (no review-queue loop).
     """
     dom = (domain or "Other").strip() or "Other"
     sub_hint = subdomain.strip() if subdomain else ""
-    system = get_active_prompt(db, "cluster").format(
+    system_base = get_active_prompt(db, "cluster").format(
         domain=dom,
         subdomain=sub_hint if sub_hint else "—",
     )
@@ -1246,28 +1272,43 @@ def _node_cluster(
     else:
         user = _wrap_untrusted_article_cdata(content)
     try:
-        cr = _call_result(
-            get_active_model(db, "cluster"), system, user, max_tokens=1536, json_response=True
+        model = get_active_model(db, "cluster")
+        for attempt in range(2):
+            system_parts = system_base + _CLUSTER_JSON_SUFFIX
+            if attempt == 1:
+                system_parts += _CLUSTER_JSON_RETRY_SUFFIX
+
+            cr = _call_result(
+                model,
+                system_parts,
+                user,
+                max_tokens=1536,
+                json_response=True,
+            )
+            result = _parse(
+                cr.text,
+                "cluster",
+                latency_ms=cr.latency_ms,
+                tokens=cr.total_tokens,
+                model=cr.model_id,
+                article_id=article_id,
+                record_parse_failure_telemetry=(attempt >= 1),
+            )
+            if result is not None:
+                return (result.get("suggested_topic_name") or "").strip()
+
+        logger.warning(
+            "[cluster] No valid JSON after 2 completions for article_id=%s — "
+            "using empty topic name (will synthesize downstream)",
+            article_id,
         )
-        result = _parse(
-            cr.text,
-            "cluster",
-            latency_ms=cr.latency_ms,
-            tokens=cr.total_tokens,
-            model=cr.model_id,
-            article_id=article_id,
-        )
-        if result is None:
-            raise PipelineRetryRequested("cluster returned malformed or empty JSON")
-        return (result.get("suggested_topic_name") or "").strip()
+        return ""
     except llm_client.LLMAPIError:
         logger.warning("[cluster] Transient API error — will retry article")
         raise
-    except Exception as exc:
-        if isinstance(exc, PipelineRetryRequested):
-            raise
+    except Exception:
         logger.exception("[cluster] Unexpected error — will retry article")
-        raise PipelineRetryRequested("cluster failed unexpectedly") from exc
+        raise PipelineRetryRequested("cluster failed unexpectedly")
 
 
 def _node_summarize(

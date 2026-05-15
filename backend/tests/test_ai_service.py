@@ -191,6 +191,81 @@ class TestEvaluateArticle:
 
 
 # ---------------------------------------------------------------------------
+# Cluster node — JSON retries + degraded empty topic
+# ---------------------------------------------------------------------------
+
+
+class TestClusterNode:
+    def test_second_completion_parses_after_first_is_garbage(self):
+        mock_db = MagicMock()
+        good = {"suggested_topic_name": "  Phishing trends  "}
+        with (
+            _patch_prompts(),
+            patch.object(ai_service, "get_active_model", return_value="mock-cluster"),
+            patch.object(
+                ai_service.llm_client,
+                "chat_completion_result",
+                side_effect=[
+                    ai_service.llm_client.ChatCompletionResult(
+                        text="Here is prose only",
+                        model_id="m",
+                        latency_ms=11,
+                        total_tokens=21,
+                    ),
+                    ai_service.llm_client.ChatCompletionResult(
+                        text=json.dumps(good),
+                        model_id="m",
+                        latency_ms=12,
+                        total_tokens=22,
+                    ),
+                ],
+            ) as cc,
+            patch("backend.services.optimizer_service.record_agent_run"),
+        ):
+            out = ai_service._node_cluster(
+                mock_db, "Article body.", [], domain="Security", subdomain="SOC"
+            )
+
+        assert out == "Phishing trends"
+        assert cc.call_count == 2
+
+    def test_persistent_bad_json_returns_empty_string(self):
+        mock_db = MagicMock()
+        with (
+            _patch_prompts(),
+            patch.object(ai_service, "get_active_model", return_value="mock-cluster"),
+            patch.object(
+                ai_service.llm_client,
+                "chat_completion_result",
+                return_value=ai_service.llm_client.ChatCompletionResult(
+                    text="not-valid-json",
+                    model_id="m",
+                    latency_ms=1,
+                    total_tokens=9,
+                ),
+            ) as cc,
+            patch("backend.services.optimizer_service.record_agent_run") as ra,
+        ):
+            out = ai_service._node_cluster(mock_db, "Body", [], domain="Security", subdomain="")
+
+        assert out == ""
+        assert cc.call_count == 2
+        assert len(ra.call_args_list) == 1
+
+    def test_parse_failure_suppresses_telemetry_when_requested(self):
+        recorded: list[dict] = []
+
+        def _cap(**kw):
+            recorded.append(kw)
+
+        with patch("backend.services.optimizer_service.record_agent_run", side_effect=_cap):
+            out = ai_service._parse("", "gate", record_parse_failure_telemetry=False)
+
+        assert out is None
+        assert recorded == []
+
+
+# ---------------------------------------------------------------------------
 # Finance subdomain normalization
 # ---------------------------------------------------------------------------
 

@@ -63,6 +63,48 @@ def test_empty_title_rejected():
     assert _is_english_for_ingest("", "Some English body text here.") is False
 
 
+def test_short_acronym_heavy_english_title_kept_even_when_langdetect_would_be_unsure():
+    """Short Latin-script tech headlines (BBC, Wired) must not be rejected just because
+    langdetect lacks signal — the new filter only acts on confident foreign verdicts."""
+    title = "AI agents reshape SOC ops"
+    assert _is_english_for_ingest(title, None) is True
+    assert _is_english_for_ingest(title, "Brief.") is True
+
+
+def test_chinese_title_rejected_even_when_summary_is_english():
+    title = "中国 AI 法规更新影响企业合规"
+    summary = (
+        "Chinese AI regulators issued new compliance guidance this week with implications "
+        "for cross-border data transfers and enterprise deployments worldwide."
+    )
+    assert _is_english_for_ingest(title, summary) is False
+
+
+def test_cyrillic_title_rejected():
+    title = "Российские банки внедряют ИИ для борьбы с мошенничеством"
+    summary = (
+        "Russian banks are rolling out machine-learning fraud detection across "
+        "consumer accounts, citing rising synthetic-identity attempts and a regulatory push."
+    )
+    assert _is_english_for_ingest(title, summary) is False
+
+
+def test_arabic_title_rejected():
+    title = "الذكاء الاصطناعي يعيد تشكيل قطاع التكنولوجيا"
+    summary = "Arabic-language coverage of AI in enterprise tech sectors."
+    assert _is_english_for_ingest(title, summary) is False
+
+
+def test_long_english_article_with_proper_nouns_kept():
+    title = "Cisco, Palo Alto Networks Expand SASE Partnerships With Hyperscalers"
+    summary = (
+        "Networking vendors are deepening their SASE alliances with the major cloud "
+        "providers as enterprise customers consolidate vendors and demand turnkey "
+        "zero-trust outcomes. Analysts expect M&A activity to accelerate through Q4."
+    )
+    assert _is_english_for_ingest(title, summary) is True
+
+
 def test_scrape_og_image_returns_og_image_meta(monkeypatch):
     html = b"""
     <html><head>

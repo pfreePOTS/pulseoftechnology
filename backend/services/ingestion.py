@@ -5,7 +5,7 @@ from typing import Any
 import feedparser
 import httpx
 from bs4 import BeautifulSoup
-from langdetect import DetectorFactory, detect
+from langdetect import DetectorFactory, detect_langs
 from langdetect.lang_detect_exception import LangDetectException
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -14,7 +14,7 @@ from ..models.article import Article, ArticleStatus
 from ..models.source import Source
 from ..models.topic import Topic
 from ..services.ai_service import process_raw_articles
-from ..services.article_language import title_contains_hangul
+from ..services.article_language import contains_non_latin_script
 from ..services.vector_service import upsert_article
 
 logger = logging.getLogger(__name__)
@@ -168,32 +168,47 @@ def _parse_published(entry: feedparser.FeedParserDict) -> datetime | None:
     return None
 
 
+# Below this character count, langdetect is unreliable enough on tech headlines /
+# acronym-heavy English text that a "non-English" verdict is essentially noise.
+# We keep such items and let the AI gate sort them out semantically.
+_LANG_DETECT_MIN_SAMPLE = 80
+# Probability threshold for the top non-English language to count as a confident
+# rejection. Below this, we treat the verdict as too uncertain and keep the item.
+_LANG_DETECT_REJECT_THRESHOLD = 0.90
+
+
 def _is_english_for_ingest(title: str, plain_content: str | None) -> bool:
     """
     Return True if this RSS item should be kept for English-only ingestion.
 
-    We classify the *title* first. Feeds like CIO.com sometimes pair a Korean (or
-    other non-English) title with an English body; detecting language on
-    ``title + summary`` alone can wrongly return English because the summary dominates.
+    Goal is "block non-English articles," not "reject anything langdetect is
+    unsure about." We therefore lean toward keep:
+
+    * Hard reject only when the title or the title+content sample contains a
+      script that's unambiguously non-English (CJK, Hangul, Cyrillic, Arabic, …).
+    * Run ``langdetect`` only on a sample long enough to be reliable, and only
+      reject when its top guess is non-English with high confidence.
+    * Otherwise: keep. Short English-only headlines and acronym-heavy tech
+      copy stay in.
     """
     t = (title or "").strip()
     if not t:
         return False
-    if title_contains_hangul(t):
-        return False
-    if len(t) >= 4:
-        try:
-            if detect(t) != "en":
-                return False
-        except LangDetectException:
-            pass
     sample = f"{t} {plain_content or ''}".strip()
-    if len(sample) < 20:
+    if contains_non_latin_script(t) or contains_non_latin_script(sample):
+        return False
+    if len(sample) < _LANG_DETECT_MIN_SAMPLE:
         return True
     try:
-        return detect(sample) == "en"
+        results = detect_langs(sample)
     except LangDetectException:
         return True
+    if not results:
+        return True
+    top = results[0]
+    if getattr(top, "lang", None) == "en":
+        return True
+    return float(getattr(top, "prob", 0.0)) < _LANG_DETECT_REJECT_THRESHOLD
 
 
 def fetch_rss_feed(source: Source, db: Session) -> int:

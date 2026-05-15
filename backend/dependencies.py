@@ -35,36 +35,6 @@ def hash_password(plain: str) -> str:
     return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt()).decode()
 
 
-_cached_fallback_hash: bytes | None = None
-
-
-def verify_admin_password(plain: str) -> bool:
-    """
-    Verify password against ADMIN_PASSWORD_HASH or ADMIN_PASSWORD (env only).
-    Console login uses AdminUser rows and verify_password(); this remains for
-    scripts, tests, and backward-compatible imports during hot reload.
-    """
-    if settings.admin_password_hash:
-        try:
-            return bcrypt.checkpw(
-                plain.encode("utf-8"),
-                settings.admin_password_hash.encode("utf-8"),
-            )
-        except (ValueError, TypeError):
-            return False
-
-    global _cached_fallback_hash
-    if _cached_fallback_hash is None:
-        _cached_fallback_hash = bcrypt.hashpw(
-            settings.admin_password.encode("utf-8"), bcrypt.gensalt()
-        )
-
-    try:
-        return bcrypt.checkpw(plain.encode("utf-8"), _cached_fallback_hash)
-    except (ValueError, TypeError):
-        return False
-
-
 def create_admin_access_token(user: AdminUser) -> str:
     expire = datetime.now(UTC) + timedelta(minutes=settings.admin_token_expire_minutes)
     payload = {

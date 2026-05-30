@@ -9,23 +9,17 @@ interface RadarTopic {
   id: number;
   name: string;
   domain: string;
-  adoption_state: string;
   is_published: boolean;
-}
-
-function adoptionPillClass(state: string): string {
-  const map: Record<string, string> = {
-    "Learn About": "bg-[#019E7C]/20 text-emerald-100 ring-1 ring-[#019E7C]/40",
-    "Get Ahead Of": "bg-amber-500/15 text-amber-100 ring-1 ring-amber-500/35",
-    "Get Prepared For": "bg-yellow-500/15 text-yellow-100 ring-1 ring-yellow-500/40",
-    "Get Your Hands Around": "bg-[#E91D24]/20 text-red-100 ring-1 ring-[#E91D24]/40",
-    "Make the Most Of": "bg-emerald-700/25 text-emerald-100 ring-1 ring-emerald-500/35",
-  };
-  return map[state] ?? "bg-gray-800 text-gray-300 ring-1 ring-gray-600";
 }
 
 /**
  * Public radar toggles for selected topics. Primary surface: `/admin/publishing`.
+ *
+ * Adoption state is intentionally not shown here: the public radar plots one star
+ * per (topic × industry) using `industry_positions[industry].adoption_state`
+ * (see `RadarChart.buildPlotPoints`), so a single per-topic value would
+ * misrepresent what the public actually sees. Edit per-industry adoption state
+ * in the Topic Editor → Industry Positions.
  */
 export default function RadarPublishingSection() {
   const [topics, setTopics] = useState<RadarTopic[]>([]);
@@ -184,7 +178,6 @@ export default function RadarPublishingSection() {
             <tr className="border-b border-gray-800 text-xs uppercase tracking-wider text-gray-500">
               <th className="px-4 py-3 font-medium">Domain</th>
               <th className="px-4 py-3 font-medium">Topic Name</th>
-              <th className="px-4 py-3 font-medium">Adoption State</th>
               <th className="px-4 py-3 font-medium">On public radar</th>
             </tr>
           </thead>
@@ -192,7 +185,7 @@ export default function RadarPublishingSection() {
             {radarLoading ? (
               <tr>
                 <td
-                  colSpan={4}
+                  colSpan={3}
                   className="px-4 py-8 text-center text-gray-500"
                 >
                   Loading approved topics…
@@ -201,7 +194,7 @@ export default function RadarPublishingSection() {
             ) : topics.length === 0 ? (
               <tr>
                 <td
-                  colSpan={4}
+                  colSpan={3}
                   className="px-4 py-8 text-center text-gray-500"
                 >
                   No selected topics. Approve topics in Research first.
@@ -217,13 +210,6 @@ export default function RadarPublishingSection() {
                   </td>
                   <td className="max-w-[280px] px-4 py-3 font-medium text-white">
                     {t.name}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-block rounded-md px-2 py-0.5 text-xs font-medium ${adoptionPillClass(t.adoption_state)}`}
-                    >
-                      {t.adoption_state}
-                    </span>
                   </td>
                   <td className="px-4 py-3">
                     <label className="inline-flex cursor-pointer items-center gap-2">

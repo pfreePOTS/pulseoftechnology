@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, joinedload
 from ..database import get_db
 from ..models.article import Article, ArticleStatus
 from ..models.content import ContentItem
+from ..models.domain import Domain
 from ..models.newsletter_issue import NewsletterIssue
 from ..models.role import Role
 from ..models.subscriber import Subscriber, validate_industries_and_role_ids
@@ -25,6 +26,8 @@ from ..services.ai_service import (
     generate_everyone_overview,
     generate_path_synthesis,
 )
+from ..services.domain_registry import pickable_domains, validate_subscriber_domain_slugs
+from ..services.email_service import send_contact_form_notification
 from ..services.hubspot_sync import sync_subscriber_to_hubspot
 from ..services.newsletter_selection import (
     RECOMMENDED_PATH_ARTICLE_LOOKBACK,
@@ -37,6 +40,7 @@ from ..services.recommended_path_process_card_library import (
     lookup_library_row,
 )
 from ..services.subscriber_tokens import decode_subscriber_preferences_token
+from ..services.topic_serializers import domain_public_payload, topic_domain_short
 from ..services.tracked_article_filter import article_qualifies_pulse_tracked_surface
 
 logger = logging.getLogger(__name__)
@@ -44,6 +48,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["public"])
 
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+def _validate_subscriber_domains(db: Session, domains: list[str] | None) -> list[str]:
+    try:
+        return validate_subscriber_domain_slugs(db, list(domains or []))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def _clean_required_list(values: list[str] | list[int] | None, label: str) -> list:
@@ -60,10 +71,27 @@ def _clean_required_list(values: list[str] | list[int] | None, label: str) -> li
 # ---------------------------------------------------------------------------
 
 
+class DomainPublic(BaseModel):
+    slug: str
+    label: str
+    short_label: str
+    color: str
+
+
+class DomainPublicOut(BaseModel):
+    slug: str
+    label: str
+    short_label: str
+    description: str | None = None
+    color: str
+    sort_order: int
+    status: str
+
+
 class TopicPublic(BaseModel):
     id: int
     name: str
-    domain: str
+    domain: DomainPublic
     subdomain: str = ""
     summary: str | None
     urgency_score: float
@@ -71,6 +99,21 @@ class TopicPublic(BaseModel):
     industry_positions: dict | None = None
 
     model_config = {"from_attributes": True}
+
+
+def _serialize_topic_public(topic: Topic) -> TopicPublic:
+    return TopicPublic(
+        id=topic.id,
+        name=topic.name,
+        domain=DomainPublic(**domain_public_payload(topic.domain)),
+        subdomain=getattr(topic, "subdomain", None) or "",
+        summary=topic.summary,
+        urgency_score=float(topic.urgency_score or 0.0),
+        adoption_state=topic.adoption_state.value
+        if hasattr(topic.adoption_state, "value")
+        else str(topic.adoption_state),
+        industry_positions=topic.industry_positions,
+    )
 
 
 class RolePublic(BaseModel):
@@ -227,6 +270,18 @@ class ExperienceItem(BaseModel):
     icon: str = "default"
 
 
+class EngagementExampleOut(BaseModel):
+    """Illustrative project vignette for PulseOne in Action (same intake as synthesis)."""
+
+    id: str
+    title: str
+    who: str = ""
+    provided: str = ""
+    approach: str = ""
+    solution: str = ""
+    how_we_helped: str = ""
+
+
 class RecommendedWatchStoryOut(BaseModel):
     """Ingested radar story plus a one-line hook tying it to this reader."""
 
@@ -253,6 +308,7 @@ class RecommendedPathOut(BaseModel):
     synthesis_html: str
     synthesis_cards: list[SynthesisCardOut]
     experience_items: list[ExperienceItem]
+    engagement_examples: list[EngagementExampleOut] = []
     topics: list[RecommendedTopicOut]
     content_items: list[RecommendedContentOut]
     watch_brief: str
@@ -327,6 +383,24 @@ def _public_article_teaser_summary(a: Article) -> str | None:
 # ---------------------------------------------------------------------------
 
 
+@router.get("/public/domains", response_model=list[DomainPublicOut])
+def list_public_domains(db: Session = Depends(get_db)):
+    """Pickable domain registry rows for subscribe wizard, preferences, and radar legend."""
+    rows = pickable_domains(db)
+    return [
+        DomainPublicOut(
+            slug=d.slug,
+            label=d.label,
+            short_label=d.short_label,
+            description=d.description,
+            color=d.color,
+            sort_order=d.sort_order,
+            status=d.status,
+        )
+        for d in rows
+    ]
+
+
 @router.get("/roles", response_model=list[RolePublic])
 def list_roles_public(db: Session = Depends(get_db)):
     """List subscriber role options for the public subscribe flow (id and name only)."""
@@ -336,12 +410,14 @@ def list_roles_public(db: Session = Depends(get_db)):
 @router.get("/topics/published", response_model=list[TopicPublic])
 def get_published_topics(db: Session = Depends(get_db)):
     """Return topics marked as published (live on the public Radar)."""
-    return (
+    rows = (
         db.query(Topic)
+        .options(joinedload(Topic.domain))
         .filter(Topic.is_published == True)  # noqa: E712
         .order_by(Topic.urgency_score.desc())
         .all()
     )
+    return [_serialize_topic_public(t) for t in rows]
 
 
 @router.get("/articles/tracked", response_model=list[ArticleTrackedPublic])
@@ -358,7 +434,7 @@ def list_tracked_articles_public(
             Topic.is_published == True,  # noqa: E712
             Article.archived_at.is_(None),
         )
-        .options(joinedload(Article.source), joinedload(Article.topic))
+        .options(joinedload(Article.source), joinedload(Article.topic).joinedload(Topic.domain))
         .order_by(Article.ingested_at.desc())
         .limit(fetch_cap)
         .all()
@@ -374,7 +450,7 @@ def list_tracked_articles_public(
                 url=a.url,
                 published_at=a.published_at,
                 ingested_at=a.ingested_at,
-                domain=a.topic.domain if a.topic else "Other",
+                domain=topic_domain_short(a.topic),
                 source_name=a.source.name if a.source else None,
                 image_url=a.image_url,
                 summary=_public_article_teaser_summary(a),
@@ -427,10 +503,11 @@ def update_subscriber_preferences(
     """Update subscriber preferences from a signed newsletter magic link."""
     subscriber = _subscriber_from_preferences_token(token, db)
     inds, rids = validate_industries_and_role_ids(db, payload.industries, payload.role_ids)
+    doms = _validate_subscriber_domains(db, payload.domains)
     subscriber.first_name = payload.first_name
     subscriber.last_name = payload.last_name
     subscriber.industries = inds
-    subscriber.domains = payload.domains
+    subscriber.domains = doms
     subscriber.role_ids = rids
     subscriber.is_active = True
     db.commit()
@@ -466,6 +543,7 @@ def subscribe(
 ):
     """Register a new subscriber with their domain and industry preferences."""
     inds, rids = validate_industries_and_role_ids(db, payload.industries, payload.role_ids)
+    doms = _validate_subscriber_domains(db, payload.domains)
 
     existing = db.query(Subscriber).filter(Subscriber.email == payload.email).first()
     if existing:
@@ -476,7 +554,7 @@ def subscribe(
         existing.first_name = payload.first_name
         existing.last_name = payload.last_name
         existing.industries = inds
-        existing.domains = payload.domains
+        existing.domains = doms
         existing.role_ids = rids
         db.commit()
         db.refresh(existing)
@@ -492,7 +570,7 @@ def subscribe(
         first_name=payload.first_name,
         last_name=payload.last_name,
         industries=inds,
-        domains=payload.domains,
+        domains=doms,
         role_ids=rids,
     )
     db.add(subscriber)
@@ -508,14 +586,15 @@ def subscribe(
 
 @router.post("/contact", response_model=ContactResponse, status_code=201)
 @limiter.limit("5/minute")
-def contact(request: Request, payload: ContactRequest):
+def contact(
+    request: Request,
+    payload: ContactRequest,
+    background_tasks: BackgroundTasks,
+):
     """Receive a "Send us a message" submission from the public `/contact` page.
 
-    MVP behaviour — the submission is structured-logged so an operator (and
-    Datadog/CloudWatch downstream) can see every inbound lead. Persistence to a
-    `ContactSubmission` table and HubSpot/SendGrid sync should follow the same
-    pattern as `/subscribe` → `sync_subscriber_to_hubspot`; a placeholder
-    background task is left here so wiring it up is a one-line change later.
+    Sends an email to ``CONTACT_FORM_TO_EMAIL`` (default ``marketing@pulseone.com``)
+    via SendGrid when configured. Always logs structured metadata for ops.
     """
     # Honeypot — silently 200 to keep the bot from learning that the field
     # tripped the filter. Log at debug for diagnostics only.
@@ -540,9 +619,18 @@ def contact(request: Request, payload: ContactRequest):
         },
     )
 
-    # TODO: persist to a `ContactSubmission` table + sync to HubSpot/SendGrid.
-    #   `background_tasks.add_task(sync_contact_to_hubspot, payload)` once a
-    #   `services/hubspot_sync.py` helper exists for contact-form payloads.
+    background_tasks.add_task(
+        partial(
+            send_contact_form_notification,
+            name=payload.name,
+            email=payload.email,
+            company=payload.company,
+            message=payload.message,
+            phone=payload.phone,
+            industry=payload.industry,
+            role=payload.role,
+        )
+    )
 
     return ContactResponse(message="Thanks — we'll be in touch within one business day.")
 
@@ -573,14 +661,18 @@ def record_survey(
 # Each candidate runs ``recommended_path_topic_total_rank``, which queries recent articles — cap the
 # pool so recommended-path avoids ~100+ sequential DB round-trips before the LLM runs.
 _RECOMMENDED_PATH_TOPIC_RANK_POOL_CAP = 48
+# "Stories on the Pulse for these themes" — UI shows three cards.
+_RECOMMENDED_PATH_WATCH_STORIES_LIMIT = 3
 
 ISSUE_DOMAINS: dict[str, list[str]] = {
-    "Cybersecurity": ["Security"],
-    "AI": ["AI"],
-    "Compliance": ["Finance", "Security"],
-    "Cloud": ["Cloud"],
-    "IT Management": ["Cloud", "Other"],
-    "Strategy": ["AI", "Leadership"],
+    "Cybersecurity": ["security"],
+    "AI": ["ai"],
+    "Compliance": ["compliance", "security"],
+    "Cloud": ["cloud"],
+    "IT Management": ["cloud", "infrastructure"],
+    "Strategy": ["ai", "compliance"],
+    "Storage": ["storage"],
+    "Infrastructure": ["infrastructure"],
     "Other": [],
 }
 
@@ -603,7 +695,7 @@ def _domains_for_intake_issue(issue: str) -> list[str]:
 
     # Common concerns — substring hints (``?issue=Generative AI`` etc.).
     if any(k in lo for k in ("cyber", "threat", "ransom", "nist", "zerotrust", "zero-trust")):
-        guessed.append("Security")
+        guessed.append("security")
     if (
         (
             "llm" in lo
@@ -617,11 +709,17 @@ def _domains_for_intake_issue(issue: str) -> list[str]:
         or lo.endswith(" ai")
         or " ai " in (" " + lo + " ")
     ):
-        guessed.append("AI")
+        guessed.append("ai")
     if any(k in lo for k in ("compliance", "regulation", "hipaa", "sox ", "privacy law")):
-        guessed.extend(["Finance", "Security"])
-    if any(k in lo for k in ("cloud", "aws", "azure", "saas", "infrastructure")):
-        guessed.append("Cloud")
+        guessed.extend(["compliance", "security"])
+    if any(k in lo for k in ("storage", "backup", "nas", "san", "object store")):
+        guessed.append("storage")
+    if any(k in lo for k in ("cloud", "aws", "azure", "saas")):
+        guessed.append("cloud")
+    if any(k in lo for k in ("network", "server", "datacenter", "linux", "windows server")):
+        guessed.append("infrastructure")
+    elif "infrastructure" in lo:
+        guessed.append("infrastructure")
     # Microsoft / productivity licensing often appears as its own intake label but maps to Cloud on the radar.
     if any(
         k in lo
@@ -636,9 +734,9 @@ def _domains_for_intake_issue(issue: str) -> list[str]:
             "copilot",
         )
     ):
-        guessed.append("Cloud")
+        guessed.append("cloud")
     if any(k in lo for k in ("leadership", "board", "strategy", "culture")):
-        guessed.append("Leadership")
+        guessed.append("ai")
     seen: set[str] = set()
     out: list[str] = []
     for d in guessed:
@@ -673,11 +771,11 @@ def _domains_for_intake(issue: str, stage: str) -> list[str]:
         or st.startswith("ai ")
         or any(x in st for x in ai_tokens)
     ):
-        injections.append("AI")
+        injections.append("ai")
 
     sec_tokens = ("security", "cyber", "ransom", "breach")
     if any(x in st for x in sec_tokens):
-        injections.append("Security")
+        injections.append("security")
 
     merged: list[str] = []
     seen: set[str] = set()
@@ -692,35 +790,60 @@ def _article_has_thumbnail(a: Article) -> bool:
     return bool((a.image_url or "").strip())
 
 
+# Live radar ingest uses ``processed`` on ``is_published`` topics; ``published`` status is often on
+# selected-but-not-live topics. Match ``GET /api/articles/tracked`` eligibility, not status alone.
+_RECOMMENDED_PATH_WATCH_ARTICLE_STATUSES = (
+    ArticleStatus.processed,
+    ArticleStatus.published,
+)
+
+
+def _article_eligible_for_watch_story(article: Article) -> bool:
+    if article.archived_at is not None:
+        return False
+    if article.status not in _RECOMMENDED_PATH_WATCH_ARTICLE_STATUSES:
+        return False
+    return article_qualifies_pulse_tracked_surface(article)
+
+
 def _newest_article_for_topic(
     db: Session, topic_id: int, used_ids: set[int]
 ) -> Article | None:
-    """Prefer newest published article with an ingest thumbnail; else newest without."""
+    """Newest ingested article on a topic (thumbnail preferred), same pool as tracked stories."""
     base = db.query(Article).filter(
         Article.topic_id == topic_id,
-        Article.status == ArticleStatus.published,
+        Article.status.in_(_RECOMMENDED_PATH_WATCH_ARTICLE_STATUSES),
         Article.archived_at.is_(None),
     )
     if used_ids:
         base = base.filter(Article.id.notin_(used_ids))
     order = (Article.published_at.desc().nullslast(), Article.ingested_at.desc())
-    with_img = (
-        base.filter(Article.image_url.isnot(None), Article.image_url != "")
-        .order_by(*order)
-        .first()
-    )
-    if with_img is not None:
-        return with_img
-    return base.order_by(*order).first()
+    rows = base.order_by(*order).limit(32).all()
+    rows.sort(key=_thumb_sort_key_for_watch_pool)
+    for hit in rows:
+        if _article_eligible_for_watch_story(hit):
+            return hit
+    return None
+
+
+def _thumb_sort_key_for_watch_pool(a: Article) -> tuple[int, float]:
+    has = 0 if _article_has_thumbnail(a) else 1
+    pt = a.published_at
+    ts = pt.timestamp() if pt is not None else 0.0
+    return (has, -ts)
+
+
+def _normalize_watch_story_url(url: str) -> str:
+    return (url or "").strip().rstrip("/").lower()
 
 
 def _articles_for_watch_stories(
-    db: Session, topics: list[Topic], *, limit: int = 5
+    db: Session, topics: list[Topic], *, limit: int = _RECOMMENDED_PATH_WATCH_STORIES_LIMIT
 ) -> list[tuple[Topic, Article]]:
-    """Recent published Pulse articles aligned to intake themes, with thumbnail preferred.
+    """Recent ingested Pulse articles on live radar topics, aligned to intake themes.
 
-    Many feeds omit images until OG backfill runs, so we **prefer** ``Article.image_url`` but
-    still return text-only stories so the watch list is populated (UI hides the thumb when absent).
+    Uses the same article pool as ``GET /api/articles/tracked`` (processed + published on
+    ``is_published`` topics). Thumbnails are preferred when present.
     """
     if limit < 1 or not topics:
         return []
@@ -728,30 +851,44 @@ def _articles_for_watch_stories(
     topic_ids = [t.id for t in topics]
     topics_by_id: dict[int, Topic] = {t.id: t for t in topics}
     used_ids: set[int] = set()
+    used_urls: set[str] = set()
+    used_titles: set[str] = set()
     pairs: list[tuple[Topic, Article]] = []
 
-    def _thumb_sort_key(a: Article) -> tuple[int, float]:
-        has = 0 if _article_has_thumbnail(a) else 1
-        pt = a.published_at
-        ts = pt.timestamp() if pt is not None else 0.0
-        return (has, -ts)
+    def _try_append_pair(topic: Topic, hit: Article) -> bool:
+        if hit.id in used_ids:
+            return False
+        url_key = _normalize_watch_story_url(hit.url)
+        if url_key and url_key in used_urls:
+            return False
+        title_key = (hit.title or "").strip().lower()
+        if title_key and title_key in used_titles:
+            return False
+        if not _article_eligible_for_watch_story(hit):
+            return False
+        used_ids.add(hit.id)
+        if url_key:
+            used_urls.add(url_key)
+        if title_key:
+            used_titles.add(title_key)
+        pairs.append((topic, hit))
+        return True
 
     # 1) One newest article per intake-aligned topic (thumbnail first when both exist)
     for t in topics:
         if len(pairs) >= limit:
             break
         hit = _newest_article_for_topic(db, t.id, used_ids)
-        if hit is None or hit.id in used_ids:
+        if hit is None:
             continue
-        used_ids.add(hit.id)
-        pairs.append((t, hit))
+        _try_append_pair(t, hit)
 
     # 2) Fill from remaining stories on those topics (prefer thumbnails, then recency)
     if len(pairs) < limit:
         need = limit - len(pairs)
         q = db.query(Article).filter(
             Article.topic_id.in_(topic_ids),
-            Article.status == ArticleStatus.published,
+            Article.status.in_(_RECOMMENDED_PATH_WATCH_ARTICLE_STATUSES),
             Article.archived_at.is_(None),
         )
         if used_ids:
@@ -759,27 +896,25 @@ def _articles_for_watch_stories(
         candidates = q.order_by(
             Article.published_at.desc().nullslast(), Article.ingested_at.desc()
         ).limit(max(need * 8, 24)).all()
-        candidates.sort(key=_thumb_sort_key)
+        candidates.sort(key=_thumb_sort_key_for_watch_pool)
         for hit in candidates:
             if len(pairs) >= limit:
                 break
-            if hit.id in used_ids:
-                continue
             top = topics_by_id.get(hit.topic_id or 0)
             if top is None:
                 continue
-            used_ids.add(hit.id)
-            pairs.append((top, hit))
+            _try_append_pair(top, hit)
 
-    # 3) Last resort: newest published-on-radar stories (Pulse-wide), thumbnails first
+    # 3) Last resort: newest on-radar stories (Pulse-wide), thumbnails first
     if len(pairs) < limit:
         need = limit - len(pairs)
         q = (
             db.query(Article)
             .join(Topic, Article.topic_id == Topic.id)
+            .options(joinedload(Article.topic))
             .filter(
                 Topic.is_published == True,  # noqa: E712
-                Article.status == ArticleStatus.published,
+                Article.status.in_(_RECOMMENDED_PATH_WATCH_ARTICLE_STATUSES),
                 Article.archived_at.is_(None),
             )
         )
@@ -788,17 +923,14 @@ def _articles_for_watch_stories(
         candidates = q.order_by(
             Article.published_at.desc().nullslast(), Article.ingested_at.desc()
         ).limit(max(need * 12, 36)).all()
-        candidates.sort(key=_thumb_sort_key)
+        candidates.sort(key=_thumb_sort_key_for_watch_pool)
         for hit in candidates:
             if len(pairs) >= limit:
                 break
-            if hit.id in used_ids:
-                continue
             top = hit.topic
             if top is None or not top.is_published:
                 continue
-            used_ids.add(hit.id)
-            pairs.append((top, hit))
+            _try_append_pair(top, hit)
 
     return pairs[:limit]
 
@@ -832,10 +964,19 @@ def _recommended_watch_story_rows(
 ) -> list[RecommendedWatchStoryOut]:
     hooks = hooks_list or []
     rows: list[RecommendedWatchStoryOut] = []
-    for idx, (topic_o, article_o) in enumerate(watch_pairs):
+    seen_urls: set[str] = set()
+    seen_titles: set[str] = set()
+    hook_idx = 0
+    for topic_o, article_o in watch_pairs:
+        url_key = _normalize_watch_story_url(article_o.url)
+        title_key = (article_o.title or "").strip().lower()
+        if url_key and url_key in seen_urls:
+            continue
+        if title_key and title_key in seen_titles:
+            continue
         hook_txt = ""
-        if idx < len(hooks) and str(hooks[idx]).strip():
-            hook_txt = str(hooks[idx]).strip()
+        if hook_idx < len(hooks) and str(hooks[hook_idx]).strip():
+            hook_txt = str(hooks[hook_idx]).strip()
         else:
             hook_txt = fallback_story_teaser(article_o)
         rows.append(
@@ -844,10 +985,15 @@ def _recommended_watch_story_rows(
                 url=article_o.url,
                 hook=hook_txt[:720],
                 radar_topic_name=topic_o.name,
-                domain=topic_o.domain,
+                domain=topic_domain_short(topic_o),
                 image_url=(article_o.image_url or "").strip() or None,
             )
         )
+        if url_key:
+            seen_urls.add(url_key)
+        if title_key:
+            seen_titles.add(title_key)
+        hook_idx += 1
     return rows
 
 
@@ -861,7 +1007,7 @@ def _watch_stories_payload_for_intake(
     hooks_list: list[object] | None,
 ) -> list[RecommendedWatchStoryOut]:
     topics = _topics_for_recommended(db, issue, industry, role, stg, limit=6)
-    pairs = _articles_for_watch_stories(db, topics, limit=5)
+    pairs = _articles_for_watch_stories(db, topics, limit=_RECOMMENDED_PATH_WATCH_STORIES_LIMIT)
     return _recommended_watch_story_rows(pairs, hooks_list)
 
 
@@ -882,7 +1028,9 @@ def _topics_for_recommended(
 
     scoped_q = base_q
     if domains:
-        scoped_q = scoped_q.filter(Topic.domain.in_(domains))
+        scoped_q = scoped_q.join(Domain, Topic.domain_id == Domain.id).filter(
+            Domain.slug.in_(domains)
+        )
 
     rank_pool = min(max(limit * 28, 36), _RECOMMENDED_PATH_TOPIC_RANK_POOL_CAP)
     candidates = scoped_q.order_by(Topic.urgency_score.desc()).limit(rank_pool).all()
@@ -979,7 +1127,7 @@ def recommended_path(
     topics = _topics_for_recommended(db, issue, industry, role, stg, limit=6)
     watch_pairs: list[tuple[Topic, Article]] = []
     if not defer_articles:
-        watch_pairs = _articles_for_watch_stories(db, topics, limit=5)
+        watch_pairs = _articles_for_watch_stories(db, topics, limit=_RECOMMENDED_PATH_WATCH_STORIES_LIMIT)
     syn = generate_path_synthesis(
         db,
         region,
@@ -1058,17 +1206,40 @@ def recommended_path(
         card.model_copy(update={"hero_image_url": url}) for card, url in zip(synthesis_cards_out, heroes, strict=True)
     ]
 
+    raw_engagements = syn.get("engagement_examples") or []
+    engagement_examples_out: list[EngagementExampleOut] = []
+    if isinstance(raw_engagements, list):
+        for row in raw_engagements:
+            if not isinstance(row, dict):
+                continue
+            title = str(row.get("title", "")).strip()
+            if not title:
+                continue
+            eid = str(row.get("id", "")).strip() or "ops-ai-sequencing"
+            engagement_examples_out.append(
+                EngagementExampleOut(
+                    id=eid[:64],
+                    title=title[:200],
+                    who=str(row.get("who", "")).strip()[:480],
+                    provided=str(row.get("provided", "")).strip()[:480],
+                    approach=str(row.get("approach", "")).strip()[:1200],
+                    solution=str(row.get("solution", "")).strip()[:1200],
+                    how_we_helped=str(row.get("how_we_helped", "")).strip()[:1200],
+                )
+            )
+
     return RecommendedPathOut(
         headline=str(syn["headline"]),
         synthesis=str(syn["synthesis"]),
         synthesis_html=str(syn.get("synthesis_html", "")),
         synthesis_cards=synthesis_cards_out,
         experience_items=experience_items,
+        engagement_examples=engagement_examples_out,
         topics=[
             RecommendedTopicOut(
                 id=t.id,
                 name=t.name,
-                domain=t.domain,
+                domain=topic_domain_short(t),
                 summary=t.summary,
                 urgency_score=float(t.urgency_score or 0.0),
             )
@@ -1148,6 +1319,7 @@ def everyone_overview(db: Session = Depends(get_db)):
     # `_topics_for_recommended` (which filters to a chosen issue + industry).
     topics = (
         db.query(Topic)
+        .options(joinedload(Topic.domain))
         .filter(Topic.is_published == True)  # noqa: E712
         .order_by(Topic.urgency_score.desc())
         .limit(6)
@@ -1173,7 +1345,7 @@ def everyone_overview(db: Session = Depends(get_db)):
         or 0
     )
     distinct_domains_count = (
-        db.query(func.count(func.distinct(Topic.domain)))
+        db.query(func.count(func.distinct(Topic.domain_id)))
         .filter(Topic.is_published == True)  # noqa: E712
         .scalar()
         or 0
@@ -1202,7 +1374,7 @@ def everyone_overview(db: Session = Depends(get_db)):
             RecommendedTopicOut(
                 id=t.id,
                 name=t.name,
-                domain=t.domain,
+                domain=topic_domain_short(t),
                 summary=t.summary,
                 urgency_score=float(t.urgency_score or 0.0),
             )

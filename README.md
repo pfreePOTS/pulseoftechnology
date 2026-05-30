@@ -114,7 +114,23 @@ After a **`docker compose down -v`** or new Railway Postgres plugin, apply refer
 docker compose exec backend python -m backend.seed_local_dev
 ```
 
-That wraps **`seed_sources`** (RSS catalogue), **`seed_topics`** (core domains, radar‑visible), and **`seed_roles`** (CEO/CFO/CTO/CISO/COO/CMO tags).
+That wraps **`seed_sources`** (RSS catalogue), **`seed_domains`** (domain registry), **`seed_topics`** (core domains, radar‑visible), and **`seed_roles`** (CEO/CFO/CTO/CISO/COO/CMO tags).
+
+### Reclassifying after a domain change
+
+When the domain registry or classifier prompt changes, rebuild article→topic bindings on staging (or any disposable environment) with:
+
+```bash
+docker compose exec -w /app/backend backend alembic upgrade head
+docker compose exec backend python -m backend.seed_domains
+docker compose exec backend python -m backend.seed_topics
+docker compose exec backend python -m backend.scripts.reclassify_articles --full
+```
+
+- **`--full`** (default): resets each article to `raw`, clears topic bindings, and reruns the full ingest pipeline under the current classifier. Use for staging rebuilds.
+- **`--classify-only`**: re-runs classification only (cheaper; keeps existing summaries). Use when you only need domain rebucketing.
+
+The script is idempotent: deduplicates topics, archives orphans, and prints a structured summary (`articles_reclassified`, `topics_created`, `topic_dedups`, etc.). Safe to rerun on staging.
 
 To copy data already in Postgres (articles, radar, roles, prompts, etc.), see **`scripts/db/README.md`** — `export_data.sh` / `export_data_from_url.sh` / `import_data.sh` (**data-only** `pg_dump` / `pg_restore`, not committed to Git). Use **`--without-account-subscriber-data`** when you want Dev editorial/radar parity **without** copying admin users or subscribers.
 
@@ -209,6 +225,7 @@ pulseoftechnology/
 | `SUBSCRIBER_TOKEN_SECRET` | (see `.env.example`) | Separate HS256 signing key for subscriber preference/unsubscribe links |
 | `CORS_ORIGINS`         | `http://localhost:3000,http://localhost:3100` | Allowed browser origins (comma-separated) |
 | `SENDGRID_API_KEY`     | —                  | Email delivery (optional for dev)        |
+| `CONTACT_FORM_TO_EMAIL`| `marketing@pulseone.com` | Inbound `/contact` form notifications via SendGrid |
 | `HUBSPOT_API_KEY`      | —                  | CRM sync (optional)                      |
 | `HUBSPOT_NEWSLETTER_LIST_ID` | —            | HubSpot list ILS ID; add/remove contact after upsert (optional) |
 | `NEXT_PUBLIC_API_URL`  | `http://localhost:8100` | Browser-facing API URL (Compose `frontend` service) |

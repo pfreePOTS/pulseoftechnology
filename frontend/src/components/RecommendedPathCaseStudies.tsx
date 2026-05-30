@@ -4,8 +4,11 @@ import { CaseStudyHeroIcon, caseStudyHeroPanelClass } from "@/components/CaseStu
 
 import { useEffect, useRef, useState } from "react";
 
-import type { RecommendedCaseStudy } from "@/lib/recommendedPathCaseStudies";
-import { recommendedCaseStudiesForIndustry } from "@/lib/recommendedPathCaseStudies";
+import type { RecommendedCaseStudy, RecommendedPathCaseStudyIntake } from "@/lib/recommendedPathCaseStudies";
+import {
+  recommendedCaseStudiesForIntake,
+  recommendedCaseStudiesIntro,
+} from "@/lib/recommendedPathCaseStudies";
 
 function cardProblem(cs: RecommendedCaseStudy): string {
   return cs.problem?.trim() || cs.title;
@@ -31,11 +34,17 @@ function cardProvided(cs: RecommendedCaseStudy): string {
 }
 
 export default function RecommendedPathCaseStudies({
-  industry,
+  intake,
+  studiesFromApi,
 }: {
-  industry?: string;
+  intake?: RecommendedPathCaseStudyIntake;
+  /** When the recommended-path AI returns three vignettes, use those instead of static industry cards. */
+  studiesFromApi?: RecommendedCaseStudy[] | null;
 }) {
-  const studies = recommendedCaseStudiesForIndustry(industry);
+  const studies =
+    studiesFromApi && studiesFromApi.length >= 3
+      ? studiesFromApi
+      : recommendedCaseStudiesForIntake(intake);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [active, setActive] = useState<RecommendedCaseStudy | null>(null);
 
@@ -61,10 +70,7 @@ export default function RecommendedPathCaseStudies({
     if (e.target === e.currentTarget) setActive(null);
   };
 
-  const industryName = industry?.trim();
-  const body = industryName
-    ? `This is the kind of work we do in ${industryName}.`
-    : "This is the kind of work we do for organisations like yours.";
+  const body = recommendedCaseStudiesIntro(intake);
 
   return (
     <section className="border-b border-[#e0e0e0] bg-[#f4f8fa] px-8 py-16 md:py-20">
@@ -104,11 +110,11 @@ export default function RecommendedPathCaseStudies({
                 <span className="flex flex-1 flex-col px-5 py-4">
                   <span className="font-sans text-[16px] font-bold leading-snug text-[#111]">{cardProblem(cs)}</span>
                   <span className="mt-3 block font-sans text-[12px] font-semibold uppercase tracking-[1.5px] text-pulse-teal">
-                    Who we helped
+                    Who we help
                   </span>
                   <span className="mt-1 block font-sans text-[14px] leading-relaxed text-[#555]">{cardWho(cs)}</span>
                   <span className="mt-3 block font-sans text-[12px] font-semibold uppercase tracking-[1.5px] text-pulse-teal">
-                    What we provided
+                    What we provide
                   </span>
                   <span className="mt-1 block flex-1 font-sans text-[14px] leading-relaxed text-[#555]">
                     {cardProvided(cs)}
@@ -144,11 +150,11 @@ export default function RecommendedPathCaseStudies({
             </div>
             <div className="max-h-[calc(92vh-4.5rem)] overflow-y-auto px-6 py-5">
               <ModalBlock label="Problem" text={cardProblem(active)} />
-              <ModalBlock label="Who we helped" text={cardWho(active)} />
-              <ModalBlock label="What we provided" text={cardProvided(active)} />
-              <ModalBlock label="How we approached it" text={active.approach} />
+              <ModalBlock label="Who we help" text={cardWho(active)} />
+              <ModalBlock label="What we provide" text={cardProvided(active)} />
+              <ModalBlock label="Our approach" text={active.approach} />
               <ModalBlock label="Solution shape" text={active.solution} />
-              <ModalBlock label="How PulseOne plugged in" text={active.howWeHelped} isLast />
+              <ModalBlock label="How we help" text={active.howWeHelped} isLast />
             </div>
           </>
         : null}

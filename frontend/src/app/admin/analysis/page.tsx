@@ -10,15 +10,8 @@ import {
 } from "react";
 
 import { adminFetch, API_BASE } from "@/lib/api";
+import { domainBadgeClass } from "@/lib/domains";
 import { INDUSTRY_OPTIONS } from "@/lib/industryGrid";
-
-const DOMAIN_COLORS: Record<string, string> = {
-  AI: "bg-violet-500/20 text-violet-400",
-  Security: "bg-rose-500/20 text-rose-400",
-  Cloud: "bg-sky-500/20 text-sky-400",
-  Finance: "bg-emerald-500/20 text-emerald-400",
-  Leadership: "bg-indigo-500/20 text-indigo-400",
-};
 
 /** Re-export for callers that imported from this module */
 export { INDUSTRY_OPTIONS };
@@ -67,6 +60,22 @@ interface TopicRow {
   persona_by_role?: Record<string, string> | null;
   article_count: number;
   is_published: boolean;
+  /** When the topic was promoted to on-radar (selected); drives `days_on_radar`. */
+  selected_at?: string | null;
+  /** Earliest linked article time when `selected_at` was never recorded (legacy). */
+  first_evidence_at?: string | null;
+  /** Whole days since promoted to on-radar (server-computed). */
+  days_on_radar?: number | null;
+}
+
+function daysOnRadarTitle(topic: TopicRow): string {
+  if (topic.selected_at) {
+    return `On radar since ${topic.selected_at}`;
+  }
+  if (topic.first_evidence_at) {
+    return `Promotion date was not recorded; using first linked article (${topic.first_evidence_at}) as an approximate start`;
+  }
+  return "Promotion date was not recorded; days on may be 0 if there is no linked article";
 }
 
 interface ArticleDetail {
@@ -981,7 +990,7 @@ export default function AnalysisPage() {
                         <div className="mt-1 flex flex-wrap items-center gap-2">
                           <span
                             className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                              DOMAIN_COLORS[topic.domain] ?? "bg-slate-500/20 text-slate-400"
+                              domainBadgeClass(topic.domain)
                             }`}
                           >
                             {topic.domain}
@@ -1106,7 +1115,7 @@ export default function AnalysisPage() {
                   ))}
 
                   {topics.map((topic) => {
-                    const domainClass = DOMAIN_COLORS[topic.domain] ?? "bg-slate-500/20 text-slate-400";
+                    const domainClass = domainBadgeClass(topic.domain);
                     return (
                       <Fragment key={topic.id}>
                         <div className="sticky left-0 z-30 flex flex-col justify-center gap-1 border-b border-r border-gray-800 bg-gray-950 px-2 py-2">
@@ -1114,9 +1123,19 @@ export default function AnalysisPage() {
                             {topic.domain}
                           </span>
                           <span className="line-clamp-2 text-sm font-medium leading-tight text-white">{topic.name}</span>
-                          <span className="text-[10px] tabular-nums text-amber-400/90">
-                            U {topic.urgency_score.toFixed(1)}
-                          </span>
+                          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                            <span className="text-[10px] tabular-nums text-amber-400/90">
+                              U {topic.urgency_score.toFixed(1)}
+                            </span>
+                            <span
+                              className="text-[10px] tabular-nums text-gray-500"
+                              title={daysOnRadarTitle(topic)}
+                            >
+                              {typeof topic.days_on_radar === "number"
+                                ? `${topic.days_on_radar}d on radar`
+                                : "— on radar"}
+                            </span>
+                          </div>
                           <div className="mt-1 flex flex-wrap gap-1">
                             <button
                               type="button"

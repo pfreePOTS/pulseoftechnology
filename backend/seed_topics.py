@@ -15,6 +15,7 @@ Run from inside Docker:
 from typing import Any
 
 from .database import SessionLocal
+from .models.domain import Domain
 from .models.topic import Topic, TopicStatus
 from .services.ai_service import (
     _canonical_industry_key,
@@ -27,7 +28,7 @@ from .services.ai_service import (
 CORE_TOPICS = [
     {
         "name": "AI and AI agents",
-        "domain": "AI",
+        "domain_slug": "ai",
         "urgency_score": 9.2,
         "adoption_state": "Get Your Hands Around",
         "summary": (
@@ -92,7 +93,7 @@ CORE_TOPICS = [
     },
     {
         "name": "Identity and access",
-        "domain": "Security",
+        "domain_slug": "security",
         "urgency_score": 8.8,
         "adoption_state": "Get Prepared For",
         "summary": (
@@ -156,7 +157,7 @@ CORE_TOPICS = [
     },
     {
         "name": "Data governance and protection",
-        "domain": "Security",
+        "domain_slug": "security",
         "urgency_score": 8.5,
         "adoption_state": "Get Prepared For",
         "summary": (
@@ -221,7 +222,7 @@ CORE_TOPICS = [
     },
     {
         "name": "Security operations and resilience",
-        "domain": "Security",
+        "domain_slug": "security",
         "urgency_score": 8.2,
         "adoption_state": "Get Prepared For",
         "summary": (
@@ -286,7 +287,7 @@ CORE_TOPICS = [
     },
     {
         "name": "Cloud, infrastructure, and endpoint management",
-        "domain": "Cloud",
+        "domain_slug": "cloud",
         "urgency_score": 8.0,
         "adoption_state": "Get Your Hands Around",
         "summary": (
@@ -351,7 +352,7 @@ CORE_TOPICS = [
     },
     {
         "name": "Workflow automation and business systems",
-        "domain": "Other",
+        "domain_slug": "infrastructure",
         "urgency_score": 7.8,
         "adoption_state": "Get Ahead Of",
         "summary": (
@@ -416,7 +417,7 @@ CORE_TOPICS = [
     },
     {
         "name": "Compliance, auditability, and third-party risk",
-        "domain": "Other",
+        "domain_slug": "compliance",
         "urgency_score": 8.3,
         "adoption_state": "Get Prepared For",
         "summary": (
@@ -481,7 +482,7 @@ CORE_TOPICS = [
     },
     {
         "name": "Operational technology / IoT / robotics",
-        "domain": "Other",
+        "domain_slug": "infrastructure",
         "urgency_score": 7.5,
         "adoption_state": "Get Ahead Of",
         "summary": (
@@ -544,10 +545,50 @@ CORE_TOPICS = [
             },
         },
     },
+    {
+        "name": "Enterprise backup and disaster recovery",
+        "domain_slug": "storage",
+        "urgency_score": 7.8,
+        "adoption_state": "Get Prepared For",
+        "summary": (
+            "Ransomware-resistant backup, immutable snapshots, and DR orchestration are board-level "
+            "requirements. Why it matters: Recovery SLAs now determine whether a breach is survivable."
+        ),
+        "industry_positions": {},
+    },
+    {
+        "name": "Object storage and data sovereignty",
+        "domain_slug": "storage",
+        "urgency_score": 7.5,
+        "adoption_state": "Get Ahead Of",
+        "summary": (
+            "Cloud object stores, hybrid tiering, and residency controls shape where regulated data may live. "
+            "Why it matters: Misconfigured buckets remain a top breach vector."
+        ),
+        "industry_positions": {},
+    },
+    {
+        "name": "Primary storage modernization",
+        "domain_slug": "storage",
+        "urgency_score": 7.2,
+        "adoption_state": "Get Ahead Of",
+        "summary": (
+            "All-flash, software-defined storage, and NVMe fabrics are refreshing datacenter economics. "
+            "Why it matters: Storage refresh cycles now overlap with AI training data pipelines."
+        ),
+        "industry_positions": {},
+    },
 ]
 
 
-def _industry_positions_for_seed(entry: dict[str, Any]) -> dict[str, Any]:
+def _domain_id(db, slug: str) -> int:
+    row = db.query(Domain).filter(Domain.slug == slug).one_or_none()
+    if row is None:
+        raise RuntimeError(f"Domain slug {slug!r} missing — run seed_domains first")
+    return row.id
+
+
+def _industry_positions_for_seed(entry: dict[str, Any], domain_id: int) -> dict[str, Any]:
     """Normalize CORE_TOPICS industry keys onto the 20-label grid and backfill blanks."""
     raw = entry.get("industry_positions") or {}
     merged: dict[str, Any] = {}
@@ -567,7 +608,7 @@ def _industry_positions_for_seed(entry: dict[str, Any]) -> dict[str, Any]:
 
     shell = Topic(
         name=entry["name"],
-        domain=entry["domain"],
+        domain_id=domain_id,
         subdomain="",
         urgency_score=entry["urgency_score"],
         summary=entry.get("summary") or "",
@@ -582,6 +623,10 @@ def _industry_positions_for_seed(entry: dict[str, Any]) -> dict[str, Any]:
 def seed() -> None:
     db = SessionLocal()
     try:
+        from .seed_domains import seed as seed_domains_fn
+
+        seed_domains_fn()
+
         added = 0
         updated = 0
 
@@ -591,9 +636,12 @@ def seed() -> None:
         existing_topics = {t.name: t for t in existing_topics_list}
 
         for entry in CORE_TOPICS:
+            slug = str(entry["domain_slug"])
+            domain_id = _domain_id(db, slug)
             existing = existing_topics.get(entry["name"])
-            positions = _industry_positions_for_seed(entry)
+            positions = _industry_positions_for_seed(entry, domain_id)
             if existing:
+                existing.domain_id = domain_id
                 existing.industry_positions = positions
                 existing.urgency_score = entry["urgency_score"]
                 existing.adoption_state = entry["adoption_state"]
@@ -604,7 +652,7 @@ def seed() -> None:
             else:
                 topic = Topic(
                     name=entry["name"],
-                    domain=entry["domain"],
+                    domain_id=domain_id,
                     subdomain="",
                     urgency_score=entry["urgency_score"],
                     summary=entry["summary"],

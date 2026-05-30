@@ -15,12 +15,14 @@ from backend.models.signal import SignalRecommendation
 from backend.models.topic import Topic
 
 
+from backend.tests.domain_fixtures import make_topic
+
+
 def _seed_signals(db_session, *, topics: int = 50, per_topic: int = 5) -> int:
     rows = 0
+    slugs = ["ai", "security", "cloud", "storage", "compliance", "infrastructure"]
     for i in range(topics):
-        topic = Topic(name=f"Perf Topic {i}", domain=f"Domain {i}")
-        db_session.add(topic)
-        db_session.flush()
+        topic = make_topic(db_session, name=f"Perf Topic {i}", domain_slug=slugs[i % len(slugs)])
         for _ in range(per_topic):
             db_session.add(
                 SignalRecommendation(

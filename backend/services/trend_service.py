@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, joinedload
 from ..models.article import Article
 from ..models.topic import Topic, TopicStatus
 from ..services.signal_service import _article_coverage_time
+from ..services.topic_serializers import topic_domain_short
 from .ai_service import HAIKU_MODEL
 from .llm_client import LLMAPIError, chat_completion, is_llm_configured
 from .pipeline_settings import merge_pipeline_settings
@@ -161,6 +162,7 @@ def build_positioning_insights(
 
     topics: list[Topic] = (
         db.query(Topic)
+        .options(joinedload(Topic.domain))
         .filter(Topic.status == status)
         .order_by(Topic.urgency_score.desc())
         .limit(max_topics)
@@ -193,7 +195,7 @@ def build_positioning_insights(
             {
                 "topic_id": rid,
                 "name": t.name,
-                "domain": t.domain,
+                "domain": topic_domain_short(t),
                 "topic_urgency_score": round(t.urgency_score, 2),
                 f"articles_ingested_last_{tw}d": rn,
                 f"articles_ingested_prior_{pw}d": pn,
@@ -235,7 +237,7 @@ def build_positioning_insights(
             {
                 "topic_id": rid,
                 "name": t.name,
-                "domain": t.domain,
+                "domain": topic_domain_short(t),
                 "urgency_score": t.urgency_score,
                 "article_count": total_by_topic.get(rid, 0),
                 "articles_primary_window": rn,
@@ -269,6 +271,7 @@ def build_hot_of_day(db: Session) -> dict[str, Any]:
 
     topics: list[Topic] = (
         db.query(Topic)
+        .options(joinedload(Topic.domain))
         .filter(Topic.status == TopicStatus.selected)
         .order_by(Topic.urgency_score.desc(), Topic.id.asc())
         .all()
@@ -331,7 +334,7 @@ def build_hot_of_day(db: Session) -> dict[str, Any]:
         "hot_topic": {
             "id": hot_topic_row.id,
             "name": hot_topic_row.name,
-            "domain": hot_topic_row.domain,
+            "domain": topic_domain_short(hot_topic_row),
             "subdomain": getattr(hot_topic_row, "subdomain", None) or "",
             "urgency_score": hot_topic_row.urgency_score,
         },

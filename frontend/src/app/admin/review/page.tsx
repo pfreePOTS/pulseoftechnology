@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { adminFetch, API_BASE } from "@/lib/api";
+import { FALLBACK_DOMAINS } from "@/lib/domains";
 
 type ArticleRow = {
   id: number;
@@ -18,7 +19,7 @@ type ArticleRow = {
   ai_output: Record<string, unknown> | null;
 };
 
-const DOMAINS = ["AI", "Security", "Cloud", "Finance", "Leadership", "Regulation", "Supply Chain", "Other"];
+const DOMAINS = FALLBACK_DOMAINS.map((d) => ({ slug: d.slug, label: d.short_label }));
 
 function aiString(row: ArticleRow, key: string): string {
   const value = row.ai_output?.[key];
@@ -162,7 +163,7 @@ function ReviewCard({
     notes?: string;
   }) => void;
 }) {
-  const [domain, setDomain] = useState(aiString(article, "domain") || "Security");
+  const [domain, setDomain] = useState(aiString(article, "domain") || "security");
   const [subdomain, setSubdomain] = useState(aiString(article, "subdomain") || article.subdomain || "");
   const [topicName, setTopicName] = useState(aiString(article, "suggested_topic_name"));
   const [notes, setNotes] = useState("");
@@ -223,8 +224,8 @@ function ReviewCard({
             className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-900 px-2 py-2 text-sm text-gray-100"
           >
             {DOMAINS.map((d) => (
-              <option key={d} value={d}>
-                {d}
+              <option key={d.slug} value={d.slug}>
+                {d.label}
               </option>
             ))}
           </select>

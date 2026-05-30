@@ -13,6 +13,7 @@ from .site_config import SiteConfig
 from .source import Source, SourceType
 from .subscriber import Subscriber
 from .survey_response import SurveyResponse
+from .domain import Domain, DomainHealthSnapshot, DomainInterestSignal, DomainStatus, DomainSuggestion
 from .topic import AdoptionState, Topic, TopicStatus
 
 __all__ = [
@@ -22,6 +23,11 @@ __all__ = [
     "Article",
     "ArticleStatus",
     "ClassificationFeedback",
+    "Domain",
+    "DomainStatus",
+    "DomainHealthSnapshot",
+    "DomainInterestSignal",
+    "DomainSuggestion",
     "Topic",
     "TopicStatus",
     "AdoptionState",

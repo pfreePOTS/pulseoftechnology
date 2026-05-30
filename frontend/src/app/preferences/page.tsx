@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { API_BASE } from "@/lib/api";
+import { useDomains } from "@/lib/useDomains";
 
 const INDUSTRIES = [
   "Technology",
@@ -15,15 +16,6 @@ const INDUSTRIES = [
   "Media & Entertainment",
   "Energy & Utilities",
   "Other",
-];
-
-const DOMAIN_OPTIONS = [
-  { value: "AI", label: "Artificial Intelligence" },
-  { value: "Security", label: "Cybersecurity" },
-  { value: "Cloud", label: "Cloud & Infrastructure" },
-  { value: "Finance", label: "FinTech & Finance" },
-  { value: "Leadership", label: "Leadership & Strategy" },
-  { value: "Other", label: "Other Topics" },
 ];
 
 interface Role {
@@ -68,6 +60,7 @@ function toggleNumber(list: number[], value: number): number[] {
 }
 
 export default function PreferencesPage() {
+  const { domains: domainOptions } = useDomains();
   const [token, setToken] = useState("");
   const [unsubscribePrompt, setUnsubscribePrompt] = useState(false);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -304,15 +297,15 @@ export default function PreferencesPage() {
                 Select at least one topic domain for your briefing.
               </p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                {DOMAIN_OPTIONS.map((domain) => (
-                  <label key={domain.value} className="flex items-center gap-2 rounded-lg border border-gray-200 p-3 text-sm">
+                {domainOptions.map((domain) => (
+                  <label key={domain.slug} className="flex items-center gap-2 rounded-lg border border-gray-200 p-3 text-sm">
                     <input
                       type="checkbox"
-                      checked={form.domains.includes(domain.value)}
+                      checked={form.domains.includes(domain.slug)}
                       onChange={() =>
                         setForm((prev) => ({
                           ...prev,
-                          domains: toggleString(prev.domains, domain.value),
+                          domains: toggleString(prev.domains, domain.slug),
                         }))
                       }
                       className="h-4 w-4 accent-pulse-teal"

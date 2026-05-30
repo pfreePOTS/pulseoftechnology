@@ -26,6 +26,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from ..config import settings
+from .topic_serializers import topic_domain_short
 
 if TYPE_CHECKING:
     from ..models.article import Article
@@ -143,7 +144,7 @@ def upsert_article(article: Article) -> bool:
     metadata = {
         "article_id": article.id,
         "topic_id": article.topic_id or 0,
-        "domain": article.topic.domain if article.topic else "",
+        "domain": topic_domain_short(article.topic) if article.topic else "",
         "published_at": published_ts,
     }
 

@@ -6,6 +6,7 @@ import {
   consumeSubscribeDomainPrefill,
   SUBSCRIBE_PREFILL_EVENT,
 } from "@/lib/subscribeNavigation";
+import { useDomains } from "@/lib/useDomains";
 import { useIsClient } from "@/lib/useIsClient";
 
 const INDUSTRIES = [
@@ -19,15 +20,6 @@ const INDUSTRIES = [
   "Media & Entertainment",
   "Energy & Utilities",
   "Other",
-];
-
-const DOMAIN_OPTIONS = [
-  { value: "AI", label: "Artificial Intelligence", color: "#8b5cf6" },
-  { value: "Security", label: "Cybersecurity", color: "#ef4444" },
-  { value: "Cloud", label: "Cloud & Infrastructure", color: "#38bdf8" },
-  { value: "Finance", label: "FinTech & Finance", color: "#10b981" },
-  { value: "Leadership", label: "Leadership & Strategy", color: "#f59e0b" },
-  { value: "Other", label: "Other Topics", color: "#6b7280" },
 ];
 
 type Step = 1 | 2 | 3 | 4 | 5;
@@ -86,6 +78,7 @@ function StepIndicator({ current, total }: { current: Step; total: number }) {
 
 export default function SubscribeWizard({ apiBase }: Props) {
   const isClient = useIsClient();
+  const { domains: domainOptions } = useDomains(apiBase);
   const [step, setStep] = useState<Step>(1);
   const [roles, setRoles] = useState<PublicRole[]>([]);
   const [rolesError, setRolesError] = useState("");
@@ -115,21 +108,21 @@ export default function SubscribeWizard({ apiBase }: Props) {
     if (!isClient) return;
     const prefill = consumeSubscribeDomainPrefill();
     if (!prefill) return;
-    const valid = DOMAIN_OPTIONS.some((o) => o.value === prefill);
+    const valid = domainOptions.some((o) => o.slug === prefill);
     if (!valid) return;
     setForm((prev) => ({ ...prev, domains: [prefill] }));
-  }, [isClient]);
+  }, [isClient, domainOptions]);
 
   useEffect(() => {
     if (!isClient) return;
     function onPrefill(e: Event) {
       const d = (e as CustomEvent<{ domain?: string }>).detail?.domain;
-      if (!d || !DOMAIN_OPTIONS.some((o) => o.value === d)) return;
+      if (!d || !domainOptions.some((o) => o.slug === d)) return;
       setForm((prev) => ({ ...prev, domains: [d] }));
     }
     window.addEventListener(SUBSCRIBE_PREFILL_EVENT, onPrefill);
     return () => window.removeEventListener(SUBSCRIBE_PREFILL_EVENT, onPrefill);
-  }, [isClient]);
+  }, [isClient, domainOptions]);
 
   function set<K extends keyof FormData>(key: K, value: FormData[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -318,7 +311,12 @@ export default function SubscribeWizard({ apiBase }: Props) {
           Welcome, {form.first_name}. We&apos;ll tailor the Pulse for{" "}
           <strong className="font-semibold text-gray-900">{roleLabel}</strong>
           {" "}
-          across <strong className="font-semibold text-gray-900">{form.domains.join(", ")}</strong>
+          across{" "}
+          <strong className="font-semibold text-gray-900">
+            {form.domains
+              .map((slug) => domainOptions.find((d) => d.slug === slug)?.short_label ?? slug)
+              .join(", ")}
+          </strong>
           .
         </p>
       </div>
@@ -464,13 +462,14 @@ export default function SubscribeWizard({ apiBase }: Props) {
                 Choose at least one topic domain for your briefing.
               </p>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {DOMAIN_OPTIONS.map(({ value, label, color }) => {
-                  const active = form.domains.includes(value);
+                {domainOptions.map(({ slug, label, short_label, color }) => {
+                  const active = form.domains.includes(slug);
                   return (
                     <button
-                      key={value}
+                      key={slug}
                       type="button"
-                      onClick={() => toggleDomain(value)}
+                      onClick={() => toggleDomain(slug)}
+                      aria-label={short_label}
                       className={`flex flex-col items-start rounded-lg border px-3 py-2.5 text-left text-xs transition-all ${
                         active
                           ? "border-pulse-teal bg-pulse-teal/5 opacity-100"
@@ -483,7 +482,7 @@ export default function SubscribeWizard({ apiBase }: Props) {
                           active ? "text-pulse-teal" : "text-gray-700"
                         }`}
                       >
-                        {value}
+                        {short_label}
                       </span>
                       <span className="text-gray-600">{label}</span>
                     </button>
@@ -561,7 +560,14 @@ export default function SubscribeWizard({ apiBase }: Props) {
                     <div className="min-w-0 flex-1">
                       <dt className="text-xs font-medium text-gray-500">Domains</dt>
                       <dd className="mt-0.5 text-sm text-gray-900">
-                        {form.domains.length > 0 ? form.domains.join(", ") : "—"}
+                        {form.domains.length > 0
+                          ? form.domains
+                              .map(
+                                (slug) =>
+                                  domainOptions.find((d) => d.slug === slug)?.short_label ?? slug,
+                              )
+                              .join(", ")
+                          : "—"}
                       </dd>
                     </div>
                     <button

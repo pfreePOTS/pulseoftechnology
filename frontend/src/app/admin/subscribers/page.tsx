@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { adminFetch, API_BASE } from "@/lib/api";
+import { useDomains } from "@/lib/useDomains";
 
 /** Match public subscribe wizard — domain filters + newsletter assembly. */
 const INDUSTRIES = [
@@ -17,15 +18,6 @@ const INDUSTRIES = [
   "Energy & Utilities",
   "Other",
 ];
-
-const DOMAIN_OPTIONS = [
-  { value: "AI", label: "Artificial Intelligence" },
-  { value: "Security", label: "Cybersecurity" },
-  { value: "Cloud", label: "Cloud & Infrastructure" },
-  { value: "Finance", label: "FinTech & Finance" },
-  { value: "Leadership", label: "Leadership & Strategy" },
-  { value: "Other", label: "Other Topics" },
-] as const;
 
 interface Subscriber {
   id: number;
@@ -140,6 +132,7 @@ function downloadSubscribersCsv(rows: Subscriber[], roles: Role[]) {
 }
 
 export default function SubscribersPage() {
+  const { domains: domainOptions } = useDomains();
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
@@ -587,13 +580,13 @@ export default function SubscribersPage() {
                   Select at least one topic domain for newsletter matching.
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {DOMAIN_OPTIONS.map((d) => {
-                    const on = form.domains.includes(d.value);
+                  {domainOptions.map((d) => {
+                    const on = form.domains.includes(d.slug);
                     return (
                       <button
-                        key={d.value}
+                        key={d.slug}
                         type="button"
-                        onClick={() => toggleDomain(d.value)}
+                        onClick={() => toggleDomain(d.slug)}
                         className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset transition-colors ${
                           on
                             ? "bg-[#019E7C]/25 text-[#019E7C] ring-[#019E7C]/50"

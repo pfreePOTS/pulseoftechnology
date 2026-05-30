@@ -5,4 +5,6 @@ export {
   RECOMMENDED_PATH_CASE_STUDIES,
   RECOMMENDED_PATH_CASE_STUDIES_DEFAULT,
   recommendedCaseStudiesForIndustry,
+  recommendedCaseStudiesForIntake,
+  recommendedCaseStudiesIntro,
 } from "./recommendedPathCaseStudies";

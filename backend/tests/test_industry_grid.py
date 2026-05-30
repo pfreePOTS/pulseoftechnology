@@ -1,7 +1,7 @@
 """Industry grid backfill — full radar columns when AI returns partial JSON."""
 
-from ..models.topic import AdoptionState, Topic, TopicStatus
-from ..services.ai_service import (
+from backend.models.topic import AdoptionState, Topic, TopicStatus
+from backend.services.ai_service import (
     INDUSTRY_GRID_LABELS,
     _truncate_to_max_sentences,
     fill_missing_industry_grid_rows,
@@ -11,7 +11,7 @@ from ..services.ai_service import (
 def test_fill_missing_industry_grid_rows_preserves_existing_and_fills_rest():
     t = Topic(
         name="Leadership",
-        domain="Leadership",
+        domain_id=1,
         urgency_score=8.5,
         adoption_state=AdoptionState.learn_about,
         status=TopicStatus.selected,

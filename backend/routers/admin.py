@@ -50,6 +50,8 @@ from ..models.source import Source, SourceType
 from ..models.subscriber import Subscriber, validate_industries_and_role_ids
 from ..models.survey_response import SurveyResponse
 from ..models.topic import AdoptionState, Topic, TopicStatus
+from ..services.domain_registry import pickable_domains, resolve_domain, slugify_domain
+from ..services.topic_serializers import topic_domain_short
 from ..rate_limits import limiter
 from ..services.ai_service import (
     INDUSTRY_GRID_LABELS,
@@ -633,7 +635,7 @@ def _article_list_item(a: Article) -> ArticleListItem:
         source_name=a.source.name if a.source else None,
         topic_id=a.topic_id,
         topic_name=a.topic.name if a.topic else None,
-        topic_domain=a.topic.domain if a.topic else None,
+        topic_domain=topic_domain_short(a.topic) if a.topic else None,
         subdomain=getattr(a, "subdomain", "") or "",
         title=a.title,
         url=a.url,
@@ -698,7 +700,7 @@ def _record_classification_feedback(
         article_title=article.title,
         content_excerpt=_feedback_excerpt(article),
         original_domain=_original_ai_field(article, "domain")
-        or (article.topic.domain if article.topic else None),
+        or topic_domain_short(article.topic) if article.topic else None,
         original_subdomain=_original_ai_field(article, "subdomain") or article.subdomain or None,
         original_topic_name=_original_ai_field(article, "suggested_topic_name")
         or (article.topic.name if article.topic else None),
@@ -747,16 +749,26 @@ def review_article(
         db.refresh(article)
         return _article_list_item(article)
 
-    domain = (payload.domain or "").strip()
+    domain_label = (payload.domain or "").strip()
+    domain_row = resolve_domain(db, domain_label, auto_create_candidate=False)
     subdomain = (payload.subdomain or "").strip()
     topic_name = (payload.topic_name or "").strip()
     topic = (
         db.query(Topic)
-        .filter(Topic.domain == domain, Topic.subdomain == subdomain, Topic.name == topic_name)
+        .filter(
+            Topic.domain_id == domain_row.id,
+            Topic.subdomain == subdomain,
+            Topic.name == topic_name,
+        )
         .first()
     )
     if topic is None:
-        topic = Topic(name=topic_name, domain=domain, subdomain=subdomain, urgency_score=5.0)
+        topic = Topic(
+            name=topic_name,
+            domain_id=domain_row.id,
+            subdomain=subdomain,
+            urgency_score=5.0,
+        )
         db.add(topic)
         db.flush()
     article.topic_id = topic.id
@@ -768,7 +780,7 @@ def review_article(
         db,
         article,
         action="approve",
-        corrected_domain=domain,
+        corrected_domain=domain_row.slug,
         corrected_subdomain=subdomain,
         corrected_topic_name=topic_name,
         notes=notes,
@@ -933,6 +945,39 @@ class TopicOut(BaseModel):
         return _utc_whole_days_since(anchor)
 
 
+def _topic_to_out(db: Session, topic: Topic) -> TopicOut:
+    from ..services.signal_service import compute_topic_velocity_metrics
+
+    if topic.domain is None:
+        db.refresh(topic, attribute_names=["domain"])
+    vel, accel = compute_topic_velocity_metrics(topic.id, db)
+    return TopicOut(
+        id=topic.id,
+        name=topic.name,
+        domain=topic_domain_short(topic),
+        subdomain=getattr(topic, "subdomain", None) or "",
+        summary=topic.summary,
+        newsletter_briefing=topic.newsletter_briefing,
+        urgency_score=topic.urgency_score,
+        status=topic.status.value if hasattr(topic.status, "value") else str(topic.status),
+        adoption_state=topic.adoption_state.value
+        if hasattr(topic.adoption_state, "value")
+        else str(topic.adoption_state),
+        industry_positions=topic.industry_positions,
+        persona_by_role=topic.persona_by_role,
+        article_count=topic.article_count,
+        is_published=topic.is_published,
+        velocity_score=vel,
+        acceleration_score=accel,
+        signal_rationale=None,
+        signal_suggested_action=None,
+        signal_id=None,
+        latest_article_at=None,
+        selected_at=topic.selected_at,
+        first_evidence_at=None,
+    )
+
+
 class TopicDetail(TopicOut):
     articles: list[ArticleOut]
 
@@ -1083,7 +1128,7 @@ def list_topics(
             TopicOut(
                 id=t.id,
                 name=t.name,
-                domain=t.domain,
+                domain=topic_domain_short(t),
                 subdomain=getattr(t, "subdomain", None) or "",
                 summary=t.summary,
                 newsletter_briefing=t.newsletter_briefing,
@@ -1397,7 +1442,7 @@ def get_topic(
     return TopicDetail(
         id=topic.id,
         name=topic.name,
-        domain=topic.domain,
+        domain=topic_domain_short(topic),
         subdomain=getattr(topic, "subdomain", None) or "",
         summary=topic.summary,
         newsletter_briefing=topic.newsletter_briefing,
@@ -1452,7 +1497,7 @@ def update_topic(
 
     db.commit()
     db.refresh(topic)
-    return topic
+    return _topic_to_out(db, topic)
 
 
 @router.post("/topics/{topic_id}/suggest-industry-positions")
@@ -1619,7 +1664,7 @@ def watch_topic(
     topic.status = TopicStatus.watched
     db.commit()
     db.refresh(topic)
-    return topic
+    return _topic_to_out(db, topic)
 
 
 @router.post("/topics/{topic_id}/unwatch", response_model=TopicOut)
@@ -1640,7 +1685,7 @@ def unwatch_topic(
     topic.status = TopicStatus.pending
     db.commit()
     db.refresh(topic)
-    return topic
+    return _topic_to_out(db, topic)
 
 
 @router.post("/topics/{topic_id}/select", response_model=TopicOut)
@@ -1668,7 +1713,7 @@ def select_topic(
     except Exception:
         logger.exception("ensure_topic_industry_grid_complete failed after select_topic")
     db.refresh(topic)
-    return topic
+    return _topic_to_out(db, topic)
 
 
 @router.post("/topics/{topic_id}/deselect", response_model=TopicOut)
@@ -1688,7 +1733,7 @@ def deselect_topic(
     topic.is_published = False
     db.commit()
     db.refresh(topic)
-    return topic
+    return _topic_to_out(db, topic)
 
 
 @router.post("/topics/{topic_id}/approve", response_model=TopicOut)
@@ -1735,7 +1780,7 @@ def approve_topic(
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}") from e
 
-    return topic
+    return _topic_to_out(db, topic)
 
 
 @router.post("/topics/{topic_id}/publish", response_model=TopicOut)
@@ -1752,7 +1797,7 @@ def publish_topic(
     topic.is_published = True
     db.commit()
     db.refresh(topic)
-    return topic
+    return _topic_to_out(db, topic)
 
 
 @router.post("/topics/{topic_id}/unpublish", response_model=TopicOut)
@@ -1767,7 +1812,7 @@ def unpublish_topic(
     topic.is_published = False
     db.commit()
     db.refresh(topic)
-    return topic
+    return _topic_to_out(db, topic)
 
 
 # ---------------------------------------------------------------------------
@@ -1791,7 +1836,7 @@ def generate_topic_summary_endpoint(
     generate_topic_summary(topic, list(articles), db)
     db.commit()
     db.refresh(topic)
-    return topic
+    return _topic_to_out(db, topic)
 
 
 # ---------------------------------------------------------------------------
@@ -1876,7 +1921,7 @@ def list_signals(
 ):
     rows = (
         db.query(SignalRecommendation)
-        .options(joinedload(SignalRecommendation.topic))
+        .options(joinedload(SignalRecommendation.topic).joinedload(Topic.domain))
         .filter(SignalRecommendation.status == status)
         .order_by(SignalRecommendation.created_at.desc())
         .all()
@@ -1889,7 +1934,7 @@ def list_signals(
                 id=row.id,
                 topic_id=row.topic_id,
                 topic_name=topic.name if topic else "(deleted)",
-                topic_domain=topic.domain if topic else "",
+                topic_domain=topic_domain_short(topic) if topic else "",
                 current_state=topic.adoption_state if topic else "",
                 suggested_state=row.suggested_state,
                 suggested_action=row.suggested_action,
@@ -1920,7 +1965,7 @@ def approve_signal(
         id=signal.id,
         topic_id=signal.topic_id,
         topic_name=topic.name if topic else "(deleted)",
-        topic_domain=topic.domain if topic else "",
+        topic_domain=topic_domain_short(topic) if topic else "",
         current_state=topic.adoption_state if topic else "",
         suggested_state=signal.suggested_state,
         suggested_action=signal.suggested_action,
@@ -3015,19 +3060,10 @@ def newsletter_preview_filters(
     _: AdminUser = Depends(require_admin),
 ):
     """
-    Canonical industry grid (same as Analysis / AI) plus distinct topic.domain values.
-
-    Domains come from **watched or selected** pipeline topics — the same cohort as the scheduled
-    newsletter and ``GET /api/admin/newsletter/preview``, so sandbox chips match preview rows.
+    Canonical industry grid (same as Analysis / AI) plus pickable domain registry labels.
     """
-    domain_rows = (
-        db.query(Topic.domain)
-        .filter(Topic.status.in_([TopicStatus.watched, TopicStatus.selected]))
-        .distinct()
-        .order_by(Topic.domain.asc())
-        .all()
-    )
-    domains = [row[0] for row in domain_rows if row[0]]
+    rows = pickable_domains(db)
+    domains = [d.short_label for d in rows]
     return {"industries": list(INDUSTRY_GRID_LABELS), "domains": domains}
 
 

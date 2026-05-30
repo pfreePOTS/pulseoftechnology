@@ -11,6 +11,8 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
+from .topic_serializers import topic_domain_short
+
 if TYPE_CHECKING:
     from ..models.article import Article
 
@@ -315,18 +317,18 @@ def article_passes_pulse_tech_deep(article: Article, domain: str | None) -> bool
     Applies deterministic Finance / Leadership cues used at ingest and legacy cleanup.
 
     Uses rich evidence (summaries, tags, subdomain, full-ish content—not truncated like the API).
-    Domains outside Finance / Leadership always pass.
+    Domains outside Compliance always pass.
     """
     dom = (domain or "").strip()
-    if dom not in ("Finance", "Leadership"):
+    if dom not in ("Compliance", "Finance"):
         return True
 
     title = getattr(article, "title", None) or ""
     what = getattr(article, "what_is_it", None)
     blob = article_pulse_evidence_deep_blob(article)
-    if dom == "Finance":
+    if dom in ("Compliance", "Finance"):
         return tracked_finance_article_has_pulse_tech_signals(title, what, blob)
-    return tracked_leadership_article_has_pulse_tech_signals(title, what, blob)
+    return True
 
 
 def article_has_general_pulse_tech_signal(article: Article) -> bool:
@@ -449,27 +451,18 @@ def article_qualifies_pulse_tracked_surface(article: Article) -> bool:
     Uses truncated body text plus title/teaser — lighter than ingest-time `article_pulse_evidence_deep_blob`.
     """
     topic = getattr(article, "topic", None)
-    dom = (topic.domain.strip() if topic and topic.domain else "") or ""
-    if dom not in ("Finance", "Leadership"):
+    dom = topic_domain_short(topic) if topic else ""
+    if dom not in ("Compliance", "Finance"):
         return True
 
     title = getattr(article, "title", None) or ""
     what = getattr(article, "what_is_it", None)
     blob = article_pulse_evidence_surface_content(article)
 
-    if dom == "Finance":
-        ok = tracked_finance_article_has_pulse_tech_signals(title, what, blob)
-        if not ok:
-            logger.debug(
-                "Tracked surface skips Finance article id=%s — no Pulse tech substring in surfaced fields",
-                article.id,
-            )
-        return ok
-
-    ok = tracked_leadership_article_has_pulse_tech_signals(title, what, blob)
+    ok = tracked_finance_article_has_pulse_tech_signals(title, what, blob)
     if not ok:
         logger.debug(
-            "Tracked surface skips Leadership article id=%s — no Pulse tech substring in surfaced fields",
+            "Tracked surface skips Compliance article id=%s — no Pulse tech substring in surfaced fields",
             article.id,
         )
     return ok

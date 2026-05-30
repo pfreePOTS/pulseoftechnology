@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * Mock Calendly-style booking widget — visual + interaction port of
- * `docs/frontend-redesign/source/recommended-path.html` (lines 369-501).
+ * Mock Calendly-style booking widget — retained for a future HubSpot Meetings
+ * integration. Not mounted in the app UI as of 2026-05; use `/contact` +
+ * `ContactCtaBand` instead.
  *
  * Pure client-side: clicking confirm shows an alert (the real Phase 6+ work
  * will hook this up to the scheduler API). Pre-mount renders nothing

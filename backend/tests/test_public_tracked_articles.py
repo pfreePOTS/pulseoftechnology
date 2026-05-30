@@ -2,14 +2,16 @@ from datetime import UTC, datetime
 
 from backend.models.article import Article, ArticleStatus
 from backend.models.source import Source, SourceType
-from backend.models.topic import Topic, TopicStatus
+from backend.models.topic import TopicStatus
+from backend.tests.domain_fixtures import make_topic
 
 
 def test_public_tracked_articles_excludes_archived_articles(client, db_session):
     source = Source(name="Feed", url="https://example.com/rss", type=SourceType.rss)
-    topic = Topic(
-        name="Finance",
-        domain="Finance",
+    topic = make_topic(
+        db_session,
+        name="Compliance banking",
+        domain_slug="compliance",
         subdomain="Tech Investment & Valuations",
         status=TopicStatus.selected,
         is_published=True,

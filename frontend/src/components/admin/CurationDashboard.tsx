@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 
 import { adminFetch, API_BASE } from "@/lib/api";
+import { domainBadgeClass } from "@/lib/domains";
 
 type SubTab = "pending" | "approved";
 
@@ -53,14 +54,7 @@ function IconInspectPromote({ className }: { className?: string }) {
 }
 
 function DomainBadge({ domain }: { domain: string }) {
-  const palette: Record<string, string> = {
-    AI: "bg-violet-500/20 text-violet-400 ring-violet-500/30",
-    Security: "bg-rose-500/20 text-rose-400 ring-rose-500/30",
-    Cloud: "bg-sky-500/20 text-sky-400 ring-sky-500/30",
-    Finance: "bg-emerald-500/20 text-emerald-400 ring-emerald-500/30",
-    Leadership: "bg-indigo-500/20 text-indigo-400 ring-indigo-500/30",
-  };
-  const cls = palette[domain] ?? "bg-slate-500/20 text-slate-400 ring-slate-500/30";
+  const cls = domainBadgeClass(domain);
   return (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${cls}`}>
       {domain}

@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Enum, Float, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -24,12 +24,12 @@ class AdoptionState(str, enum.Enum):
 class Topic(Base):
     __tablename__ = "topics"
     __table_args__ = (
-        UniqueConstraint("domain", "subdomain", "name", name="uq_topics_domain_subdomain_name"),
+        UniqueConstraint("domain_id", "subdomain", "name", name="uq_topics_domain_id_subdomain_name"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    domain: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g., AI, Security, Cloud
+    domain_id: Mapped[int] = mapped_column(Integer, ForeignKey("domains.id"), nullable=False, index=True)
     # Theme within domain (from classify + clustering); links articles only when domain+subdomain+name match
     subdomain: Mapped[str] = mapped_column(
         String(120), default="", server_default="", nullable=False
@@ -58,6 +58,7 @@ class Topic(Base):
     # Daily newsletter deep-dive copy (optional). Keys: what_is_it, what_changed, why_it_matters, what_to_do
     newsletter_briefing: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
 
+    domain: Mapped["Domain"] = relationship("Domain", back_populates="topics")
     articles: Mapped[list["Article"]] = relationship("Article", back_populates="topic")
 
     @property
@@ -65,4 +66,5 @@ class Topic(Base):
         return sum(1 for a in self.articles if a.archived_at is None)
 
     def __repr__(self) -> str:
-        return f"<Topic id={self.id} name={self.name!r} domain={self.domain!r} status={self.status!r} adoption_state={self.adoption_state!r}>"
+        dom = self.domain.short_label if self.domain else "?"
+        return f"<Topic id={self.id} name={self.name!r} domain={dom!r} status={self.status!r} adoption_state={self.adoption_state!r}>"

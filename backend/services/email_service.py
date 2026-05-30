@@ -23,7 +23,7 @@ from typing import Any
 from urllib.parse import quote
 
 import sendgrid
-from sendgrid.helpers.mail import Content, Email, Mail, Subject, To
+from sendgrid.helpers.mail import Content, Email, Mail, ReplyTo, Subject, To
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -45,6 +45,7 @@ from .pipeline_settings import (
     set_last_newsletter_sent_at,
 )
 from .subscriber_tokens import create_subscriber_preferences_token
+from .topic_serializers import topic_domain_short, topic_domain_slug_for_filter
 from .trend_service import build_hot_of_day, newsletter_topic_velocity_trend
 
 logger = logging.getLogger(__name__)
@@ -162,7 +163,18 @@ _DOMAIN_HERO_IMAGES: dict[str, str] = {
 }
 
 
-def _hero_image_url_for_domain(domain: str | None) -> str:
+def _topic_domain_color(topic: Topic | object) -> str:
+    d = getattr(topic, "domain", None)
+    if d is not None and not isinstance(d, str):
+        color = getattr(d, "color", None)
+        if color:
+            return str(color)
+    return _DOMAIN_COLORS.get(topic_domain_short(topic), "#6B7280")
+
+
+def _hero_image_url_for_domain(domain: str | None, topic: Topic | None = None) -> str:
+    if topic and topic.domain and topic.domain.hero_image_url:
+        return topic.domain.hero_image_url
     dom = domain or "Other"
     return _DOMAIN_HERO_IMAGES.get(dom, _DOMAIN_HERO_IMAGES["Other"])
 
@@ -173,7 +185,7 @@ def _newsletter_image_url_for_article(article: Article | None, domain: str | Non
         u = getattr(article, "image_url", None)
         if isinstance(u, str) and u.strip():
             return u.strip()
-    return _hero_image_url_for_domain(domain)
+    return _hero_image_url_for_domain(domain, topic=None)
 
 
 def _newsletter_social_urls(briefing_page_url: str) -> dict[str, str]:
@@ -418,7 +430,7 @@ def _subscriber_remediation_teaser(topic: Topic, subscriber: Subscriber | None) 
 
 
 def _contextual_what_to_do_fallback(topic: Topic) -> str:
-    domain = (getattr(topic, "domain", "") or "Other").strip()
+    domain = topic_domain_short(topic)
     name = (getattr(topic, "name", "") or "this topic").strip()
     urgency = float(getattr(topic, "urgency_score", 0.0) or 0.0)
     posture_raw = getattr(topic, "adoption_state", None)
@@ -438,20 +450,16 @@ def _contextual_what_to_do_fallback(topic: Topic) -> str:
             f"Ask platform and finance owners where {name} could affect architecture, cost, or reliability, "
             f"then turn the answer into one concrete backlog item {cadence}."
         ),
-        "Finance": (
-            f"Have finance, risk, and technology owners test whether {name} changes payment, funding, "
-            f"compliance, or operating assumptions {cadence}."
-        ),
-        "Leadership": (
-            f"Use {name} as a leadership agenda item: clarify the owner, decision needed, and employee or "
-            f"customer impact {cadence}."
-        ),
-        "Regulation": (
+        "Compliance": (
             f"Ask legal, compliance, and product owners whether {name} changes obligations, disclosures, "
             f"or control evidence {cadence}."
         ),
-        "Supply Chain": (
-            f"Have operations and technology owners map where {name} could affect suppliers, logistics, "
+        "Storage": (
+            f"Have infrastructure and data owners review whether {name} affects backup, retention, "
+            f"or recovery posture {cadence}."
+        ),
+        "Infrastructure": (
+            f"Have platform and operations owners map where {name} could affect networking, servers, "
             f"or system dependencies {cadence}."
         ),
     }
@@ -958,8 +966,8 @@ def _build_deep_dive_section(
     db: Session | None = None,
     public_site_url: str = "http://localhost:3100",
 ) -> str:
-    dom = topic.domain or "Other"
-    color = _DOMAIN_COLORS.get(dom, "#6B7280")
+    dom = topic_domain_short(topic)
+    color = _topic_domain_color(topic)
     posture_label = _adoption_label(topic)
     posture = html.escape(posture_label)
     badge_bg, badge_fg = _posture_badge_colors(topic)
@@ -1516,7 +1524,7 @@ def _domain_topics_for_subscriber(all_approved: list[Topic], subscriber: Subscri
     return [
         t
         for t in all_approved
-        if (t.domain or "").strip() and (t.domain or "").strip().lower() in allow_l
+        if topic_domain_slug_for_filter(t) in allow_l
     ]
 
 
@@ -2077,3 +2085,96 @@ def send_admin_invite_email(to_email: str, temporary_password: str, login_url: s
     except Exception:
         logger.exception("SendGrid error sending admin invite to %s", to_email)
         return False
+
+
+def send_contact_form_notification(
+    *,
+    name: str,
+    email: str,
+    company: str,
+    message: str,
+    phone: str | None = None,
+    industry: str | None = None,
+    role: str | None = None,
+) -> tuple[bool, str | None]:
+    """
+    Email marketing (or ``CONTACT_FORM_TO_EMAIL``) when someone submits `/contact`.
+
+    Returns (True, None) on SendGrid accept (HTTP 202), else (False, reason).
+    """
+    if not settings.sendgrid_api_key:
+        logger.warning("SENDGRID_API_KEY not set; contact form email not sent for %s", email)
+        return False, "SendGrid not configured"
+
+    to_addr = (settings.contact_form_to_email or "").strip()
+    if not to_addr:
+        logger.warning("CONTACT_FORM_TO_EMAIL not set; contact form email not sent for %s", email)
+        return False, "Contact form recipient not configured"
+
+    sg = _get_sg_client()
+    from_email = Email(
+        email=settings.sendgrid_from_email,
+        name=settings.sendgrid_from_name,
+    )
+
+    def _row(label: str, value: str) -> str:
+        safe_label = html.escape(label, quote=True)
+        safe_val = html.escape(value, quote=True)
+        return f"<tr><td style=\"padding:4px 12px 4px 0;font-weight:600;vertical-align:top\">{safe_label}</td><td>{safe_val}</td></tr>"
+
+    optional_rows: list[str] = []
+    plain_optional: list[str] = []
+    for label, val in (
+        ("Phone", phone),
+        ("Industry", industry),
+        ("Role", role),
+    ):
+        if val:
+            optional_rows.append(_row(label, val))
+            plain_optional.append(f"{label}: {val}")
+
+    safe_email = html.escape(email, quote=True)
+    safe_message = html.escape(message, quote=True).replace("\n", "<br>")
+
+    subject = f"PulseOne contact form — {name} ({company})"
+    plain = (
+        f"New contact form submission from pulseone.com/contact\n\n"
+        f"Name: {name}\n"
+        f"Email: {email}\n"
+        f"Company: {company}\n"
+        + ("\n".join(plain_optional) + "\n" if plain_optional else "")
+        + f"\nMessage:\n{message}\n"
+    )
+    html_body = (
+        "<p>New contact form submission from <strong>pulseone.com/contact</strong>.</p>"
+        "<table style=\"border-collapse:collapse;font-family:sans-serif;font-size:14px\">"
+        f"{_row('Name', name)}{_row('Email', email)}{_row('Company', company)}"
+        f"{''.join(optional_rows)}"
+        f"</table>"
+        f"<p style=\"margin-top:16px\"><strong>Message</strong></p>"
+        f"<p>{safe_message}</p>"
+        f"<p style=\"margin-top:16px;font-size:13px;color:#666\">"
+        f"Reply directly to {safe_email}.</p>"
+    )
+
+    message_obj = Mail(
+        from_email=from_email,
+        to_emails=To(email=to_addr),
+        subject=Subject(subject),
+        plain_text_content=Content("text/plain", plain),
+        html_content=Content("text/html", html_body),
+    )
+    message_obj.reply_to = ReplyTo(email=email, name=name)
+
+    try:
+        response = sg.send(message_obj)
+        if response.status_code != 202:
+            detail = f"SendGrid returned HTTP {response.status_code} (expected 202)."
+            logger.warning("Unexpected SendGrid status for contact form (%s): %s", email, detail)
+            return False, detail
+        logger.info("Contact form notification sent to %s for %s", to_addr, email)
+        return True, None
+    except Exception as exc:
+        detail = _format_sendgrid_error(exc)
+        logger.exception("SendGrid error sending contact form notification for %s", email)
+        return False, detail or "SendGrid request failed."

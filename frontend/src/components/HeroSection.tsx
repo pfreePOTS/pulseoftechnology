@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 const CYCLING_TOPICS = [
@@ -66,18 +67,18 @@ export default function HeroSection() {
             confidence, and the operational depth to act on it.
           </p>
           <div className="flex flex-wrap justify-center gap-3.5">
-            <a
-              href="#"
+            <Link
+              href="/assessments"
               className="inline-block rounded bg-pulse-red px-[26px] py-[13px] font-sans text-sm font-semibold text-white transition-colors hover:bg-[#a81117]"
             >
               View Our Executive Assessments
-            </a>
-            <a
-              href="#"
+            </Link>
+            <Link
+              href="/contact"
               className="inline-block rounded border-2 border-white/50 bg-transparent px-[26px] py-[11px] font-sans text-sm font-semibold text-white transition-colors hover:border-white"
             >
               Talk with an Expert
-            </a>
+            </Link>
           </div>
         </div>
       </section>

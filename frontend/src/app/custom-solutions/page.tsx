@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import BookingCalendar from "@/components/BookingCalendar";
+import ContactCtaBand from "@/components/ContactCtaBand";
 import GlobalFooter from "@/components/GlobalFooter";
 import GlobalHeader from "@/components/GlobalHeader";
 
@@ -304,27 +304,12 @@ export default function CustomSolutionsPage() {
           </div>
         </section>
 
-        <section
+        <ContactCtaBand
           id="schedule"
-          className="relative scroll-mt-[96px] overflow-hidden border-t-[3px] border-pulse-red bg-dark-bg px-8 pt-20 pb-16"
-        >
-          <div
-            className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_60%_50%,rgba(213,23,30,0.10)_0%,transparent_70%)]"
-            aria-hidden
-          />
-          <div className="relative mx-auto max-w-[760px] text-center">
-            <span className="mb-2.5 block font-sans text-[13px] font-semibold tracking-[3px] text-pulse-teal uppercase">
-              Ready When You Are
-            </span>
-            <h2 className="mb-4 font-sans text-4xl leading-tight font-extrabold text-white">
-              Let&apos;s talk about what this looks like for your organization.
-            </h2>
-            <p className="mx-auto mb-2 max-w-[560px] font-sans text-[17px] leading-relaxed text-white/55">
-              Schedule a conversation about where you are and where you want to go.
-            </p>
-            <BookingCalendar />
-          </div>
-        </section>
+          eyebrow="Ready When You Are"
+          title="Let's talk about what this looks like for your organization."
+          description="Send us a message about where you are and where you want to go — an advisor will follow up within one business day."
+        />
       </main>
       <GlobalFooter />
     </div>

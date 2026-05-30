@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { API_BASE } from "@/lib/api";
 import { INDUSTRY_OPTIONS } from "@/lib/industryGrid";
+import { useIsClient } from "@/lib/useIsClient";
 
 /**
  * Contact form on `/contact`. Mirrors the field set the backend
@@ -40,6 +41,7 @@ const inputClass =
 const labelClass = "mb-1.5 block font-sans text-[12px] font-semibold tracking-[0.3px] text-[#444]";
 
 export default function ContactForm() {
+  const isClient = useIsClient();
   const [state, setState] = useState<FormState>("idle");
   const [errorMessage, setErrorMessage] = useState<string>("");
 
@@ -99,6 +101,16 @@ export default function ContactForm() {
     }
   };
 
+  if (!isClient) {
+    return (
+      <div
+        className="min-h-[520px] animate-pulse space-y-4 rounded-lg bg-gray-200/80"
+        aria-busy="true"
+        aria-label="Loading contact form"
+      />
+    );
+  }
+
   if (state === "success") {
     return (
       <div
@@ -122,8 +134,7 @@ export default function ContactForm() {
         </h3>
         <p className="mx-auto max-w-[420px] font-sans text-[15px] leading-relaxed text-[#555]">
           Thanks, {name.split(" ")[0] || "there"} — one of our advisors will reply within one
-          business day. If it&rsquo;s urgent, the calendar on the left will get you on the books
-          fastest.
+          business day.
         </p>
       </div>
     );

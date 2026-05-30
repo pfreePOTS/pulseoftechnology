@@ -1,6 +1,7 @@
 # Agent / contributor notes
 
 - **Canonical instructions**: root `README.md` (Docker Compose, ports, migrations, env vars).
+- **PulseOne AI identity** (services, scope, voice for customer-facing LLM copy): `backend/content/pulseone-identity.md` — loaded via `backend/services/pulseone_identity.py` into recommended-path and related advisor prompts. Edit this file instead of duplicating scope in `ai_service.py`.
 - **Cursor rules**: `.cursor/rules/` for stack, backend, and frontend conventions.
 - **Frontend Next.js quirks**: see `frontend/AGENTS.md` (Next 16 vs older training data).
 - **Visual / UI work**: read root `DESIGN.md` first (typography, PulseOne colors `#E91D24` / `#019E7C`, spacing). Do not use deprecated slate `#425B76`; QA should flag drift from `DESIGN.md`.

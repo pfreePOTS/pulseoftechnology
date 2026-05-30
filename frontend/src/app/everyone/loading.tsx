@@ -1,7 +1,7 @@
 /**
  * Skeleton shown while `everyone/page.tsx` (Server Component) awaits the
  * `/api/everyone-overview` fetch. Mirrors the live layout — Hero, Context,
- * Radar Snapshot, Recent Resources, How We Work, Booking Calendar CTA.
+ * Radar Snapshot, Recent Resources, How We Work, contact CTA band.
  */
 
 export default function EveryoneLoading() {
@@ -74,12 +74,12 @@ export default function EveryoneLoading() {
         </div>
       </div>
 
-      {/* Booking calendar CTA */}
+      {/* Contact CTA */}
       <div className="border-t-[3px] border-pulse-red bg-dark-bg px-8 pt-20 pb-16">
         <div className="mx-auto max-w-[760px] space-y-6 text-center">
           <div className="mx-auto h-4 w-40 animate-pulse rounded bg-white/10" />
           <div className="mx-auto h-10 w-3/4 animate-pulse rounded bg-white/10" />
-          <div className="mx-auto h-[420px] max-w-[820px] animate-pulse rounded-[14px] bg-white/[0.06]" />
+          <div className="mx-auto h-12 w-48 animate-pulse rounded-md bg-white/[0.08]" />
         </div>
       </div>
     </div>

@@ -11,7 +11,7 @@ def _seed_subscriber(db_session) -> Subscriber:
         first_name="Reader",
         last_name="One",
         industries=["Technology"],
-        domains=["AI"],
+        domains=["ai"],
         role_ids=[10],
         is_active=True,
     )
@@ -34,7 +34,7 @@ def test_preferences_token_loads_subscriber_preferences(client, db_session):
     assert data["first_name"] == "Reader"
     assert data["last_name"] == "One"
     assert data["industries"] == ["Technology"]
-    assert data["domains"] == ["AI"]
+    assert data["domains"] == ["ai"]
     assert data["role_ids"] == [10]
     assert data["is_active"] is True
 
@@ -49,7 +49,7 @@ def test_preferences_token_updates_subscriber_preferences(client, db_session):
             "first_name": "Reader",
             "last_name": "Updated",
             "industries": ["Healthcare", "Technology"],
-            "domains": ["Security", "Cloud"],
+            "domains": ["security", "cloud"],
             "role_ids": [10],
         },
     )
@@ -58,11 +58,11 @@ def test_preferences_token_updates_subscriber_preferences(client, db_session):
     data = r.json()
     assert data["last_name"] == "Updated"
     assert data["industries"] == ["Healthcare", "Technology"]
-    assert data["domains"] == ["Security", "Cloud"]
+    assert data["domains"] == ["security", "cloud"]
     db_session.refresh(sub)
     assert sub.last_name == "Updated"
     assert sub.industries == ["Healthcare", "Technology"]
-    assert sub.domains == ["Security", "Cloud"]
+    assert sub.domains == ["security", "cloud"]
     assert sub.is_active is True
 
 
@@ -75,7 +75,7 @@ def test_preferences_update_requires_title_industry_and_domain(client, db_sessio
             "first_name": "Reader",
             "last_name": "Updated",
             "industries": ["Healthcare"],
-            "domains": ["Security"],
+            "domains": ["security"],
             "role_ids": [10],
         }
         payload[field] = []

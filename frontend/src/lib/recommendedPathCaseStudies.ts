@@ -1,9 +1,14 @@
-import type { IndustryOption } from "@/lib/industryGrid";
+import { canonicalIndustryLabel, type IndustryOption } from "@/lib/industryGrid";
 
 /**
  * Illustrative PulseOne engagement narratives for `/recommended-path`.
  * Composites—not named clients—with sector-specific framing and stable `id`s
  * for icons (see `CaseStudyHeroIcon.tsx`).
+ *
+ * Scope: IT and technology integration only (advisory, security, cloud, MSP,
+ * integration, phones, websites)—not operational equipment install (robotics,
+ * packaging, production machinery); networking/security for those assets is OK.
+ * AI-generated cards follow `backend/content/pulseone-identity.md` + path synthesis prompts.
  */
 export type RecommendedCaseStudy = {
   id: string;
@@ -24,39 +29,51 @@ export type RecommendedCaseStudy = {
 export const RECOMMENDED_PATH_CASE_STUDIES_DEFAULT: RecommendedCaseStudy[] = [
   {
     id: "ops-ai-sequencing",
-    title: "Sequencing AI pilots without disrupting core operations",
+    title: "Rolling out agentic tools without disrupting day-to-day operations",
+    problem: "Rolling out agentic tools without disrupting day-to-day operations",
+    who: "Regional operations leaders streamlining core workflows and agent-assisted tools across many sites",
+    provided:
+      "A phased rollout: priority integrations first, executive scorecards with rollback triggers, then a pattern other sites could reuse",
     teaser:
-      "Regional operations leader aligning ERP, workflows, and new AI-assisted tools across distributed sites — illustrative composite.",
+      "Regional operations leader aligning core systems, workflows, and agent-assisted tools across distributed sites — illustrative composite.",
     approach:
-      "We oriented discovery on workflows that could tolerate automation variance vs. lanes that needed human-in-loop controls. Adoption states and decision rights were explicit before any vendor proofs — so demos didn’t outpace governance.",
+      "We would map which workflows can tolerate automation and which need a person in the loop, with decision rights clear before vendor demos.",
     solution:
-      "A phased rollout: lineage and integrations two priority lanes first, executive KPI scorecards with rollback triggers, then a repeatable pattern other sites copied without rewriting controls each time.",
+      "A typical engagement phases two priority integration lanes first, adds executive scorecards with rollback triggers, then a reusable pattern for additional sites.",
     howWeHelped:
-      "PulseOne facilitated prioritization across ops, finance, and IT; moderated neutral proof exercises; produced sequencing memoranda and RACI owners traceable through audit narratives.",
+      "PulseOne would facilitate prioritization across operations, finance, and IT, run neutral proof exercises, and document sequencing owners auditors can follow.",
   },
   {
     id: "governance-sprint",
-    title: "30-day posture sprint before stakeholder scrutiny",
+    title: "30-day security and readiness sprint before stakeholder scrutiny",
+    problem: "30-day security and readiness sprint before stakeholder scrutiny",
+    who: "Leadership pairing financial and security narratives under tight renewal deadlines",
+    provided:
+      "Board-ready summary of posture claims, phased fixes where it mattered, and a quarterly refresh rhythm",
     teaser:
       "Leadership pairing financial and cyber narratives under tight renewal deadlines — illustrative composite.",
     approach:
-      "We compressed stakeholder input into one evidence spine: tooling, logs, and contracts mapped to risks third parties actually ask about. Every assertion had a named owner — no orphaned policy statements.",
+      "We would pull stakeholder input into one evidence trail—tools, logs, and contracts mapped to risks partners actually ask about—with a named owner per claim.",
     solution:
-      "Board-ready annex of posture assertions, phased remediation where material, and quarterly refresh cadence so updates didn’t require another hero rescue.",
+      "You could expect a board-ready posture summary, phased remediation where it matters, and a quarterly refresh cadence instead of hero rescues.",
     howWeHelped:
-      "Drafted narratives in leadership language; stress-tested with tabletops and Q&A rehearsals so technical specifics matched forecasts and commitments.",
+      "PulseOne would draft leadership-ready narratives and stress-test them with tabletops and Q&A rehearsals so numbers match commitments.",
   },
   {
     id: "fractional-office",
-    title: "Fractional technology office for scaling governance",
+    title: "Steady technology leadership without building a full executive bench",
+    problem: "Steady technology leadership without building a full executive bench",
+    who: "Organizations outgrowing ad hoc IT escalations that need steady rhythms without hiring a full C-suite technology team",
+    provided:
+      "A lightweight office model: clear intake, vendor scorecards, and escalation paths that respect procurement and architecture",
     teaser:
       "Organization outgrowing ad hoc IT escalations needing steady rhythms without staffing a full C-suite bench — illustrative composite.",
     approach:
-      "We anchored cadence on recurring revenue continuity, resilience through platform churn, and clear capex/opex guardrails — meeting structure followed outcomes, not the reverse.",
+      "We would anchor cadence on revenue continuity, resilience through platform change, and clear capital and operating guardrails—meetings follow outcomes.",
     solution:
-      "Lightweight office model: RACI intake, evergreen vendor posture scorecards, and escalation routes that honored procurement and architecture without bottlenecks on every sprint.",
+      "A typical model includes clear intake owners, evergreen vendor scorecards, and escalation routes that respect procurement and architecture.",
     howWeHelped:
-      "Worked alongside PMO and partners; tightened templates; phased out rituals that duplicated work once rhythms held.",
+      "PulseOne would work alongside program management and partners, tighten templates, and retire duplicate rituals once rhythms hold.",
   },
 ];
 
@@ -638,39 +655,51 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
   Hospitality: [
     {
       id: "ops-ai-sequencing",
-      title: "Guest-ops AI with POS and loyalty scope discipline",
+      title: "Agent-assisted guest service without putting payments at risk",
+      problem: "Agent-assisted guest service without putting payments at risk",
+      who: "Operations leaders who need multilingual concierge and housekeeping agents without widening payment-card exposure",
+      provided:
+        "Phased pilots that balance revenue lift and fraud signals, with a repeatable playbook for franchise groups",
       teaser:
-        "COO piloting multilingual concierge and housekeeping routing without widening PCI blast radius — illustrative example.",
+        "Operations leaders scaling agent-assisted guest service while keeping payment systems tightly scoped — illustrative example.",
       approach:
-        "Segment pilots from vault-touching paths; escalation when anomalies brushed payment telemetry.",
+        "We would keep guest-facing trials separate from card-data paths and define when to pause or roll back before expanding scope.",
       solution:
-        "Two-flag pilots bridging revPAR uplift vs fraud signals; playbook for managed franchise footprints.",
+        "A typical path runs two phased pilots with simple success measures, then a property playbook that reuses controls.",
       howWeHelped:
-        "Aligned brand ops, franchises, IT; vendor-neutral POC criteria tied to loyalty promises.",
+        "PulseOne would align brand operations, franchise partners, and IT and run neutral vendor tests tied to loyalty promises.",
     },
     {
       id: "governance-sprint",
-      title: "Ransomware and outage narrative before refinancing and brand QA",
+      title: "Ransomware and outage story before refinancing and brand review",
+      problem: "Ransomware and outage story before refinancing and brand review",
+      who: "Security leaders who need guest-outage and ransomware narratives executives and lenders trust",
+      provided:
+        "Staged network separation and stronger sign-in roadmaps tied to outage targets leadership already funds",
       teaser:
-        "CISO pairing guest-facing blackout stories with ransomware playbooks executives trust — illustrative composite.",
+        "Security and finance leaders preparing a credible outage and ransomware story before refinancing — illustrative composite.",
       approach:
-        "Hours-of-outage comps impacts finance validated; immutable backup proofs store managers corroborated.",
+        "We would tie outage hours to numbers finance already uses and verify backup and recovery with people who run the properties.",
       solution:
-        "Phased segmentation and MFA roadmaps with blackout SLAs tying to capex overlays.",
+        "You could expect phased network segmentation, stronger sign-in, and blackout targets linked to the capital plan.",
       howWeHelped:
-        "Facility and IT rehearsals; coached CEO briefings marrying metrics with brand comps narrative.",
+        "PulseOne would run joint drills with facilities and IT and coach executive briefings grounded in store-level reality.",
     },
     {
       id: "fractional-office",
-      title: "Portfolio cadence across properties, CRS, and corp platforms",
+      title: "One plan across properties, reservations, and corporate systems",
+      problem: "One plan across properties, reservations, and corporate systems",
+      who: "Technology leaders who need hotel property tools aligned with company-wide finance and booking systems",
+      provided:
+        "Ongoing quarterly priorities that favor systems working together, with clear steps when sign-in or access rules drift",
       teaser:
-        "CIO harmonizing property systems with centralized finance stacks — illustrative example.",
+        "Technology leaders harmonizing property systems with corporate finance and reservations — illustrative example.",
       approach:
-        "Single initiative runway with explicit milestones per modality; RACI bridging properties and corp.",
+        "We would maintain one initiative calendar with milestones per property type and clear owners between sites and headquarters.",
       solution:
-        "Quarterly scorecards favoring interoperability; escalation ladders for SSO and access drift.",
+        "Typical deliverables include quarterly scorecards that reward interoperability and escalation paths when access rules drift.",
       howWeHelped:
-        "Steering forums that retired duplicate vendor pursuits; EBITDA-grounded investment packets.",
+        "PulseOne would facilitate steering forums to retire duplicate vendor pursuits and ground technology investment in operating results.",
     },
   ],
   Nonprofit: [
@@ -827,12 +856,139 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
   ],
 };
 
-export function recommendedCaseStudiesForIndustry(industry?: string | null): RecommendedCaseStudy[] {
-  const t = industry?.trim();
-  if (t && t in BY_INDUSTRY) {
-    return BY_INDUSTRY[t as IndustryOption];
+export type RecommendedPathCaseStudyIntake = {
+  industry?: string | null;
+  issue?: string | null;
+  stage?: string | null;
+};
+
+const CASE_STUDY_IDS = ["ops-ai-sequencing", "governance-sprint", "fractional-office"] as const;
+type CaseStudyId = (typeof CASE_STUDY_IDS)[number];
+
+/** Map free-text “Other” industries to the closest canonical sector when possible. */
+const FREE_TEXT_INDUSTRY_HINTS: ReadonlyArray<{ pattern: RegExp; industry: IndustryOption }> = [
+  { pattern: /\b(food\s*service|restaurant|catering|hotel|lodging|resort|hospitality|qsr)\b/i, industry: "Hospitality" },
+  { pattern: /\b(health\s*care|hospital|clinic|medical|provider|payer)\b/i, industry: "Healthcare" },
+  { pattern: /\b(bank|finance|fintech|insurance|credit\s*union)\b/i, industry: "Financial Services" },
+  { pattern: /\b(manufactur|factory|plant|industrial)\b/i, industry: "Manufacturing" },
+  { pattern: /\b(retail|e-?commerce|storefront|merchant)\b/i, industry: "Retail" },
+  { pattern: /\b(energy|utility|power\s*grid|oil\s*&\s*gas)\b/i, industry: "Energy" },
+  { pattern: /\b(government|public\s*sector|municipal|federal)\b/i, industry: "Government" },
+  { pattern: /\b(education|university|school\s*district|k-12)\b/i, industry: "Education" },
+  { pattern: /\b(telecom|carrier|wireless|broadband)\b/i, industry: "Telecommunications" },
+  { pattern: /\b(transport|logistics|freight|airline|rail)\b/i, industry: "Transportation" },
+  { pattern: /\b(pharma|biotech|life\s*science)\b/i, industry: "Pharma & Biotech" },
+  { pattern: /\b(legal|law\s*firm)\b/i, industry: "Legal Services" },
+  { pattern: /\b(defense|aerospace|military)\b/i, industry: "Defense & Aerospace" },
+  { pattern: /\b(software|saas|technology|tech\s*company)\b/i, industry: "Technology" },
+  { pattern: /\b(real\s*estate|property\s*management|reit)\b/i, industry: "Real Estate" },
+  { pattern: /\b(agricultur|farming|agtech)\b/i, industry: "Agriculture" },
+  { pattern: /\b(nonprofit|ngo|charity)\b/i, industry: "Nonprofit" },
+  { pattern: /\b(media|entertainment|studio|streaming)\b/i, industry: "Media & Entertainment" },
+  { pattern: /\b(professional\s*services|consulting\s*firm|accounting\s*firm)\b/i, industry: "Professional Services" },
+];
+
+function inferIndustryFromFreeText(text: string): IndustryOption | null {
+  const t = text.trim();
+  if (!t) return null;
+  for (const { pattern, industry } of FREE_TEXT_INDUSTRY_HINTS) {
+    if (pattern.test(t)) return industry;
   }
-  return RECOMMENDED_PATH_CASE_STUDIES_DEFAULT;
+  return null;
+}
+
+function resolveIndustryKey(raw?: string | null): IndustryOption | null {
+  const t = raw?.trim();
+  if (!t || t === "Other") return null;
+  return canonicalIndustryLabel(t) ?? inferIndustryFromFreeText(t);
+}
+
+function preferredCaseStudyOrder(issue: string, stage: string): CaseStudyId[] {
+  const blob = `${issue} ${stage}`.trim();
+  const low = blob.toLowerCase();
+  if (
+    issue === "Cybersecurity" ||
+    issue === "Compliance" ||
+    /\b(cyber|security|compliance|risk|ransom|breach|audit|regulat|privacy|hipaa|soc\s*2)\b/i.test(low)
+  ) {
+    return ["governance-sprint", "ops-ai-sequencing", "fractional-office"];
+  }
+  if (
+    issue === "AI" ||
+    /\b(agentic|agents?|ml|llm|genai|copilot|automation|pilot|machine learning|generative|streamlin|scal(e|ing)|optimiz)\b/i.test(
+      low,
+    ) ||
+    /\bai\b/i.test(low)
+  ) {
+    return ["ops-ai-sequencing", "governance-sprint", "fractional-office"];
+  }
+  if (
+    issue === "Strategy" ||
+    issue === "IT Management" ||
+    /\b(govern|portfolio|vendor|operating model|runway|fractional|pmo|escalat)\b/i.test(low)
+  ) {
+    return ["fractional-office", "governance-sprint", "ops-ai-sequencing"];
+  }
+  if (issue === "Cloud" || /\b(cloud|infra|platform|migrate|moderniz|data\s*center)\b/i.test(low)) {
+    return ["ops-ai-sequencing", "fractional-office", "governance-sprint"];
+  }
+  return [...CASE_STUDY_IDS];
+}
+
+function orderCaseStudies(studies: RecommendedCaseStudy[], issue: string, stage: string): RecommendedCaseStudy[] {
+  const order = preferredCaseStudyOrder(issue, stage);
+  const byId = new Map(studies.map((s) => [s.id, s]));
+  const ordered: RecommendedCaseStudy[] = [];
+  for (const id of order) {
+    const row = byId.get(id);
+    if (row) ordered.push(row);
+  }
+  for (const s of studies) {
+    if (!ordered.includes(s)) ordered.push(s);
+  }
+  return ordered;
+}
+
+/** Subheading copy for the Engagements band on `/recommended-path`. */
+export function recommendedCaseStudiesIntro(intake?: RecommendedPathCaseStudyIntake | null): string {
+  const industryRaw = intake?.industry?.trim() ?? "";
+  const stage = intake?.stage?.trim() ?? "";
+  const issue = intake?.issue?.trim() ?? "";
+  const canonical = resolveIndustryKey(industryRaw);
+  const sectorLabel = industryRaw || canonical || "";
+
+  if (sectorLabel && stage) {
+    const short =
+      stage.length > 140 ? `${stage.slice(0, 137).trimEnd()}…` : stage;
+    return `How we would approach this kind of work in ${sectorLabel}—illustrative examples for situations like yours: “${short}”`;
+  }
+  if (sectorLabel) {
+    return `How we would approach this kind of work in ${sectorLabel}—illustrative examples, not past client stories.`;
+  }
+  if (stage) {
+    const short =
+      stage.length > 160 ? `${stage.slice(0, 157).trimEnd()}…` : stage;
+    return `Illustrative examples of how we would help—grounded in what you shared: “${short}”`;
+  }
+  if (issue) {
+    return `Illustrative examples of how we would help, aligned with your focus on ${issue}.`;
+  }
+  return "Illustrative examples of how we would help organisations like yours.";
+}
+
+export function recommendedCaseStudiesForIntake(
+  intake?: RecommendedPathCaseStudyIntake | null,
+): RecommendedCaseStudy[] {
+  const industryKey = resolveIndustryKey(intake?.industry);
+  const base =
+    industryKey && industryKey in BY_INDUSTRY
+      ? BY_INDUSTRY[industryKey]
+      : RECOMMENDED_PATH_CASE_STUDIES_DEFAULT;
+  return orderCaseStudies(base, intake?.issue?.trim() ?? "", intake?.stage?.trim() ?? "");
+}
+
+export function recommendedCaseStudiesForIndustry(industry?: string | null): RecommendedCaseStudy[] {
+  return recommendedCaseStudiesForIntake({ industry });
 }
 
 /** @deprecated Prefer {@link recommendedCaseStudiesForIndustry}; kept for gradual import migration. */

@@ -7,6 +7,7 @@ from unittest.mock import patch
 from backend.models.article import Article, ArticleStatus
 from backend.models.source import Source, SourceType
 from backend.models.topic import Topic
+from backend.tests.domain_fixtures import make_topic
 from backend.services.archive_service import archive_outside_active_evidence_window
 
 
@@ -34,9 +35,7 @@ def _seed_article(db_session, *, age_days: int, topic: Topic | None = None) -> A
 
 
 def test_archive_outside_active_evidence_window_uses_primary_plus_prior_window(db_session):
-    topic = Topic(name="AI Agents", domain="AI", urgency_score=7)
-    db_session.add(topic)
-    db_session.commit()
+    topic = make_topic(db_session, name="AI Agents", domain_slug="ai", urgency_score=7)
     recent = _seed_article(db_session, age_days=10, topic=topic)
     stale = _seed_article(db_session, age_days=15, topic=topic)
 
@@ -74,9 +73,9 @@ def test_archive_outside_active_evidence_window_only_archives_linked_articles(db
 def test_archive_outside_active_evidence_window_prefers_published_date_over_fresh_ingest(
     db_session,
 ):
-    topic = Topic(name="AI Agents", domain="AI", urgency_score=7)
+    topic = make_topic(db_session, name="AI Agents", domain_slug="ai", urgency_score=7)
     source = Source(name="Backlog Feed", url="https://example.com/backlog", type=SourceType.rss)
-    db_session.add_all([topic, source])
+    db_session.add(source)
     db_session.commit()
     old_publish = datetime.now(UTC) - timedelta(days=20)
     fresh_ingest = datetime.now(UTC)

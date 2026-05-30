@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { filterByRadarDomainSlug, normalizeRadarDomainSlug } from "@/lib/domains";
 import { useIsClient } from "@/lib/useIsClient";
-import { normalizeRadarDomain, RADAR_DOMAINS } from "@/lib/radarFilters";
+import { useDomains } from "@/lib/useDomains";
 import RadarChart, { type RadarTopic, INDUSTRY_COLORS } from "./RadarChart";
 
 const INDUSTRY_LIST = Object.keys(INDUSTRY_COLORS);
@@ -23,6 +24,7 @@ export default function RadarSection({
   lastUpdated?: string;
 }) {
   const compact = layout === "compact";
+  const { domains: domainOptions } = useDomains();
   const isClient = useIsClient();
   const [selectedIndustry, setSelectedIndustry] = useState<string>("");
   const [selectedDomain, setSelectedDomain] = useState<string>("");
@@ -31,7 +33,7 @@ export default function RadarSection({
   useEffect(() => {
     if (!isClient) return;
     const params = new URLSearchParams(window.location.search);
-    const d = normalizeRadarDomain(params.get("domain"));
+    const d = normalizeRadarDomainSlug(params.get("domain"));
     if (d) {
       setSelectedDomain(d);
     }
@@ -41,7 +43,7 @@ export default function RadarSection({
     let result = topics;
 
     if (selectedDomain) {
-      result = result.filter((t) => t.domain === selectedDomain);
+      result = filterByRadarDomainSlug(result, selectedDomain);
     }
 
     if (selectedIndustry) {
@@ -142,9 +144,9 @@ export default function RadarSection({
                   className="min-w-[155px] rounded-lg border border-pulse-teal bg-white px-3 py-2 text-sm text-pulse-teal focus:outline-none focus:ring-2 focus:ring-pulse-teal/40"
                 >
                   <option value="">All Domains</option>
-                  {RADAR_DOMAINS.map((d) => (
-                    <option key={d} value={d}>
-                      {d}
+                  {domainOptions.map((d) => (
+                    <option key={d.slug} value={d.slug}>
+                      {d.short_label}
                     </option>
                   ))}
                 </select>
@@ -201,6 +203,8 @@ export default function RadarSection({
             showLabels={showLabels}
             emptyMessage={emptyMessage}
             layout={layout}
+            industryScope={selectedIndustry}
+            domainScope={selectedDomain}
           />
           {filteredTopics.length === 0 && topics.length > 0 && (
             <p className="mt-2 text-center text-sm text-gray-400">

@@ -14,6 +14,7 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { adminFetch, API_BASE } from "@/lib/api";
+import { domainBadgeClass } from "@/lib/domains";
 
 export interface TopicRow {
   id: number;
@@ -63,14 +64,7 @@ type TabId = "pending" | "watching" | "radar";
 const TAB_IDS = new Set<TabId>(["pending", "watching", "radar"]);
 
 function DomainPill({ domain }: { domain: string }) {
-  const palette: Record<string, string> = {
-    AI: "bg-violet-500/20 text-violet-400 ring-violet-500/30",
-    Security: "bg-rose-500/20 text-rose-400 ring-rose-500/30",
-    Cloud: "bg-sky-500/20 text-sky-400 ring-sky-500/30",
-    Finance: "bg-emerald-500/20 text-emerald-400 ring-emerald-500/30",
-    Leadership: "bg-indigo-500/20 text-indigo-400 ring-indigo-500/30",
-  };
-  const cls = palette[domain] ?? "bg-slate-500/20 text-slate-400 ring-slate-500/30";
+  const cls = domainBadgeClass(domain);
   return (
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${cls}`}
@@ -360,7 +354,7 @@ function VelocityMini({
   );
 }
 
-type SortColumn = "velocity" | "acceleration" | "articles" | "latest_article";
+type SortColumn = "velocity" | "acceleration" | "articles" | "latest_article" | "days_on_radar";
 
 function SubdomainPill({ text }: { text: string | null | undefined }) {
   const s = (text || "").trim();
@@ -701,6 +695,13 @@ function TrendDiscoveryInner() {
         else if (ta === null) delta = 1;
         else if (tb === null) delta = -1;
         else delta = ta - tb;
+      } else if (sortColumn === "days_on_radar") {
+        const da = typeof a.days_on_radar === "number" ? a.days_on_radar : null;
+        const db = typeof b.days_on_radar === "number" ? b.days_on_radar : null;
+        if (da === null && db === null) delta = 0;
+        else if (da === null) delta = 1;
+        else if (db === null) delta = -1;
+        else delta = da - db;
       } else {
         delta = a.article_count - b.article_count;
       }
@@ -1659,12 +1660,14 @@ function TrendDiscoveryInner() {
                 />
                 <th className="px-3 py-3">Suggestion</th>
                 <th className="px-3 py-3">Published</th>
-                <th
-                  className="whitespace-nowrap px-3 py-3"
-                  title="Whole days since this topic was promoted to on-radar (approve / select)"
-                >
-                  Days on
-                </th>
+                <SortHeader
+                  label="Days on"
+                  column="days_on_radar"
+                  sortColumn={sortColumn}
+                  sortDir={sortDir}
+                  onSort={toggleSort}
+                  headerTitle="Whole days since this topic was promoted to on-radar (approve / select)"
+                />
                 <th className="w-[120px] px-2 py-3 text-right font-semibold normal-case tracking-normal">
                   Tools
                 </th>

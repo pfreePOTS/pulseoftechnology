@@ -52,12 +52,12 @@ def test_review_endpoint_approves_article_and_records_feedback(client, db_sessio
     assert article.status == ArticleStatus.processed
     assert article.topic_id == topic.id
     assert article.subdomain == "Software Supply Chain"
-    assert topic.domain == "Security"
+    assert topic.domain.short_label == "Security"
     assert topic.subdomain == "Software Supply Chain"
     assert topic.name == "Package Registry Credential Theft"
     assert feedback.action == "approve"
     assert feedback.original_topic_name == "Other: Review Needed"
-    assert feedback.corrected_domain == "Security"
+    assert feedback.corrected_domain == "security"
 
 
 def test_review_endpoint_skips_non_tech_article_and_records_feedback(client, db_session):

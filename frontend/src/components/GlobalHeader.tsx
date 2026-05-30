@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { PulseOneOfficialLogo } from "@/components/PulseOneOfficialLogo";
 import SolutionsIntakeModal from "@/components/SolutionsIntakeModal";
+import { useIsClient } from "@/lib/useIsClient";
 
 function NavCaret() {
   return (
@@ -22,6 +23,7 @@ function NavCaret() {
 }
 
 export default function GlobalHeader() {
+  const isClient = useIsClient();
   const pathname = usePathname();
   const pulseSelected = pathname === "/radar" || pathname.startsWith("/radar/");
   const approachSelected = pathname === "/approach" || pathname.startsWith("/approach/");
@@ -72,15 +74,19 @@ export default function GlobalHeader() {
             Assessments
             {assessmentsSelected ? <NavCaret /> : null}
           </Link>
-          <button
-            type="button"
-            onClick={openSolutions}
-            aria-haspopup="dialog"
-            aria-expanded={solutionsOpen}
-            className="rounded px-2.5 py-1.5 font-semibold text-[#646464] transition-colors hover:text-pulse-red"
-          >
-            Solutions
-          </button>
+          {isClient ? (
+            <button
+              type="button"
+              onClick={openSolutions}
+              aria-haspopup="dialog"
+              aria-expanded={solutionsOpen}
+              className="rounded px-2.5 py-1.5 font-semibold text-[#646464] transition-colors hover:text-pulse-red"
+            >
+              Solutions
+            </button>
+          ) : (
+            <span className="rounded px-2.5 py-1.5 font-semibold text-[#646464]">Solutions</span>
+          )}
           <Link
             href="/contact"
             className="ml-8 shrink-0 rounded bg-pulse-red px-[18px] py-[9px] text-[13.5px] text-white transition-colors hover:bg-[#a81117]"

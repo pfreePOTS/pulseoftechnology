@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { domainColor, domainShortLabel, domainSlug, type TopicDomainRef } from "@/lib/domains";
 import { industryColor, INDUSTRY_COLORS, INDUSTRY_OPTIONS } from "@/lib/industryGrid";
 import { clampRadarRationaleParagraph, structureRationale } from "@/lib/sentences";
 import { scrollToSubscribe } from "@/lib/subscribeNavigation";
@@ -31,7 +32,7 @@ export interface IndustryPosition {
 export interface RadarTopic {
   id: number;
   name: string;
-  domain: string;
+  domain: TopicDomainRef | string;
   urgency_score: number;
   adoption_state: string;
   industry_positions: Record<string, IndustryPosition> | null;
@@ -176,19 +177,6 @@ const ADOPTION_TOOLTIP_PLACEMENT: Record<
   "Make the Most Of": { vDir: "above", hAnchor: "rightOfPill" },
 };
 
-// Domain accent colours (fallback when no industry_positions are set)
-const DOMAIN_COLORS: Record<string, string> = {
-  AI: "#7C3AED",
-  Security: "#D5171E",
-  Cloud: "#0284C7",
-  Finance: "#019E7C",
-  Leadership: "#D97706",
-  Other: "#6B7280",
-};
-
-// Per-industry colours: `INDUSTRY_COLORS` + `industryColor()` from `@/lib/industryGrid`
-const DEFAULT_COLOR = "#6B7280";
-
 // ── Internal plot-point type ───────────────────────────────────────────────────
 
 interface PlotPoint {
@@ -324,7 +312,7 @@ function buildPlotPoints(topics: RadarTopic[]): PlotPoint[] {
           key: String(topic.id),
           topic,
           industry: null,
-          color: DOMAIN_COLORS[topic.domain] ?? DEFAULT_COLOR,
+          color: domainColor(topic.domain),
           urgency: finiteScore1to10(topic.urgency_score) ?? 1,
           adoptionState: topic.adoption_state,
         });
@@ -336,7 +324,7 @@ function buildPlotPoints(topics: RadarTopic[]): PlotPoint[] {
           key: `${topic.id}-${industry}`,
           topic,
           industry,
-          color: industryColor(industry),
+          color: domainColor(topic.domain),
           urgency: impact,
           adoptionState: pos.adoption_state ?? topic.adoption_state,
           rationale: industryPositionRationale(pos) ?? undefined,
@@ -347,7 +335,7 @@ function buildPlotPoints(topics: RadarTopic[]): PlotPoint[] {
         key: String(topic.id),
         topic,
         industry: null,
-        color: DOMAIN_COLORS[topic.domain] ?? DEFAULT_COLOR,
+          color: domainColor(topic.domain),
         urgency: finiteScore1to10(topic.urgency_score) ?? 1,
         adoptionState: topic.adoption_state,
       });
@@ -486,6 +474,8 @@ export default function RadarChart({
   showLabels = false,
   emptyMessage = "No topics to display yet",
   layout = "default",
+  industryScope = "",
+  domainScope = "",
 }: {
   topics: RadarTopic[];
   showLabels?: boolean;
@@ -493,6 +483,10 @@ export default function RadarChart({
   emptyMessage?: string;
   /** Tighter gaps, wider chart column, smaller legend — for admin preview. */
   layout?: "default" | "compact";
+  /** Active industry filter; empty string → sidebar shows "All Industries". */
+  industryScope?: string;
+  /** Active domain filter; omitted when showing all domains. */
+  domainScope?: string;
 }) {
   const compact = layout === "compact";
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
@@ -902,6 +896,8 @@ export default function RadarChart({
             <RadarDefaultPanel
               topics={topics}
               topThree={topThree}
+              industryScope={industryScope}
+              domainScope={domainScope}
             />
           )}
         </div>
@@ -910,13 +906,26 @@ export default function RadarChart({
   );
 }
 
+function radarScopeHeading(industryScope: string, domainScope: string): string {
+  const industry = industryScope.trim() || "All Industries";
+  const domain = domainScope.trim();
+  return domain ? `${industry} · ${domain}` : industry;
+}
+
 function RadarDefaultPanel({
   topics,
   topThree,
+  industryScope,
+  domainScope,
 }: {
   topics: RadarTopic[];
   topThree: RadarTopic[];
+  industryScope: string;
+  domainScope: string;
 }) {
+  const scopeHeading = radarScopeHeading(industryScope, domainScope);
+  const scopedIndustry = industryScope.trim();
+  const scopeColor = scopedIndustry ? industryColor(scopedIndustry) : undefined;
   return (
     <div className="text-center font-sans lg:text-left">
       <p className="text-base font-semibold text-pulse-teal">PulseOne Technology Radar</p>
@@ -938,6 +947,19 @@ function RadarDefaultPanel({
             <p className="text-xs font-bold uppercase tracking-wide text-gray-400">
               Top 3 (chart impact)
             </p>
+            <p
+              className="mt-2 flex items-center justify-center gap-2 text-sm font-semibold text-gray-800 lg:justify-start"
+              aria-label={`Showing topics for ${scopeHeading}`}
+            >
+              {scopeColor ? (
+                <span
+                  className="inline-block h-2 w-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: scopeColor }}
+                  aria-hidden
+                />
+              ) : null}
+              <span>{scopeHeading}</span>
+            </p>
             <ul className="mt-3 space-y-4 text-left">
               {topThree.map((t) => {
                 const approvedIndustries = topicApprovedIndustries(t);
@@ -948,10 +970,10 @@ function RadarDefaultPanel({
                         className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-white"
                         style={{
                           backgroundColor:
-                            DOMAIN_COLORS[t.domain] ?? DEFAULT_COLOR,
+                            domainColor(t.domain),
                         }}
                       >
-                        {t.domain}
+                        {domainShortLabel(t.domain)}
                       </span>
                       <span className="font-medium text-gray-900">{t.name}</span>
                       <span className="ml-auto rounded-md bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-800">
@@ -1054,7 +1076,7 @@ function RadarTooltipPanel({ point: pt }: { point: PlotPointXY }) {
     <div className="font-sans text-gray-900">
       <h3 className="text-lg font-bold leading-snug text-[#111827]">{pt.topic.name}</h3>
       <p className="mt-2 text-base font-semibold" style={{ color: pt.color }}>
-        {pt.topic.domain}
+        {domainShortLabel(pt.topic.domain)}
         {pt.industry ? ` · ${pt.industry}` : ""}
       </p>
       <p className="mt-3 text-sm text-gray-700">
@@ -1112,7 +1134,7 @@ function RadarTooltipPanel({ point: pt }: { point: PlotPointXY }) {
       ) : null}
       <button
         type="button"
-        onClick={() => scrollToSubscribe(pt.topic.domain)}
+        onClick={() => scrollToSubscribe(domainSlug(pt.topic.domain))}
         className="mt-5 w-full rounded-lg border border-pulse-teal/30 bg-pulse-teal/5 px-3 py-2.5 text-left text-sm font-semibold text-pulse-teal transition-colors hover:bg-pulse-teal/10"
       >
         Get briefings on {pt.topic.name} →

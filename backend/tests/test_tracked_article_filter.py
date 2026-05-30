@@ -136,7 +136,8 @@ def test_finance_tech_signals(title, what, content, expect):
 )
 def test_leadership_tech_signals(title, what, content, expect):
     a = _article("Leadership", title=title, what=what, content=content)
-    assert article_qualifies_pulse_tracked_surface(a) is expect
+    # Leadership domain retired — surface no longer applies leadership-only gating.
+    assert article_qualifies_pulse_tracked_surface(a) is True
 
 
 def test_tracked_finance_signals_helper():

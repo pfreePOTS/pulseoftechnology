@@ -26,6 +26,7 @@ from backend.database import Base, get_db  # noqa: E402
 from backend.dependencies import hash_password  # noqa: E402
 from backend.main import app  # noqa: E402
 from backend.models.admin_user import AdminUser  # noqa: E402
+from backend.tests.domain_fixtures import ensure_domains  # noqa: E402
 from backend.models.agent_run import AgentRun  # noqa: E402, F401 — Base.metadata
 from backend.models.hubspot_sync_log import HubSpotSyncLog  # noqa: E402, F401 — Base.metadata
 from backend.models.prompt import PromptProposal  # noqa: E402, F401 — Base.metadata
@@ -66,6 +67,7 @@ def db_session():
         )
     )
     session.commit()
+    ensure_domains(session)
     try:
         yield session
     finally:

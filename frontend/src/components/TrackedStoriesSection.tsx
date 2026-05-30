@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 
+import { domainColor } from "@/lib/domains";
 import { filterByRadarDomain, normalizeRadarDomain } from "@/lib/radarFilters";
 import { scrollToSubscribe } from "@/lib/subscribeNavigation";
 import { useIsClient } from "@/lib/useIsClient";
@@ -24,11 +25,6 @@ export type TrackedArticle = {
 
 /** Matches domain badge colours used on the radar. */
 const DOMAIN_COLORS: Record<string, string> = {
-  AI: "#7C3AED",
-  Security: "#D5171E",
-  Cloud: "#0284C7",
-  Finance: "#019E7C",
-  Leadership: "#D97706",
   Other: "#6B7280",
 };
 
@@ -82,7 +78,7 @@ export default function TrackedStoriesSection({
         </p>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {teaserArticles.map((article) => {
-            const color = DOMAIN_COLORS[article.domain] ?? DOMAIN_COLORS.Other;
+            const color = domainColor(article.domain) || DOMAIN_COLORS.Other;
             const when = article.displayDate;
             return (
               <article

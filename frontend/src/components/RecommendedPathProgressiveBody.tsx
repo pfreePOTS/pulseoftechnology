@@ -15,6 +15,7 @@ import type { RecommendedHeroImage } from "@/lib/recommendedPathHero";
 import { fallbackHeadlineFromIntake } from "@/lib/recommendedPathIntakeCopy";
 import { synthesisCardHeroAbsoluteSrc } from "@/lib/recommendedPathSynthesisHero";
 import SynthesisCardBandImages from "@/components/SynthesisCardBandImages";
+import { engagementExamplesToCaseStudies } from "@/lib/recommendedPathEngagements";
 import type { RecommendedPathIntake, RecommendedPathPayload } from "@/lib/recommendedPathTypes";
 import { distinctTopicSlugsForCards, type SynthesisFocusBannerSlug } from "@/lib/synthesisFocusBanner";
 
@@ -223,6 +224,10 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
   const watchPosture = data?.watch_posture ?? "";
   const watchStories = data?.watch_stories ?? [];
   const contentItems = data?.content_items ?? [];
+  const engagementCaseStudies = useMemo(
+    () => engagementExamplesToCaseStudies(data?.engagement_examples),
+    [data?.engagement_examples],
+  );
 
   let heroSubtext: ReactNode;
   if (!hasIntake) {
@@ -463,7 +468,14 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
         </div>
       </section>
 
-      <RecommendedPathCaseStudies industry={industry || undefined} />
+      <RecommendedPathCaseStudies
+        intake={{
+          industry: industry || undefined,
+          issue: issue || undefined,
+          stage: stageForDisplay || undefined,
+        }}
+        studiesFromApi={engagementCaseStudies}
+      />
 
       <section className="border-b border-[#e8e8e8] bg-dark-bg px-8 py-16 md:py-20">
         <div className="mx-auto max-w-[1100px]">

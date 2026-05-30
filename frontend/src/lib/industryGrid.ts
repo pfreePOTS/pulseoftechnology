@@ -72,6 +72,29 @@ export function industryColor(name: string): string {
 }
 
 /**
+ * Map wizard / URL industry text to a canonical grid label (mirrors
+ * `canonical_industry_label` in `backend/services/recommended_path_process_card_library.py`).
+ */
+export function canonicalIndustryLabel(name: string | null | undefined): IndustryOption | null {
+  if (name == null) return null;
+  const key = name.trim();
+  if (!key || key === "Other") return null;
+  if ((INDUSTRY_OPTIONS as readonly string[]).includes(key)) {
+    return key as IndustryOption;
+  }
+  const alias = LEGACY_ALIASES[key];
+  if (alias) return alias;
+  const low = key.toLowerCase();
+  for (const label of INDUSTRY_OPTIONS) {
+    if (label.toLowerCase() === low) return label;
+  }
+  for (const [aliasKey, canonical] of Object.entries(LEGACY_ALIASES)) {
+    if (aliasKey.toLowerCase() === low) return canonical;
+  }
+  return null;
+}
+
+/**
  * Short executive-tone descriptions used on the `/industries` feeder page.
  * One to two sentences each, vendor-neutral, calling out the dominant tech
  * tension a CEO/CIO/COO in that sector is most likely re-checking right now.

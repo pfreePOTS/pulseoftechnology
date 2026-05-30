@@ -11,3 +11,4 @@ alwaysApply: false
 - DB: SQLAlchemy models in `backend/models/`; migrations via Alembic inside the backend container (`alembic upgrade head`).
 - After changing `requirements.txt`, rebuild the backend image. Add tests under `backend/tests/` for new auth or service logic.
 - Lint: `ruff check` + `ruff format` (see `backend/pyproject.toml` and `requirements-dev.txt`). CI runs these on every push.
+- Customer-facing advisor LLM copy: edit `backend/content/pulseone-identity.md` (loaded by `pulseone_identity.build_advisor_system_prompt`); keep JSON/schema rules in `ai_service.py` task instruction strings.

@@ -57,6 +57,17 @@ export type SynthesisCardPayload = {
   hero_image_url?: string | null;
 };
 
+/** PulseOne in Action — illustrative project vignettes (from recommended-path AI). */
+export type EngagementExamplePayload = {
+  id: string;
+  title: string;
+  who?: string;
+  provided?: string;
+  approach?: string;
+  solution?: string;
+  how_we_helped?: string;
+};
+
 export type RecommendedPathPayload = {
   headline: string;
   synthesis: string;
@@ -64,6 +75,7 @@ export type RecommendedPathPayload = {
   synthesis_html: string;
   synthesis_cards?: SynthesisCardPayload[];
   experience_items: ExperienceItemPayload[];
+  engagement_examples?: EngagementExamplePayload[];
   topics: RecommendedTopicPayload[];
   content_items: RecommendedContentPayload[];
   watch_brief: string;

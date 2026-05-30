@@ -1,9 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { useMemo, useState } from "react";
-import BookingCalendar from "@/components/BookingCalendar";
+import ContactCtaBand from "@/components/ContactCtaBand";
 import GlobalFooter from "@/components/GlobalFooter";
 import GlobalHeader from "@/components/GlobalHeader";
 
@@ -21,6 +20,7 @@ type AssessmentCardModel = {
   id: string;
   title: string;
   description: string;
+  href: string;
   primaryConcernTag: string;
   concern: ConcernSlug;
   industriesMatchAll: boolean;
@@ -71,6 +71,7 @@ const ASSESSMENT_GROUPS: Array<{
       {
         id: "cyber-insurance-readiness",
         title: "Cyber Insurance Readiness Assessment",
+        href: "https://getcyberready.info/pulseonecyber",
         primaryConcernTag: "Cybersecurity",
         concern: "cybersecurity",
         industriesMatchAll: true,
@@ -90,6 +91,7 @@ const ASSESSMENT_GROUPS: Array<{
       {
         id: "microsoft-copilot-ai-readiness",
         title: "Microsoft Copilot AI Readiness Assessment",
+        href: "https://getcyberready.info/pulseoneai",
         primaryConcernTag: "AI & Emerging Tech",
         concern: "ai",
         industriesMatchAll: true,
@@ -109,6 +111,7 @@ const ASSESSMENT_GROUPS: Array<{
       {
         id: "disaster-recovery-readiness",
         title: "Disaster Recovery Readiness Assessment",
+        href: "https://getcyberready.info/pulseonedr",
         primaryConcernTag: "Disaster Recovery",
         concern: "disaster",
         industriesMatchAll: true,
@@ -173,58 +176,22 @@ function FilterPills<T extends string>(props: {
   );
 }
 
-function GroupHeroIcon({ variant }: { variant: "red" | "teal" | "navy" }) {
-  const bg =
-    variant === "red"
-      ? "bg-pulse-red"
-      : variant === "teal"
-        ? "bg-pulse-teal"
-        : "bg-[#1a3a5c]";
-  return (
-    <div className={`${bg} flex size-10 shrink-0 items-center justify-center rounded-lg text-white`}>
-      {variant === "red" ? (
-        <svg width={20} height={20} viewBox="0 0 24 24" fill="none" aria-hidden>
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth={2.2} />
-        </svg>
-      ) : variant === "teal" ? (
-        <svg width={20} height={20} viewBox="0 0 24 24" fill="none" aria-hidden>
-          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={2.2} />
-          <path d="M12 6v6l4 2" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" />
-          <circle cx="17" cy="7" r="1.5" fill="currentColor" />
-        </svg>
-      ) : (
-        <svg width={20} height={20} viewBox="0 0 24 24" fill="none" aria-hidden>
-          <path
-            d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
-            stroke="currentColor"
-            strokeWidth={2.2}
-          />
-          <line x1="12" y1="9" x2="12" y2="13" stroke="currentColor" strokeWidth={2.2} />
-          <line x1="12" y1="17" x2="12.01" y2="17" stroke="currentColor" strokeWidth={2.2} />
-        </svg>
-      )}
-    </div>
-  );
-}
-
 export default function AssessmentsPage() {
   const [concern, setConcern] = useState<(typeof CONCERN_FILTERS)[number]["value"]>("all");
   const [industry, setIndustry] = useState<(typeof INDUSTRY_FILTERS)[number]["value"]>("all");
   const [role, setRole] = useState<(typeof ROLE_FILTERS)[number]["value"]>("all");
   const [search, setSearch] = useState("");
 
-  const { visibleIds, visibleCount } = useMemo(() => {
-    const ids = new Set<string>();
-    let n = 0;
+  const { visibleCount, visibleCards } = useMemo(() => {
+    const cards: AssessmentCardModel[] = [];
     ASSESSMENT_GROUPS.forEach((g) => {
       g.cards.forEach((c) => {
         if (assessmentVisible(c, concern, industry, role, search)) {
-          ids.add(c.id);
-          n += 1;
+          cards.push(c);
         }
       });
     });
-    return { visibleIds: ids, visibleCount: n };
+    return { visibleCount: cards.length, visibleCards: cards };
   }, [concern, industry, role, search]);
 
   function clearAll() {
@@ -419,49 +386,36 @@ export default function AssessmentsPage() {
 
         <section className="scroll-mt-[76px] bg-[#f4f4f4] px-6 py-14 pb-[72px]">
           <div className="mx-auto max-w-[1200px]">
-            {ASSESSMENT_GROUPS.map((group) => {
-              const visibleInGroup = group.cards.filter((c) => visibleIds.has(c.id));
-              if (!visibleInGroup.length) return null;
-              return (
-                <div key={group.groupKey} className="mb-14 last:mb-0">
-                  <div className="mb-8 flex flex-wrap items-start gap-[14px]">
-                    <GroupHeroIcon variant={group.icon} />
-                    <div>
-                      <h2 className="font-sans text-[22px] font-bold text-[#1a1a1a]">{group.title}</h2>
-                      <p className="mt-1 font-sans text-sm leading-relaxed text-[#646464]">{group.subtitle}</p>
+            {visibleCount > 0 ? (
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))] gap-5">
+                {visibleCards.map((c) => (
+                  <a
+                    key={c.id}
+                    href={c.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group flex cursor-pointer flex-col overflow-hidden rounded-[10px] border border-[#e4e4e4] bg-white transition-colors hover:border-pulse-teal hover:shadow-[0_8px_28px_rgba(0,0,0,0.10)] hover:-translate-y-0.5"
+                  >
+                    <div className="flex flex-1 flex-col px-[22px] pt-[22px] pb-4">
+                      <div className="mb-[14px] flex flex-wrap gap-1.5">
+                        <span className="inline-block rounded-[10px] border border-pulse-teal/30 bg-pulse-teal/12 px-2 py-1 font-sans text-[10px] font-semibold uppercase tracking-[1.5px] text-[#0fa09b]">
+                          {c.primaryConcernTag}
+                        </span>
+                      </div>
+                      <h3 className="mb-2 font-sans text-[17px] font-bold leading-snug text-[#1a1a1a]">
+                        {c.title}
+                      </h3>
+                      <p className="font-sans text-sm leading-relaxed text-[#646464]">{c.description}</p>
                     </div>
-                  </div>
-                  <div className="grid gap-5 lg:grid-cols-3">
-                    {visibleInGroup.map((c) => (
-                      <article
-                        key={c.id}
-                        className="flex cursor-pointer flex-col overflow-hidden rounded-[10px] border border-[#e4e4e4] bg-white transition-colors hover:border-pulse-teal hover:shadow-[0_8px_28px_rgba(0,0,0,0.10)] hover:-translate-y-0.5"
-                      >
-                        <div className="flex flex-1 flex-col px-[22px] pt-[22px] pb-4">
-                          <div className="mb-[14px] flex flex-wrap gap-1.5">
-                            <span className="inline-block rounded-[10px] border border-pulse-teal/30 bg-pulse-teal/12 px-2 py-1 font-sans text-[10px] font-semibold uppercase tracking-[1.5px] text-[#0fa09b]">
-                              {c.primaryConcernTag}
-                            </span>
-                          </div>
-                          <h3 className="mb-2 font-sans text-[17px] font-bold leading-snug text-[#1a1a1a]">
-                            {c.title}
-                          </h3>
-                          <p className="font-sans text-sm leading-relaxed text-[#646464]">{c.description}</p>
-                        </div>
-                        <div className="flex items-center justify-end border-t border-[#f0f0f0] px-[22px] py-3.5">
-                          <Link
-                            href="/contact"
-                            className="inline-flex items-center gap-1 font-sans text-[13px] font-semibold text-pulse-red transition-[gap] duration-200 hover:gap-1.5"
-                          >
-                            View Assessment <span>→</span>
-                          </Link>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
+                    <div className="flex items-center justify-end border-t border-[#f0f0f0] px-[22px] py-3.5">
+                      <span className="inline-flex items-center gap-1 font-sans text-[13px] font-semibold text-pulse-red transition-[gap] duration-200 group-hover:gap-1.5">
+                        View Assessment <span aria-hidden>→</span>
+                      </span>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            ) : null}
 
             {visibleCount === 0 ? (
               <div className="rounded-lg border border-[#e0e0e0] bg-white px-6 py-[60px] text-center shadow-sm">
@@ -484,32 +438,19 @@ export default function AssessmentsPage() {
           </div>
         </section>
 
-        <section
+        <ContactCtaBand
           id="schedule"
-          className="relative overflow-hidden scroll-mt-[96px] border-t-[3px] border-pulse-red bg-dark-bg px-8 pt-[80px]"
-        >
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_60%_50%,rgba(213,23,30,0.10)_0%,transparent_70%)]" />
-          <div className="relative mx-auto flex max-w-[760px] flex-col items-center text-center pb-24">
-            <span className="mb-4 block font-sans text-[11px] font-semibold tracking-[3px] text-pulse-teal uppercase">
-              Schedule an Assessment
-            </span>
-            <h2 className="mb-6 font-sans text-4xl leading-tight font-extrabold text-white">
+          eyebrow="Request an Assessment"
+          title={
+            <>
               Ready to see where you stand?
               <br />
               Or don&apos;t see what you&apos;re looking for?
-            </h2>
-            <p className="mx-auto mb-14 max-w-[560px] font-sans text-[17px] leading-relaxed text-white/55">
-              Pick a date and time below to complete an assessment with one of our team members or request a custom
-              assessment for your situation.
-            </p>
-            <BookingCalendar
-              introductoryCallLabel="45-minute meeting"
-              slotDurationBadge="45 min"
-              confirmAlertPhrase="Your 45-minute meeting has been requested"
-              footerLine="All times shown in PST · 45-minute meeting"
-            />
-          </div>
-        </section>
+            </>
+          }
+          description="Tell us what you need — complete an assessment with our team or request a custom assessment for your situation."
+          buttonLabel="Contact us"
+        />
       </main>
 
       <GlobalFooter />

@@ -1,5 +1,9 @@
 import { apiOriginForBrowser } from "./api";
-import type { RecommendedPathIntake, RecommendedPathPayload } from "./recommendedPathTypes";
+import type {
+  RecommendedPathIntake,
+  RecommendedPathPayload,
+  RecommendedWatchStoryPayload,
+} from "./recommendedPathTypes";
 
 export type StreamRecommendedPathHandlers = {
   onShell: (payload: RecommendedPathPayload) => void;
@@ -11,9 +15,12 @@ export type StreamRecommendedPathHandlers = {
 };
 
 /** Returns `null` on non-OK HTTP, JSON parse failure, or thrown fetch errors (network, aborted, etc.). */
-async function fetchRecommendedPathPayload(url: string): Promise<RecommendedPathPayload | null> {
+async function fetchRecommendedPathPayload(
+  url: string,
+  signal?: AbortSignal,
+): Promise<RecommendedPathPayload | null> {
   try {
-    const res = await fetch(url, { cache: "no-store" });
+    const res = await fetch(url, { cache: "no-store", signal });
     if (!res.ok) return null;
     return (await res.json()) as RecommendedPathPayload;
   } catch {
@@ -27,7 +34,17 @@ function buildRecommendedPathUrl(intake: RecommendedPathIntake, skipAi: boolean)
   for (const k of keys) {
     u.searchParams.set(k, (intake[k] ?? "").trim());
   }
+  u.searchParams.set("defer_articles", "true");
   if (skipAi) u.searchParams.set("skip_ai", "true");
+  return u.toString();
+}
+
+function buildRecommendedPathWatchStoriesUrl(intake: RecommendedPathIntake): string {
+  const u = new URL(`${apiOriginForBrowser()}/api/recommended-path/watch-stories`);
+  const keys = ["region", "industry", "role", "issue", "stage"] as const;
+  for (const k of keys) {
+    u.searchParams.set(k, (intake[k] ?? "").trim());
+  }
   return u.toString();
 }
 
@@ -165,11 +182,86 @@ export async function streamRecommendedPath(
 /**
  * Primary: AI-assisted `skip_ai=false`. On `null`, retries once with deterministic `skip_ai=true`—same payload shape,
  * typically after provider issues or HTTP failures. Caller sees `null` only if **both** requests fail or return unusable bodies.
+ *
+ * Pulse **watch story rows are deferred**: main payload includes `watch_stories: []` until ``fetchRecommendedPathWatchStories``.
  */
 export async function fetchRecommendedPathProgressive(
   intake: RecommendedPathIntake,
+  signal?: AbortSignal,
 ): Promise<RecommendedPathPayload | null> {
-  const primary = await fetchRecommendedPathPayload(buildRecommendedPathUrl(intake, false));
+  const primary = await fetchRecommendedPathPayload(buildRecommendedPathUrl(intake, false), signal);
+  if (signal?.aborted) return null;
   if (primary !== null) return primary;
-  return fetchRecommendedPathPayload(buildRecommendedPathUrl(intake, true));
+  return fetchRecommendedPathPayload(buildRecommendedPathUrl(intake, true), signal);
+}
+
+export type RecommendedPathProgressiveHandlers = {
+  /** Fast deterministic payload (`skip_ai=true`) — used to paint immediately. */
+  onShell: (payload: RecommendedPathPayload) => void;
+  /** AI-assisted payload (`skip_ai=false`) — replaces the shell when ready. May be skipped if shell already failed and AI also failed. */
+  onAi?: (payload: RecommendedPathPayload) => void;
+  /** Called once both requests have settled (regardless of success). */
+  onSettled?: () => void;
+  /** Called when **both** the shell and AI requests fail to return usable bodies. */
+  onError?: () => void;
+};
+
+/**
+ * Two parallel requests against the existing endpoints, both with `defer_articles=true`:
+ *   1. `skip_ai=true` — deterministic, sub-second, paints immediately via ``onShell``.
+ *   2. `skip_ai=false` — LLM-assisted, slower; calls ``onAi`` when ready so the body can upgrade the copy in place.
+ *
+ * If the LLM call beats the deterministic call the latter is silently ignored.
+ */
+export function fetchRecommendedPathTwoStage(
+  intake: RecommendedPathIntake,
+  handlers: RecommendedPathProgressiveHandlers,
+  signal?: AbortSignal,
+): { promise: Promise<void> } {
+  const { onShell, onAi, onSettled, onError } = handlers;
+  let shellDelivered = false;
+  let aiDelivered = false;
+
+  const shellPromise = (async () => {
+    const payload = await fetchRecommendedPathPayload(buildRecommendedPathUrl(intake, true), signal);
+    if (signal?.aborted) return false;
+    if (payload === null || aiDelivered) return false;
+    shellDelivered = true;
+    onShell(payload);
+    return true;
+  })();
+
+  const aiPromise = (async () => {
+    const payload = await fetchRecommendedPathPayload(buildRecommendedPathUrl(intake, false), signal);
+    if (signal?.aborted) return false;
+    if (payload === null) return false;
+    aiDelivered = true;
+    if (onAi) onAi(payload);
+    else if (!shellDelivered) onShell(payload);
+    return true;
+  })();
+
+  const promise = Promise.allSettled([shellPromise, aiPromise]).then((results) => {
+    if (signal?.aborted) return;
+    const anyDelivered = results.some((r) => r.status === "fulfilled" && r.value === true);
+    if (!anyDelivered && onError) onError();
+    if (onSettled) onSettled();
+  });
+
+  return { promise };
+}
+
+/** Hydrates `watch_stories` using the same intake facets (after deferred main payload). */
+export async function fetchRecommendedPathWatchStories(
+  intake: RecommendedPathIntake,
+  signal?: AbortSignal,
+): Promise<RecommendedWatchStoryPayload[] | null> {
+  try {
+    const res = await fetch(buildRecommendedPathWatchStoriesUrl(intake), { cache: "no-store", signal });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { watch_stories?: unknown };
+    return Array.isArray(body.watch_stories) ? (body.watch_stories as RecommendedWatchStoryPayload[]) : null;
+  } catch {
+    return null;
+  }
 }

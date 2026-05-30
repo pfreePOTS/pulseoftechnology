@@ -2171,27 +2171,38 @@ contain **2 bullets** maximum (prefer 2; never more than 3). Omit ``watch_slice`
 is included in the user message — do not hallucinate radar themes. Do **not** also include long prose \
 versions of brief/posture unless you need them for yourself — bullets are authoritative for the UI.
 
-The **experience_items** use the same constraint as before: four realistic capability offerings. \
+Also include **synthesis_cards** at the same JSON level (ALWAYS): an array of **exactly 4** objects for the \
+"Our Process" section. Titles MUST be these exact strings in this order: \
+**Understand**, **Recommend**, **Implement**, **Manage** — no synonyms.
 
-The headline and synthesis behaviors are unchanged below.
+**Voice (applies to headline, synthesis, ``synthesis_cards``, and ``experience_items``):** Plainspoken and human — \
+short sentences, everyday words, warm and direct. **Never** use: *honestly*, *risk appetite*, or heavy consultant clichés \
+(synergies, paradigm, best-in-class, circle back, low-hanging fruit, holistic, *leverage* as buzzword, *bandwidth* for capacity). \
+Avoid stiff openers like "In today's environment" or pile-ups of em dashes.
 
-Also include **synthesis_cards** at the same JSON level (ALWAYS): an array of **2 or 3** objects for the \
-"What we think" section on the web page. These must reflect the **same substance** as the two \
-``synthesis`` paragraphs but reformatted for scanning — **not** extra ideas. Each object:
-{ "title": "<4-10 word card headline>",
-  "bullets": [ "<one tight sentence each>", ... ] }
-Each card has **2 to 5** bullets. First card: risks, readiness, or priority lens. Second: roadmap, \
-phasing, or procurement discipline. Optional third: change management, governance, or compliance \
-angle if it fits the reader. Bullets must be plain sentences (no leading dashes in the string).
+**Do not** paste the reader's **primary concern** string verbatim into multiple cards. Reference it **at most once** in \
+**Understand** (brief paraphrase is better than a full quote). Other cards should imply the theme without repeating the \
+same noun phrase (e.g. do **not** stitch "Microsoft license management" into every bullet).
+
+Each object:
+{ "title": "Understand" | "Recommend" | "Implement" | "Manage",
+  "bullets": [ "<one sentence>", "<one sentence>" ] }
+Each card has **exactly 2 bullets**. Each bullet: **one sentence**, **≤ 26 words**, conversational—not a memo.
+
+**Understand**: What we're tackling together; nod to **stage**/situation in natural language (no long quotation blocks). \
+**Recommend**: How PulseOne helps you sort options and trade-offs without vendor bias. \
+**Implement**: Hands-on delivery beside their team and partners. \
+**Manage**: Day-two support (desk, monitoring, backups, escalation) only when it fits—keep it specific and modest.
 
 ---
 
 The **headline** should preview why their situation matters.
 The **synthesis** should weave supplied fields into practical priorities — vendor-neutral (describe \
-categories of action, not products). It will be presented as "What we think".
-The **experience_items** are 4 capability-style cards for "Our Experience". Each must be a real \
-category of work PulseOne does (assessments, advisory, evaluations, governance, managed services). \
-When only one facet is known, align cards to it while avoiding near-duplicate wording.
+categories of action, not products). It supports the same narrative as the Our Process cards.
+The **experience_items** are exactly **four** capability-style cards for "Our Solutions". Each must describe \
+something PulseOne can deliver **for this intake**, without repeating the same **issue** wording in all four titles. \
+Tie to **stage** when it signals practical needs (remote offices, help desk, monitoring, projects). Stay vendor-neutral \
+unless the reader named a category themselves. One clear sentence per **description** when possible.
 Every ``experience_items`` object MUST include an **icon** field using ONLY one token from:\n\
   assessment | advisory | governance | managed_services | security | cloud_data | ai_emerging | continuity | procurement | default\n\
 Map by dominant capability — readiness/maturity/baseline/vendor-neutral reviews → assessment; standing advisor/exec counsel → advisory; policies/compliance/audit/board/regulator → governance; MSP/co-source/run operations → managed_services; cyber/SOC/zero trust/incident posture → security; cloud/SaaS/data platforms/stacks → cloud_data; GenAI/LLM/machine learning adoption → ai_emerging; DR/backup/resilience/BC → continuity; RFP/supplier/sourcing/vendor selection programmes → procurement; ambiguous → default.
@@ -2309,7 +2320,20 @@ def _infer_experience_icon_from_text(title: str, description: str) -> str:
                 "cadences",
             ),
         ),
-        ("managed_services", ("managed service", "co-sour", "outsourc", "extension of yours")),
+        (
+            "managed_services",
+            (
+                "managed service",
+                "co-sour",
+                "outsourc",
+                "extension of yours",
+                "help desk",
+                "service desk",
+                "remote monitor",
+                "monitoring",
+                "noc",
+            ),
+        ),
         ("advisory", ("advisory", "advisor", "fractional", "quarterly", "deep-dive", "check-in")),
         ("assessment", ("assessment", "maturity", "readiness", "baseline", "peer practice")),
     )
@@ -2343,45 +2367,136 @@ def _coerce_experience_items(raw_items: object) -> list[dict[str, str]]:
     return out[:6]  # hard cap so a chatty model can't blow up the layout
 
 
-def _fallback_synthesis_cards_from_text(synthesis: str) -> list[dict[str, Any]]:
-    """Turn two-paragraph synthesis into 2–3 scannable cards when the model omits structure."""
-    paras = [p.strip() for p in str(synthesis).split("\n\n") if p.strip()]
-    titles = ("Priority lens", "Roadmap & discipline", "Teams & governance")
+_PROCESS_CARD_TITLES: tuple[str, ...] = ("Understand", "Recommend", "Implement", "Manage")
+
+
+def _finalize_process_card_bullets(
+    bulls: list[str],
+    *,
+    min_bullets: int = 2,
+    max_bullets: int = 2,
+    max_chars: int = 240,
+) -> list[str] | None:
+    out: list[str] = []
+    for b in bulls:
+        s = str(b).strip()
+        if not s:
+            continue
+        if len(s) > max_chars:
+            cut = s[: max_chars].rsplit(" ", 1)[0]
+            s = (cut or s[:max_chars]).rstrip(",;:") + "…"
+        out.append(s)
+        if len(out) >= max_bullets:
+            break
+    if len(out) < min_bullets:
+        return None
+    return out[:max_bullets]
+
+
+def _try_normalize_process_synthesis_cards(rows: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
+    """Map model output to exactly four Our Process steps (by title or by row order)."""
+    if len(rows) < 4:
+        return None
+    by_title: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        t = str(r.get("title", "")).strip().lower()
+        if t:
+            by_title[t] = r
+    seq: list[dict[str, Any]] = []
+    for want in _PROCESS_CARD_TITLES:
+        wl = want.lower()
+        if wl in by_title:
+            seq.append(by_title[wl])
+    if len(seq) != 4:
+        seq = rows[:4]
+    if len(seq) < 4:
+        return None
     out: list[dict[str, Any]] = []
-    sentence_re = re.compile(r"(?<=[.!?])\s+")
-    for idx, para in enumerate(paras[:3]):
-        parts = [s.strip() for s in sentence_re.split(para) if s.strip()]
-        bullets = [p[:480] for p in parts if len(p) > 8][:6]
-        if len(bullets) < 2:
-            dash_split = [s.strip() for s in re.split(r"[;—]| - ", para) if len(s.strip()) > 12][:6]
-            if len(dash_split) >= 2:
-                bullets = [b[:480] for b in dash_split]
-            elif len(bullets) == 1 and len(para) > 140:
-                mid = para[: len(para) // 2 + 60].rfind(" ")
-                if mid >= 40:
-                    a, b = para[:mid].strip(), para[mid:].strip()
-                    bullets = [a[:480], b[:480]] if len(b) > 24 else bullets
-        if not bullets:
-            bullets = [para[:520]]
-        if len(bullets) == 1 and len(str(bullets[0])) > 180:
-            t = bullets[0]
-            mid_pt = str(t).rfind(" ", 50, len(t) // 2 + 60)
-            if mid_pt > 35:
-                bullets = [str(t)[:mid_pt].strip()[:480], str(t)[mid_pt:].strip()[:480]]
-        out.append(
-            {
-                "title": titles[idx] if idx < len(titles) else "Key takeaways",
-                "bullets": bullets,
-            }
-        )
+    for idx, want_title in enumerate(_PROCESS_CARD_TITLES):
+        src = seq[idx]
+        if not isinstance(src, dict):
+            return None
+        bulls = src.get("bullets")
+        if not isinstance(bulls, list):
+            return None
+        fixed = _finalize_process_card_bullets([str(b) for b in bulls])
+        if fixed is None:
+            return None
+        out.append({"title": want_title, "bullets": fixed})
     return out
 
 
-def _coerce_synthesis_cards(raw: object | None, synthesis_fallback: str) -> list[dict[str, Any]]:
-    """Prefer model ``synthesis_cards``; fall back to sentence-split paragraphs."""
+def _fallback_process_cards(
+    region: str,
+    industry: str,
+    role: str,
+    issue: str,
+    stage: str,
+) -> list[dict[str, Any]]:
+    """Deterministic Our Process cards when the model omits or shortens ``synthesis_cards`` — short, human copy."""
+    _ = region, issue  # reserved; keeps signature aligned with LLM path
+    i = (industry or "").strip()
+    ro = (role or "").strip()
+    st = (stage or "").strip()
+    st_low = st.lower()
+    remote_hint = any(
+        x in st_low for x in ("remote", "branch", "office", "help desk", "helpdesk", "desk", "site")
+    )
+
+    who = f"{ro} in {i}" if ro and i else (ro or i or "your team")
+
+    u1 = (
+        f"We start with how things work for {who} — real workloads and deadlines, not slide decks."
+    )
+    if st:
+        u2 = (
+            "You asked for steadier help across branch and remote sites—that stays at the heart of how we line work up."
+            if remote_hint
+            else "We bake what you told us about priorities and timing into the plan before anyone locks in spend."
+        )
+    else:
+        u2 = "We agree what “good” looks like and who decides before anyone buys more tools."
+
+    rec1 = (
+        "We walk through options in plain language: trade-offs up front, no steer toward a favorite vendor."
+    )
+    rec2 = "You leave with a sensible order of operations your leadership can actually stick to."
+
+    imp1 = "We stay next to your people during rollout—sensible cutovers, check-ins, and room to adjust."
+    imp2 = "Owners and handoffs stay clear so nothing slips between IT, finance, and vendors."
+
+    mgr1 = (
+        "After go-live, we can help cover the desk, keep an eye on systems, patches, and backups—and one place to call when something breaks."
+        if remote_hint
+        else "After go-live, we can backstop the desk, monitoring, and fixes so your staff aren’t on an island."
+    )
+    mgr2 = "As things settle, we keep a light rhythm so spend and workload stay under control."
+
+    return [
+        {"title": "Understand", "bullets": [u1, u2]},
+        {"title": "Recommend", "bullets": [rec1, rec2]},
+        {"title": "Implement", "bullets": [imp1, imp2]},
+        {"title": "Manage", "bullets": [mgr1, mgr2]},
+    ]
+
+
+def _coerce_synthesis_cards(
+    raw: object | None,
+    synthesis_fallback: str,
+    *,
+    region: str = "",
+    industry: str = "",
+    role: str = "",
+    issue: str = "",
+    stage: str = "",
+) -> list[dict[str, Any]]:
+    """Prefer model ``synthesis_cards`` (four Our Process steps); else deterministic fallback."""
+    _ = synthesis_fallback
     rows: list[dict[str, Any]] = []
     if isinstance(raw, list):
-        for entry in raw[:4]:
+        for entry in raw[:8]:
             if not isinstance(entry, dict):
                 continue
             title = str(entry.get("title", "")).strip()
@@ -2392,13 +2507,14 @@ def _coerce_synthesis_cards(raw: object | None, synthesis_fallback: str) -> list
             for b in bulls[:8]:
                 t = str(b).strip()
                 if t:
-                    bullet_list.append(t[:520])
+                    bullet_list.append(t[:240])
             if len(bullet_list) < 2:
                 continue
             rows.append({"title": title[:120], "bullets": bullet_list[:6]})
-    if len(rows) >= 2:
-        return rows[:3]
-    return _fallback_synthesis_cards_from_text(synthesis_fallback)
+    normalized = _try_normalize_process_synthesis_cards(rows)
+    if normalized is not None:
+        return normalized
+    return _fallback_process_cards(region, industry, role, issue, stage)
 
 
 def _path_intake_user_block(
@@ -2474,8 +2590,8 @@ def _sparse_fallback_synthesis(
 
     if ind and rl and iss:
         p1 = (
-            f"As a {rl} in {ind}, aligning spend and resilience against {iss} pressures means "
-            f"risk appetite stays explicit — before vendors, dashboards, or roadmaps dominate the conversation."
+            f"As {rl} in {ind}, staying ahead of {iss} is easier when the basics are clear early—"
+            "who decides, what gets funded first, and what can wait."
         )
     elif iss:
         lo = iss.lower()
@@ -2514,67 +2630,163 @@ def _sparse_fallback_synthesis(
         )
     elif stg:
         p1 = (
-            f"Wherever you describe your situation ({stg}), the durable move is a short executive alignment on "
-            "risk appetite and pacing before spend or rollout hardens commitments you will revisit under scrutiny."
+            f"You described your situation ({stg[:140]}{'…' if len(stg) > 140 else ''})—"
+            "a short leadership check on timing and owners before budgets harden usually pays off."
         )
     else:
         p1 = (
-            "Leadership alignment on risk posture, pacing, and sequencing is what lets technology investments "
-            "compound instead of restarting every budget cycle."
+            "When leadership lines up on timing, trade-offs, and who decides, technology work tends to stick "
+            "instead of resetting every budget cycle."
         )
 
     p2 = (
-        "PulseOne advisers work beside executives through vendor-neutral evaluations, disciplined roadmapping, "
-        "and facilitation that keeps auditors, regulators, and boards grounded in coherent narratives — quarter "
-        "to quarter rather than heroic one-offs."
+        "PulseOne works alongside leadership on the practical stuff—sorting choices, sequencing the work, "
+        "and keeping finance, IT, and operations pointed the same direction as things move."
     )
     return f"{p1}\n\n{p2}"
 
 
-def _fallback_experience_items(industry: str, issue: str) -> list[dict[str, str]]:
-    """Hand-written capability list used whenever the AI call fails.
-
-    Stays deliberately generic when fields are omitted (sparse URLs).
-    """
+def _fallback_experience_items(
+    industry: str,
+    issue: str,
+    stage: str = "",
+    role: str = "",
+) -> list[dict[str, str]]:
+    """Capability list when AI is skipped or malformed — reflects stage/issue when cues match."""
     ind = (industry or "").strip() or "Organisation-wide"
     iss_note = (issue or "").strip() or "current technology posture"
-    return [
+    st = (stage or "").strip()
+    st_low = st.lower()
+
+    remoteish = any(
+        k in st_low
+        for k in (
+            "remote",
+            "branch",
+            "satellite",
+            "distributed",
+            "field office",
+            "regional office",
+            "multi-site",
+            "multisite",
+            "office",
+        )
+    )
+    supportish = any(
+        k in st_low for k in ("help desk", "helpdesk", "service desk", "servicedesk", "ticketing", "end-user", "end user")
+    )
+    monitorish = any(k in st_low for k in ("monitor", "alert", "noc", "rmm", "uptime", "patch"))
+    projectish = any(k in st_low for k in ("project", "rollout", "implementation", "deploy", "migration", "pmo"))
+    licenseish = any(
+        k in st_low for k in ("license", "licensing", "microsoft", "m365", "office 365", "true-up", "subscription")
+    ) or ("license" in (issue or "").lower())
+
+    rl = (role or "").strip()
+    subj_hint = f" for {rl} teams" if rl else ""
+    stage_ref = f' Aligned with your note: "{st[:180]}{"…" if len(st) > 180 else ""}".' if st else ""
+
+    items: list[dict[str, str]] = []
+
+    if remoteish or supportish:
+        items.append(
+            {
+                "title": "Multi-site & remote office support",
+                "description": (
+                    f"Dependable coverage for distributed locations — intake, routing, and ownership so "
+                    f"branch staff are not last in line for fixes{subj_hint}.{stage_ref}"
+                ),
+                "icon": "managed_services",
+            }
+        )
+    if supportish:
+        items.append(
+            {
+                "title": "Help desk & service desk",
+                "description": (
+                    "Tiered end-user support, clear SLAs, and escalation paths — co-managed with your team "
+                    "or operated on your behalf, sized to your volume."
+                ),
+                "icon": "managed_services",
+            }
+        )
+    if monitorish or remoteish:
+        items.append(
+            {
+                "title": "Proactive monitoring & platform health",
+                "description": (
+                    "Availability, backup, and patch posture watched with alerts that surface what matters "
+                    "to executives — not noise dashboards."
+                ),
+                "icon": "continuity",
+            }
+        )
+    if licenseish:
+        items.append(
+            {
+                "title": "Platform & licensing clarity",
+                "description": (
+                    f"Inventory, usage, and cost discipline on {iss_note} — so renewals and true-ups "
+                    "do not surprise finance or operations."
+                ),
+                "icon": "procurement",
+            }
+        )
+    if projectish:
+        items.append(
+            {
+                "title": "Project management & delivery governance",
+                "description": (
+                    "Milestones, dependencies, and vendor coordination for rollouts — one plan finance, IT, "
+                    "and operations can track together."
+                ),
+                "icon": "advisory",
+            }
+        )
+
+    classic: list[dict[str, str]] = [
         {
-            "title": f"{ind} maturity assessment",
+            "title": f"{ind} maturity & readiness assessment",
             "description": (
-                f"A vendor-neutral review of where you sit relative to peer practice on "
-                f"{iss_note} — framed for executive and board audiences, not a product pitch."
+                f"A vendor-neutral read of where you sit on {iss_note} — framed for executives and boards, "
+                "not a product pitch."
             ),
             "icon": "assessment",
         },
         {
             "title": "Strategic technology advisory",
             "description": (
-                "A standing PulseOne advisor for your leadership team — quarterly "
-                "deep-dives, monthly check-ins, and on-call sounding-board access "
-                "for the decisions that don't fit on a roadmap."
+                "A standing PulseOne advisor for your leadership team — quarterly deep-dives, monthly check-ins, "
+                "and on-call counsel for decisions that do not fit neatly on a roadmap."
             ),
             "icon": "advisory",
         },
         {
             "title": "Governance & risk build-out",
             "description": (
-                "We design and stand up the policies, decision rights, and review "
-                "cadences your organisation needs so technology choices stay "
-                "defensible to auditors, regulators, and the board."
+                "Policies, decision rights, and review cadences so technology choices stay defensible to "
+                "auditors, regulators, and the board."
             ),
             "icon": "governance",
         },
         {
             "title": "Managed services & co-sourcing",
             "description": (
-                "Where it makes sense, our team becomes an extension of yours — "
-                "running the day-to-day so your internal staff can focus on the "
-                "strategic work only they can do."
+                "Where it makes sense, our team runs day-to-day operations alongside yours — so internal "
+                "staff stay focused on the strategic work only they can do."
             ),
             "icon": "managed_services",
         },
     ]
+
+    seen_titles: set[str] = {x["title"] for x in items}
+    for c in classic:
+        if len(items) >= 4:
+            break
+        if c["title"] not in seen_titles:
+            items.append(c)
+            seen_titles.add(c["title"])
+
+    return items[:4]
 
 
 def bullets_from_compact_prose(
@@ -2759,13 +2971,21 @@ def generate_path_synthesis(
     bf_brief, bf_posture, _bf_brief_bullets, _bf_posture_bullets = offline_watch_slice_copy(
         r, i, ro, issue_s, st, radar_topics_list
     )
-    synthesis_cards_fb = _coerce_synthesis_cards(None, synthesis_fb)
+    synthesis_cards_fb = _coerce_synthesis_cards(
+        None,
+        synthesis_fb,
+        region=r,
+        industry=i,
+        role=ro,
+        issue=issue_s,
+        stage=st,
+    )
     fallback: dict[str, object] = {
         "headline": _sparse_fallback_headline(r, i, ro, issue_s, st),
         "synthesis": synthesis_fb,
         "synthesis_html": _paragraphs_to_html(synthesis_fb),
         "synthesis_cards": synthesis_cards_fb,
-        "experience_items": _fallback_experience_items(i, issue_s),
+        "experience_items": _fallback_experience_items(i, issue_s, st, ro),
         "watch_brief": bf_brief,
         "watch_posture": bf_posture,
         "watch_story_hooks": [],
@@ -2839,13 +3059,21 @@ def generate_path_synthesis(
             if not wp.strip():
                 wp = bf2_posture
 
-        synthesis_cards = _coerce_synthesis_cards(data.get("synthesis_cards"), synthesis)
+        synthesis_cards = _coerce_synthesis_cards(
+            data.get("synthesis_cards"),
+            synthesis,
+            region=r,
+            industry=i,
+            role=ro,
+            issue=issue_s,
+            stage=st,
+        )
         out: dict[str, object] = {
             "headline": headline[:240],
             "synthesis": synthesis,
             "synthesis_html": _paragraphs_to_html(synthesis),
             "synthesis_cards": synthesis_cards,
-            "experience_items": experience_items or _fallback_experience_items(i, issue_s),
+            "experience_items": experience_items or _fallback_experience_items(i, issue_s, st, ro),
             "watch_brief": wb.strip(),
             "watch_posture": wp.strip(),
             "watch_story_hooks": hooks_raw,
@@ -2894,13 +3122,10 @@ def generate_everyone_overview(db: Session) -> dict[str, str]:
 
     fallback_synthesis = (
         "Across the PulseOne radar this week, leadership teams are balancing "
-        "accelerating AI adoption pressure with the operational reality of "
-        "cybersecurity, compliance, and infrastructure modernisation. The themes "
-        "most boards are circling back to are governance, identity, and the "
-        "speed-versus-control tradeoff inside everyday workflows.\n\n"
-        "A practical next step for any executive is to align the leadership team "
-        "on risk appetite and decision rights before the next vendor or tooling "
-        "decision — then validate posture against your roadmap on a quarterly cadence."
+        "pressure to move faster on AI with the day-to-day work of security, compliance, and keeping core systems dependable. "
+        "The themes most people revisit are governance, identity, and how much change the organization can absorb at once.\n\n"
+        "A practical next step is to get the leadership team on the same page about timing and decision rights before the "
+        "next big vendor or tool choice—then revisit the plan each quarter so it still matches reality."
     )
     fallback = {
         "headline": "Where C-suite attention is concentrated on the radar right now",

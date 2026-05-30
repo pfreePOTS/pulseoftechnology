@@ -7,15 +7,35 @@ import { useEffect, useRef, useState } from "react";
 import type { RecommendedCaseStudy } from "@/lib/recommendedPathCaseStudies";
 import { recommendedCaseStudiesForIndustry } from "@/lib/recommendedPathCaseStudies";
 
+function cardProblem(cs: RecommendedCaseStudy): string {
+  return cs.problem?.trim() || cs.title;
+}
+
+function cardWho(cs: RecommendedCaseStudy): string {
+  if (cs.who?.trim()) return cs.who.trim();
+  const t = cs.teaser?.replace(/\s*[—–-]\s*illustrative.*$/i, "").trim();
+  return t || "Leadership and technology stakeholders";
+}
+
+function cardProvided(cs: RecommendedCaseStudy): string {
+  if (cs.provided?.trim()) return cs.provided.trim();
+  const sol = cs.solution?.trim();
+  if (sol) {
+    const first = sol.split(/(?<=[.!?])\s+/)[0]?.trim();
+    if (first && first.length > 24) {
+      return first.length > 220 ? `${first.slice(0, 217).trimEnd()}…` : first;
+    }
+  }
+  const t = cs.teaser?.replace(/\s*[—–-]\s*illustrative.*$/i, "").trim();
+  return t?.length ? `${t.charAt(0).toUpperCase()}${t.slice(1)}` : "Advisory delivery, disciplined execution, and steady-state support.";
+}
+
 export default function RecommendedPathCaseStudies({
   industry,
-  issue,
 }: {
   industry?: string;
-  issue?: string;
 }) {
   const studies = recommendedCaseStudiesForIndustry(industry);
-  const issueLead = issueLeadFromIntake(issue);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [active, setActive] = useState<RecommendedCaseStudy | null>(null);
 
@@ -41,21 +61,20 @@ export default function RecommendedPathCaseStudies({
     if (e.target === e.currentTarget) setActive(null);
   };
 
+  const industryName = industry?.trim();
+  const body = industryName
+    ? `This is the kind of work we do in ${industryName}.`
+    : "This is the kind of work we do for organisations like yours.";
+
   return (
     <section className="border-b border-[#e0e0e0] bg-[#f4f8fa] px-8 py-16 md:py-20">
       <div className="mx-auto max-w-[1100px]">
         <div className="mb-10 text-center">
           <span className="mb-3 block font-sans text-[13px] font-semibold tracking-[3px] text-pulse-teal uppercase">
-            Case Studies
+            Engagements
           </span>
-          <h2 className="font-sans text-[38px] font-bold tracking-tight text-[#1a1a1a]">
-            Illustrative engagements
-          </h2>
-          <p className="mx-auto mt-2 max-w-[640px] font-sans text-base leading-relaxed text-[#646464]">
-            {industry
-              ? `${issueLead}These are illustrative composites—examples of projects we steer on ${industry.trim()} mandates, not transcripts of named clients. Open a card for approach, solution, and how PulseOne tends to plug in.`
-              : `${issueLead}Illustrative composites—examples tuned to mandates like yours, not named-client writeups. Tap a card for detail; later this section can hydrate from your knowledgebase.`}
-          </p>
+          <h2 className="font-sans text-[38px] font-bold tracking-tight text-[#1a1a1a]">PulseOne in Action</h2>
+          <p className="mx-auto mt-2 max-w-[640px] font-sans text-base leading-relaxed text-[#646464]">{body}</p>
         </div>
 
         <ul className="mx-auto grid max-w-[1040px] gap-7 sm:grid-cols-2 lg:grid-cols-3">
@@ -83,9 +102,16 @@ export default function RecommendedPathCaseStudies({
                   </div>
                 </div>
                 <span className="flex flex-1 flex-col px-5 py-4">
-                  <span className="font-sans text-[17px] font-semibold leading-snug text-[#111]">{cs.title}</span>
-                  <span className="mt-2 block flex-1 font-sans text-[14px] leading-relaxed text-[#555]">
-                    {cs.teaser}
+                  <span className="font-sans text-[16px] font-bold leading-snug text-[#111]">{cardProblem(cs)}</span>
+                  <span className="mt-3 block font-sans text-[12px] font-semibold uppercase tracking-[1.5px] text-pulse-teal">
+                    Who we helped
+                  </span>
+                  <span className="mt-1 block font-sans text-[14px] leading-relaxed text-[#555]">{cardWho(cs)}</span>
+                  <span className="mt-3 block font-sans text-[12px] font-semibold uppercase tracking-[1.5px] text-pulse-teal">
+                    What we provided
+                  </span>
+                  <span className="mt-1 block flex-1 font-sans text-[14px] leading-relaxed text-[#555]">
+                    {cardProvided(cs)}
                   </span>
                   <span className="mt-4 font-sans text-[13px] font-semibold text-pulse-teal">View detail</span>
                 </span>
@@ -101,7 +127,7 @@ export default function RecommendedPathCaseStudies({
         aria-labelledby="case-study-modal-title"
         className="m-0 max-h-[92vh] w-[min(560px,96vw)] overflow-hidden rounded-xl border border-[#e0e0e0] bg-white p-0 text-[#111] shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm open:flex open:flex-col open:fixed open:inset-0 open:m-auto"
       >
-        {active ? (
+        {active ?
           <>
             <div className="flex items-start justify-between gap-3 border-b border-[#e8e8e8] bg-[#fafcfc] px-6 py-4">
               <h3 id="case-study-modal-title" className="font-sans text-lg font-bold leading-snug text-[#111]">
@@ -117,23 +143,18 @@ export default function RecommendedPathCaseStudies({
               </button>
             </div>
             <div className="max-h-[calc(92vh-4.5rem)] overflow-y-auto px-6 py-5">
-              <ModalBlock label="Approach" text={active.approach} />
-              <ModalBlock label="Solution" text={active.solution} />
-              <ModalBlock label="How we helped" text={active.howWeHelped} isLast />
+              <ModalBlock label="Problem" text={cardProblem(active)} />
+              <ModalBlock label="Who we helped" text={cardWho(active)} />
+              <ModalBlock label="What we provided" text={cardProvided(active)} />
+              <ModalBlock label="How we approached it" text={active.approach} />
+              <ModalBlock label="Solution shape" text={active.solution} />
+              <ModalBlock label="How PulseOne plugged in" text={active.howWeHelped} isLast />
             </div>
           </>
-        ) : null}
+        : null}
       </dialog>
     </section>
   );
-}
-
-function issueLeadFromIntake(issue: string | undefined): string {
-  const t = issue?.trim();
-  if (!t) return "";
-  const max = 110;
-  const shown = t.length <= max ? t : `${t.slice(0, max - 1).trimEnd()}…`;
-  return `Reflecting priorities you shared (“${shown}”), `;
 }
 
 function ModalBlock({ label, text, isLast }: { label: string; text: string; isLast?: boolean }) {

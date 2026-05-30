@@ -5,7 +5,7 @@ from functools import partial
 
 import jwt
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, field_validator, model_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
@@ -30,6 +30,11 @@ from ..services.newsletter_selection import (
     RECOMMENDED_PATH_ARTICLE_LOOKBACK,
     recommended_path_topic_total_rank,
     resolve_role_names_from_intake,
+)
+from ..services.recommended_path_card_images import attach_hero_urls
+from ..services.recommended_path_process_card_library import (
+    is_valid_section_slug,
+    lookup_library_row,
 )
 from ..services.subscriber_tokens import decode_subscriber_preferences_token
 from ..services.tracked_article_filter import article_qualifies_pulse_tracked_surface
@@ -230,6 +235,8 @@ class RecommendedWatchStoryOut(BaseModel):
     hook: str
     radar_topic_name: str
     domain: str
+    # RSS / ingest thumbnail (same pool as public radar and newsletter cards)
+    image_url: str | None = None
 
 
 class SynthesisCardOut(BaseModel):
@@ -237,6 +244,7 @@ class SynthesisCardOut(BaseModel):
 
     title: str
     bullets: list[str]
+    hero_image_url: str | None = None
 
 
 class RecommendedPathOut(BaseModel):
@@ -249,6 +257,12 @@ class RecommendedPathOut(BaseModel):
     content_items: list[RecommendedContentOut]
     watch_brief: str
     watch_posture: str
+    watch_stories: list[RecommendedWatchStoryOut]
+
+
+class RecommendedWatchStoriesOut(BaseModel):
+    """Follow-up payload for hydrated Pulse article rows (`defer_articles` on main path)."""
+
     watch_stories: list[RecommendedWatchStoryOut]
 
 
@@ -556,6 +570,10 @@ def record_survey(
     return HTMLResponse(content=html)
 
 
+# Each candidate runs ``recommended_path_topic_total_rank``, which queries recent articles — cap the
+# pool so recommended-path avoids ~100+ sequential DB round-trips before the LLM runs.
+_RECOMMENDED_PATH_TOPIC_RANK_POOL_CAP = 48
+
 ISSUE_DOMAINS: dict[str, list[str]] = {
     "Cybersecurity": ["Security"],
     "AI": ["AI"],
@@ -603,6 +621,21 @@ def _domains_for_intake_issue(issue: str) -> list[str]:
     if any(k in lo for k in ("compliance", "regulation", "hipaa", "sox ", "privacy law")):
         guessed.extend(["Finance", "Security"])
     if any(k in lo for k in ("cloud", "aws", "azure", "saas", "infrastructure")):
+        guessed.append("Cloud")
+    # Microsoft / productivity licensing often appears as its own intake label but maps to Cloud on the radar.
+    if any(
+        k in lo
+        for k in (
+            "microsoft",
+            "m365",
+            "office 365",
+            "office365",
+            "license",
+            "licensing",
+            "entra",
+            "copilot",
+        )
+    ):
         guessed.append("Cloud")
     if any(k in lo for k in ("leadership", "board", "strategy", "culture")):
         guessed.append("Leadership")
@@ -655,38 +688,181 @@ def _domains_for_intake(issue: str, stage: str) -> list[str]:
     return merged
 
 
+def _article_has_thumbnail(a: Article) -> bool:
+    return bool((a.image_url or "").strip())
+
+
+def _newest_article_for_topic(
+    db: Session, topic_id: int, used_ids: set[int]
+) -> Article | None:
+    """Prefer newest published article with an ingest thumbnail; else newest without."""
+    base = db.query(Article).filter(
+        Article.topic_id == topic_id,
+        Article.status == ArticleStatus.published,
+        Article.archived_at.is_(None),
+    )
+    if used_ids:
+        base = base.filter(Article.id.notin_(used_ids))
+    order = (Article.published_at.desc().nullslast(), Article.ingested_at.desc())
+    with_img = (
+        base.filter(Article.image_url.isnot(None), Article.image_url != "")
+        .order_by(*order)
+        .first()
+    )
+    if with_img is not None:
+        return with_img
+    return base.order_by(*order).first()
+
+
 def _articles_for_watch_stories(
-    db: Session, topics: list[Topic], *, limit: int = 2
+    db: Session, topics: list[Topic], *, limit: int = 5
 ) -> list[tuple[Topic, Article]]:
-    """Most recent published articles per prioritized topic."""
+    """Recent published Pulse articles aligned to intake themes, with thumbnail preferred.
+
+    Many feeds omit images until OG backfill runs, so we **prefer** ``Article.image_url`` but
+    still return text-only stories so the watch list is populated (UI hides the thumb when absent).
+    """
     if limit < 1 or not topics:
         return []
 
+    topic_ids = [t.id for t in topics]
+    topics_by_id: dict[int, Topic] = {t.id: t for t in topics}
+    used_ids: set[int] = set()
     pairs: list[tuple[Topic, Article]] = []
-    used_article_ids: set[int] = set()
 
-    for round_idx in range(4):
-        for t in topics:
+    def _thumb_sort_key(a: Article) -> tuple[int, float]:
+        has = 0 if _article_has_thumbnail(a) else 1
+        pt = a.published_at
+        ts = pt.timestamp() if pt is not None else 0.0
+        return (has, -ts)
+
+    # 1) One newest article per intake-aligned topic (thumbnail first when both exist)
+    for t in topics:
+        if len(pairs) >= limit:
+            break
+        hit = _newest_article_for_topic(db, t.id, used_ids)
+        if hit is None or hit.id in used_ids:
+            continue
+        used_ids.add(hit.id)
+        pairs.append((t, hit))
+
+    # 2) Fill from remaining stories on those topics (prefer thumbnails, then recency)
+    if len(pairs) < limit:
+        need = limit - len(pairs)
+        q = db.query(Article).filter(
+            Article.topic_id.in_(topic_ids),
+            Article.status == ArticleStatus.published,
+            Article.archived_at.is_(None),
+        )
+        if used_ids:
+            q = q.filter(Article.id.notin_(used_ids))
+        candidates = q.order_by(
+            Article.published_at.desc().nullslast(), Article.ingested_at.desc()
+        ).limit(max(need * 8, 24)).all()
+        candidates.sort(key=_thumb_sort_key)
+        for hit in candidates:
             if len(pairs) >= limit:
                 break
-            hit = (
-                db.query(Article)
-                .filter(
-                    Article.topic_id == t.id,
-                    Article.status == ArticleStatus.published,
-                    Article.archived_at.is_(None),
-                )
-                .order_by(Article.published_at.desc().nullslast(), Article.ingested_at.desc())
-                .offset(round_idx)
-                .limit(1)
-                .first()
-            )
-            if hit is None or hit.id in used_article_ids:
+            if hit.id in used_ids:
                 continue
-            used_article_ids.add(hit.id)
-            pairs.append((t, hit))
+            top = topics_by_id.get(hit.topic_id or 0)
+            if top is None:
+                continue
+            used_ids.add(hit.id)
+            pairs.append((top, hit))
+
+    # 3) Last resort: newest published-on-radar stories (Pulse-wide), thumbnails first
+    if len(pairs) < limit:
+        need = limit - len(pairs)
+        q = (
+            db.query(Article)
+            .join(Topic, Article.topic_id == Topic.id)
+            .filter(
+                Topic.is_published == True,  # noqa: E712
+                Article.status == ArticleStatus.published,
+                Article.archived_at.is_(None),
+            )
+        )
+        if used_ids:
+            q = q.filter(Article.id.notin_(used_ids))
+        candidates = q.order_by(
+            Article.published_at.desc().nullslast(), Article.ingested_at.desc()
+        ).limit(max(need * 12, 36)).all()
+        candidates.sort(key=_thumb_sort_key)
+        for hit in candidates:
+            if len(pairs) >= limit:
+                break
+            if hit.id in used_ids:
+                continue
+            top = hit.topic
+            if top is None or not top.is_published:
+                continue
+            used_ids.add(hit.id)
+            pairs.append((top, hit))
 
     return pairs[:limit]
+
+
+def _recommended_path_require_stage(
+    *,
+    region: str,
+    industry: str,
+    role: str,
+    issue: str,
+    stage: str,
+) -> str:
+    facets = [
+        (region or "").strip(),
+        (industry or "").strip(),
+        (role or "").strip(),
+        (issue or "").strip(),
+        (stage or "").strip(),
+    ]
+    if not any(facets):
+        raise HTTPException(
+            status_code=400,
+            detail="Provide at least one intake field among region, industry, role, issue, stage.",
+        )
+    return (stage or "").strip()
+
+
+def _recommended_watch_story_rows(
+    watch_pairs: list[tuple[Topic, Article]],
+    hooks_list: list[object] | None,
+) -> list[RecommendedWatchStoryOut]:
+    hooks = hooks_list or []
+    rows: list[RecommendedWatchStoryOut] = []
+    for idx, (topic_o, article_o) in enumerate(watch_pairs):
+        hook_txt = ""
+        if idx < len(hooks) and str(hooks[idx]).strip():
+            hook_txt = str(hooks[idx]).strip()
+        else:
+            hook_txt = fallback_story_teaser(article_o)
+        rows.append(
+            RecommendedWatchStoryOut(
+                title=article_o.title,
+                url=article_o.url,
+                hook=hook_txt[:720],
+                radar_topic_name=topic_o.name,
+                domain=topic_o.domain,
+                image_url=(article_o.image_url or "").strip() or None,
+            )
+        )
+    return rows
+
+
+def _watch_stories_payload_for_intake(
+    db: Session,
+    issue: str,
+    industry: str,
+    role: str,
+    stg: str,
+    *,
+    hooks_list: list[object] | None,
+) -> list[RecommendedWatchStoryOut]:
+    topics = _topics_for_recommended(db, issue, industry, role, stg, limit=6)
+    pairs = _articles_for_watch_stories(db, topics, limit=5)
+    return _recommended_watch_story_rows(pairs, hooks_list)
 
 
 def _topics_for_recommended(
@@ -708,7 +884,8 @@ def _topics_for_recommended(
     if domains:
         scoped_q = scoped_q.filter(Topic.domain.in_(domains))
 
-    candidates = scoped_q.order_by(Topic.urgency_score.desc()).limit(max(limit * 28, 36)).all()
+    rank_pool = min(max(limit * 28, 36), _RECOMMENDED_PATH_TOPIC_RANK_POOL_CAP)
+    candidates = scoped_q.order_by(Topic.urgency_score.desc()).limit(rank_pool).all()
 
     fallback_pool: list[Topic] = []
     if domains and len(candidates) < limit:
@@ -787,26 +964,22 @@ def recommended_path(
         False,
         description="Return deterministic headline, synthesis, and experience cards without calling the LLM (for SSR fallback when the model path is slow or unavailable).",
     ),
+    defer_articles: bool = Query(
+        False,
+        description="Skip loading ingested Pulse story rows server-side so the payload returns faster; use GET /api/recommended-path/watch-stories with the same intake to hydrate.",
+    ),
     db: Session = Depends(get_db),
 ):
     """Personalized headline + synthesis (Claude), matching radar topics, and curated content.
 
     Any subset of query params may be supplied; at least one non-empty facet is required."""
-    facets = [
-        (region or "").strip(),
-        (industry or "").strip(),
-        (role or "").strip(),
-        (issue or "").strip(),
-        (stage or "").strip(),
-    ]
-    if not any(facets):
-        raise HTTPException(
-            status_code=400,
-            detail="Provide at least one intake field among region, industry, role, issue, stage.",
-        )
-    stg = (stage or "").strip()
-    topics = _topics_for_recommended(db, issue, industry, role, stg, limit=4)
-    watch_pairs = _articles_for_watch_stories(db, topics, limit=2)
+    stg = _recommended_path_require_stage(
+        region=region, industry=industry, role=role, issue=issue, stage=stage
+    )
+    topics = _topics_for_recommended(db, issue, industry, role, stg, limit=6)
+    watch_pairs: list[tuple[Topic, Article]] = []
+    if not defer_articles:
+        watch_pairs = _articles_for_watch_stories(db, topics, limit=5)
     syn = generate_path_synthesis(
         db,
         region,
@@ -829,25 +1002,11 @@ def recommended_path(
         for e in raw_experience
         if isinstance(e, dict) and e.get("title") and e.get("description")
     ]
-    hooks = syn.get("watch_story_hooks") or []
-    hooks_list = hooks if isinstance(hooks, list) else []
-    watch_stories_out: list[RecommendedWatchStoryOut] = []
-    for idx, pair in enumerate(watch_pairs):
-        topic_o, article_o = pair
-        hook_txt = ""
-        if idx < len(hooks_list) and str(hooks_list[idx]).strip():
-            hook_txt = str(hooks_list[idx]).strip()
-        else:
-            hook_txt = fallback_story_teaser(article_o)
-        watch_stories_out.append(
-            RecommendedWatchStoryOut(
-                title=article_o.title,
-                url=article_o.url,
-                hook=hook_txt[:720],
-                radar_topic_name=topic_o.name,
-                domain=topic_o.domain,
-            )
-        )
+    hooks_raw = syn.get("watch_story_hooks") or []
+    hooks_objs: list[object] | None = hooks_raw if isinstance(hooks_raw, list) else None
+    watch_stories_out: list[RecommendedWatchStoryOut] = (
+        [] if defer_articles else _recommended_watch_story_rows(watch_pairs, hooks_objs)
+    )
     raw_cards = syn.get("synthesis_cards") or []
     synthesis_cards_out: list[SynthesisCardOut] = []
     if isinstance(raw_cards, list):
@@ -864,7 +1023,15 @@ def recommended_path(
             synthesis_cards_out.append(SynthesisCardOut(title=t[:200], bullets=blist[:8]))
 
     if not synthesis_cards_out and str(syn.get("synthesis", "")).strip():
-        healed = _coerce_synthesis_cards(None, str(syn["synthesis"]))
+        healed = _coerce_synthesis_cards(
+            None,
+            str(syn["synthesis"]),
+            region=region,
+            industry=industry,
+            role=role,
+            issue=issue,
+            stage=stage,
+        )
         for row in healed:
             if not isinstance(row, dict):
                 continue
@@ -876,6 +1043,20 @@ def recommended_path(
             if len(blist) < 2:
                 continue
             synthesis_cards_out.append(SynthesisCardOut(title=t[:200], bullets=blist[:8]))
+
+    heroes = attach_hero_urls(
+        db=db,
+        cards=[(c.title, list(c.bullets)) for c in synthesis_cards_out],
+        region=region,
+        industry=industry,
+        role=role,
+        issue=issue,
+        stage=stg,
+        skip_ai=skip_ai,
+    )
+    synthesis_cards_out = [
+        card.model_copy(update={"hero_image_url": url}) for card, url in zip(synthesis_cards_out, heroes, strict=True)
+    ]
 
     return RecommendedPathOut(
         headline=str(syn["headline"]),
@@ -909,6 +1090,50 @@ def recommended_path(
             for ci in items
         ],
     )
+
+
+@router.get("/recommended-path/process-card-images/{industry_slug}/{section_slug}")
+def recommended_path_process_card_image(
+    industry_slug: str,
+    section_slug: str,
+    db: Session = Depends(get_db),
+):
+    """Public binary for pre-rendered ``(industry, section)`` Our Process banners (seeded library)."""
+    if not is_valid_section_slug(section_slug):
+        raise HTTPException(status_code=404, detail="Not found")
+    row = lookup_library_row(
+        db,
+        industry_slug_value=industry_slug,
+        section_slug_value=section_slug,
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    etag = f'"{row.industry_slug}-{row.section_slug}-v{row.version}"'
+    return Response(
+        content=row.image_blob,
+        media_type=row.mime_type,
+        headers={
+            "Cache-Control": "public, max-age=2592000, immutable",
+            "ETag": etag,
+        },
+    )
+
+
+@router.get("/recommended-path/watch-stories", response_model=RecommendedWatchStoriesOut)
+def recommended_path_watch_stories(
+    region: str = Query("", max_length=500),
+    industry: str = Query("", max_length=500),
+    role: str = Query("", max_length=500),
+    issue: str = Query("", max_length=500),
+    stage: str = Query("", max_length=8000),
+    db: Session = Depends(get_db),
+):
+    """Hydrate ingested Pulse story rows for `/recommended-path` when the main response used ``defer_articles``."""
+    stg = _recommended_path_require_stage(
+        region=region, industry=industry, role=role, issue=issue, stage=stage
+    )
+    stories = _watch_stories_payload_for_intake(db, issue, industry, role, stg, hooks_list=None)
+    return RecommendedWatchStoriesOut(watch_stories=stories)
 
 
 @router.get("/everyone-overview", response_model=EveryoneOverviewOut)

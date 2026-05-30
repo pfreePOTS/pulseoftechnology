@@ -21,6 +21,7 @@ main_mod.bootstrap_first_admin_if_empty = lambda: None  # type: ignore[assignmen
 
 from fastapi.testclient import TestClient  # noqa: E402
 
+import backend.models  # noqa: F401,E402 — register models on Base.metadata before create_all
 from backend.database import Base, get_db  # noqa: E402
 from backend.dependencies import hash_password  # noqa: E402
 from backend.main import app  # noqa: E402

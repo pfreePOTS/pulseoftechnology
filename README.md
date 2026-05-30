@@ -199,6 +199,10 @@ pulseoftechnology/
 | `DEEPSEEK_BASE_URL`    | `https://api.deepseek.com` | API base URL                             |
 | `DEEPSEEK_MODEL`       | `deepseek-v4-pro`  | Default DeepSeek model id (`deepseek-v4-flash` for throughput) |
 | `ANTHROPIC_API_KEY`    | —                  | Optional **Anthropic Claude** fallback, or standalone LLM if DeepSeek key is omitted |
+| `OPENAI_API_KEY`       | —                  | Optional **OpenAI** (Images API) — used **only** by `backend/scripts/seed_process_card_library.py` to pre-render the Our Process card library (industry × section). Stored as BYTEA in Postgres; served from `GET /api/recommended-path/process-card-images/{industry_slug}/{section_slug}`. The request path never calls OpenAI. |
+| `RECOMMENDED_PATH_SYNTHESIS_IMAGES_ENABLED` | `true` | Set `false` to skip banner generation while keeping deterministic path/synthesis intact |
+| `RECOMMENDED_PATH_SYNTHESIS_IMAGE_MODEL` | `gpt-image-1` | OpenAI Images model for synthesis card banners |
+| `RECOMMENDED_PATH_SYNTHESIS_IMAGE_SIZE` | `1536x1024` | Landscape banner size for `gpt-image-1` |
 | `ADMIN_PASSWORD`       | `pulseadmin`       | Password for the **bootstrap** superuser when `admin_users` is empty (with `FIRST_ADMIN_EMAIL`) |
 | `FIRST_ADMIN_EMAIL`    | `pulseoneadmin@pulseone.local` | Login email for that bootstrap account (short name `pulseoneadmin` also works) |
 | `ADMIN_JWT_SECRET`     | (see `.env.example`) | HS256 signing key for admin JWT sessions |

@@ -17,4 +17,6 @@ EXPOSE 8000
 
 # Apply DB migrations before API (keeps schema in sync when models gain columns)
 # Exclude tests from reload watch to avoid scheduler/API restarts while editing pytest files
-CMD ["sh", "-c", "cd /app/backend && alembic upgrade head && exec python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload --reload-exclude backend/tests/** --timeout-graceful-shutdown 30"]
+# Graceful shutdown: allow in-flight LLM / slow routes to finish when --reload triggers a restart
+# (frontend NEXT_PROXY_TIMEOUT_MS is 180s for /api/recommended-path).
+CMD ["sh", "-c", "cd /app/backend && alembic upgrade head && exec python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload --reload-exclude backend/tests/** --timeout-graceful-shutdown 180"]

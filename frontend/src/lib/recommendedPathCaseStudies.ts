@@ -8,7 +8,13 @@ import type { IndustryOption } from "@/lib/industryGrid";
 export type RecommendedCaseStudy = {
   id: string;
   title: string;
-  teaser: string;
+  /** Optional short teaser; card front prefers `problem`, `who`, `provided` when present. */
+  teaser?: string;
+  /** Plain-language card fronts (recommended). */
+  problem?: string;
+  who?: string;
+  /** What PulseOne supplied or operates. */
+  provided?: string;
   approach: string;
   solution: string;
   howWeHelped: string;
@@ -325,39 +331,42 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
   Education: [
     {
       id: "ops-ai-sequencing",
-      title: "Teaching and advising copilots with FERPA boundaries",
-      teaser:
-        "Provost office exploring tutoring AI without grading-policy drift — illustrative composite.",
+      title: "Remote offices were stuck in the ticket queue.",
+      problem: "Branch campuses waited too long on fixes; escalation paths differed site by site.",
+      who: "CFO-backed IT lead for a multi-site college system.",
+      provided: "One help desk model, routing rules, and remote hands aligned to school hours.",
       approach:
-        "Data minimization upfront; instructor attestation gates; LMS integration paths that didn’t sprawl identifiers.",
+        "We mapped intake channels, SLA expectations by site size, and which issues stay local versus central — before changing tools.",
       solution:
-        "Campus cohort pilots with KPIs spanning completion and faculty hours; rollback aligned to accreditation concerns.",
+        "Shared queue, playbook for common endpoints, after-hours bridge for outages, metrics the CFO sees monthly.",
       howWeHelped:
-        "Bridged IR, accessibility, IT, and instructional design; scripted vendor neutrality in selection.",
+        "Ran the cutover with your team; trained site liaisons; left runbooks so you could scale without reopening turf battles.",
     },
     {
       id: "governance-sprint",
-      title: "Identity and vendor posture before research-grant audits",
-      teaser:
-        "CISO unifying SSO gaps and unmanaged SaaS shadow IT — illustrative example.",
+      title: "Microsoft licensing and audits were opaque to finance.",
+      problem: "True-up risk and SaaS sprawl meant renewal numbers did not match how staff actually worked.",
+      who: "CFO plus IT procurement for an education nonprofit.",
+      provided: "Entitlement baseline, reclaim path, and contract language checklist for renewals.",
       approach:
-        "Risk stories tied to research data classes and HIPAA-adjacent clinics on shared networks.",
+        "Inventory matched to HR and SSO reality — not spreadsheets from three years ago.",
       solution:
-        "Phased SSO and CASB uplift with capex overlays; quarterly vendor reviews departmental chairs could grasp.",
+        "Sized subs by role cohort, phased reclamation, dashboards finance could defend in budget cycles.",
       howWeHelped:
-        "Ran exercises with sponsored programs office; aligned narratives grantors repeatedly probe.",
+        "Sat with procurement and academics so cuts did not strand classrooms; mediated vendor conversations without locking you into SKU sprawl.",
     },
     {
       id: "fractional-office",
-      title: "Portfolio office aligning campus IT and auxiliary enterprises",
-      teaser:
-        "CIO juggling housing systems, athletics platforms, and core SIS modernization — illustrative composite.",
+      title: "A network refresh overlapped classroom go-live.",
+      problem: "Two initiatives shared the same change windows — outage risk during term.",
+      who: "CIO program office and facilities.",
+      provided: "Single PM-led schedule with executive readouts and cutover rehearsals.",
       approach:
-        "Executive intake prioritized student-facing continuity over internal convenience projects.",
+        "Dependencies written in calendar terms leadership understood — not Gantt jargon.",
       solution:
-        "Quarterly horizons with interoperability scorecards across vendors; RACI bridging auxiliaries and central IT.",
+        "Frozen windows during exams, parallel paths where safe, rollback tested once per building.",
       howWeHelped:
-        "Mediated turf issues with transparent capacity model; tightened steering docs before board cycles.",
+        "Chaired weekly triage until both tracks landed; transferred ownership before we stepped back.",
     },
   ],
   Telecommunications: [

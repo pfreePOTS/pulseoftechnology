@@ -1,0 +1,2 @@
+# One-off tooling to (re)generate synthesis card banner JPEGs. Not used by Next build.
+pillow>=10.0,<12

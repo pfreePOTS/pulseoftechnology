@@ -1,9 +1,11 @@
+import { synthesisBannerVariantV } from "@/lib/synthesisBannerVariants";
+
 /**
  * Horizontal band assets for intake “Focus” (URL `issue`), layered under the industry band
  * on “What we think” synthesis cards.
  *
- * Files: `public/images/synthesis-focus/{slug}.jpg` — aligns with `ExecutiveIntakeForm` ISSUES[].value,
- * plus lightweight substring hints for free-text “Other” answers (parity with `_domains_for_intake_issue`).
+ * Files: ``public/images/synthesis-focus/{slug}-v{1…N}.jpg`` — aligns with ISSUES[].value + title hints.
+ * **Asset spec:** **1600×1000** (8:5) JPEG — see `frontend/scripts/README_SYNTHESIS_BANNERS.md`.
  */
 
 export type SynthesisFocusBannerSlug =
@@ -45,6 +47,10 @@ export function synthesisFocusBannerSlug(issueRaw: string): SynthesisFocusBanner
   if (/compliance|\b(sox|hipaa|cisa|privacy law|audit)\b|regulator/.test(lo)) return "compliance";
   if (/\b(aws|azure|gcp|saas|kubernetes|infra|cloud)\b/.test(lo)) return "cloud";
   if (/it\s*management|\bmsp\b|\bhelp\s*desk|\bservice\s*desk/.test(lo)) return "it-management";
+  if (
+    /\bmicrosoft\b|\blicense\b|\bm365\b|\boffice\s*365\b|\bo365\b|\bentra\b/i.test(trimmed)
+  )
+    return "it-management";
   if (/\bleadership\b|\b(board|culture|cio|cto)\b|long[\s-]*term\s*strategy|technology\s*strategy/.test(lo)) {
     return "strategy";
   }
@@ -52,14 +58,15 @@ export function synthesisFocusBannerSlug(issueRaw: string): SynthesisFocusBanner
   return null;
 }
 
-export function synthesisFocusBannerSrc(issueRaw: string): string | null {
+export function synthesisFocusBannerSrc(issueRaw: string, cardIndex = 0): string | null {
   const slug = synthesisFocusBannerSlug(issueRaw);
   if (!slug) return null;
-  return synthesisFocusBannerSrcFromSlug(slug);
+  return synthesisFocusBannerSrcFromSlug(slug, cardIndex);
 }
 
-export function synthesisFocusBannerSrcFromSlug(slug: SynthesisFocusBannerSlug): string {
-  return `/images/synthesis-focus/${slug}.jpg`;
+export function synthesisFocusBannerSrcFromSlug(slug: SynthesisFocusBannerSlug, cardIndex = 0): string {
+  const v = synthesisBannerVariantV(cardIndex, slug, "focus");
+  return `/images/synthesis-focus/${slug}-v${v}.jpg`;
 }
 
 /**
@@ -70,6 +77,16 @@ export function synthesisTopicSlugFromCardTitle(title: string): SynthesisFocusBa
   const t = title.trim();
   if (!t) return null;
   const lo = t.toLowerCase();
+
+  if (/^(understand|recommend|implement|manage)$/.test(lo)) {
+    const map: Record<string, SynthesisFocusBannerSlug> = {
+      understand: "strategy",
+      recommend: "strategy",
+      implement: "cloud",
+      manage: "it-management",
+    };
+    return map[lo] ?? null;
+  }
 
   if (
     /\bgovernance\b|oversight|ethics|board|monitoring|drift|bias|\bhipaa\b|regulator|audit\b|compliance/.test(lo)

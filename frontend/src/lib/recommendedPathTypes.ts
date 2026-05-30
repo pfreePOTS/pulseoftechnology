@@ -46,11 +46,15 @@ export type RecommendedWatchStoryPayload = {
   hook: string;
   radar_topic_name: string;
   domain: string;
+  /** Article thumbnail from ingest (RSS/OG); shown on the recommended-path watch list. */
+  image_url?: string | null;
 };
 
 export type SynthesisCardPayload = {
   title: string;
   bullets: string[];
+  /** Path (`/api/recommended-path/process-card-images/{industry_slug}/{section_slug}`) — browser resolves via ``absoluteApiUrl``. */
+  hero_image_url?: string | null;
 };
 
 export type RecommendedPathPayload = {

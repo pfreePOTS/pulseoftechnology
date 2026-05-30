@@ -35,6 +35,8 @@ export interface TopicRow {
   latest_article_at?: string | null;
   /** When the topic was promoted to on-radar (selected); drives `days_on_radar`. */
   selected_at?: string | null;
+  /** Earliest linked article time when `selected_at` was never recorded (legacy). */
+  first_evidence_at?: string | null;
   /** Whole days since `selected_at` (server-computed). */
   days_on_radar?: number | null;
 }
@@ -1747,7 +1749,11 @@ function TrendDiscoveryInner() {
                         title={
                           row.selected_at
                             ? `On radar since ${row.selected_at}`
-                            : "Legacy row — promote again to start tracking days on radar"
+                            : row.first_evidence_at
+                              ? `Promotion date was not recorded; using first linked article (${row.first_evidence_at}) as an approximate start`
+                              : row.status === "selected"
+                                ? "Promotion date was not recorded; days on may be 0 if there is no linked article"
+                                : "Whole days since promoted to on-radar (not applicable while watching)"
                         }
                       >
                         {typeof row.days_on_radar === "number" ? row.days_on_radar : "—"}

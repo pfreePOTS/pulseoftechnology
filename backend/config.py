@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-v4-pro"
     # Anthropic Claude — optional fallback when DeepSeek fails or when only this key is set
+    # OpenAI (Images API — generated `/recommended-path` banners, stored as BYTEA rows)
+    openai_api_key: str = ""
+    recommended_path_synthesis_images_enabled: bool = True
+    recommended_path_synthesis_image_model: str = "gpt-image-1"
+    recommended_path_synthesis_image_size: str = "1536x1024"
     anthropic_api_key: str = ""
     anthropic_haiku_model: str = "claude-haiku-4-5-20251001"
     anthropic_sonnet_model: str = "claude-sonnet-4-6"

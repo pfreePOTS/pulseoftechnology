@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>People-free process card background mockup</title>
+    <style>
+      :root {
+        --red: #d5171e;
+        --teal: #019e7c;
+        --ink: #111827;
+        --muted: #4a5f6d;
+        --line: #d9e2e7;
+        --surface: #f4f8fa;
+        --soft: #eef4f6;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: #fff;
+        color: var(--ink);
+        font-family:
+          "IBM Plex Sans",
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+
+      main {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 42px 24px 64px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 28px;
+        letter-spacing: -0.03em;
+      }
+
+      h2 {
+        font-size: 30px;
+        letter-spacing: -0.04em;
+      }
+
+      .intro {
+        display: grid;
+        gap: 10px;
+        max-width: 760px;
+        margin-bottom: 30px;
+      }
+
+      .intro p,
+      .copy {
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.55;
+      }
+
+      .option {
+        margin-top: 34px;
+        padding-top: 30px;
+        border-top: 1px solid var(--line);
+      }
+
+      .option:first-of-type {
+        border-top: 0;
+        padding-top: 0;
+      }
+
+      .option-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 8px;
+      }
+
+      .pill {
+        border: 1px solid color-mix(in srgb, var(--teal) 45%, white);
+        border-radius: 999px;
+        color: var(--teal);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        padding: 3px 8px;
+        text-transform: uppercase;
+      }
+
+      .frame {
+        margin-top: 16px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 28px;
+        background: #fff;
+      }
+
+      .section-head {
+        margin-bottom: 24px;
+        text-align: center;
+      }
+
+      .eyebrow {
+        margin-bottom: 8px;
+        color: var(--teal);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+      }
+
+      .subcopy {
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .card {
+        overflow: hidden;
+        min-height: 330px;
+        border: 1px solid var(--line);
+        border-left: 4px solid var(--teal);
+        border-radius: 10px;
+        background: var(--surface);
+      }
+
+      .band {
+        position: relative;
+        height: 150px;
+        overflow: hidden;
+        border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, white);
+        background: var(--soft);
+      }
+
+      .band::after {
+        content: "";
+        position: absolute;
+        inset: auto 0 0;
+        height: 54px;
+        background: linear-gradient(to top, rgba(244, 248, 250, 0.86), rgba(244, 248, 250, 0));
+      }
+
+      .body {
+        padding: 16px 18px 20px;
+      }
+
+      .body h3 {
+        margin-bottom: 12px;
+        font-size: 16px;
+      }
+
+      ul {
+        display: grid;
+        gap: 10px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      li {
+        display: grid;
+        grid-template-columns: 8px 1fr;
+        gap: 10px;
+        color: #455a64;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      li::before {
+        content: "";
+        width: 5px;
+        height: 5px;
+        margin-top: 7px;
+        border-radius: 50%;
+        background: var(--teal);
+      }
+
+      .detail {
+        background:
+          linear-gradient(90deg, transparent 0 18%, rgba(255, 255, 255, 0.4) 18% 19%, transparent 19% 100%),
+          linear-gradient(0deg, #d9e6ea, #eef5f7);
+      }
+
+      .detail .pipe,
+      .detail .pane,
+      .detail .screen {
+        position: absolute;
+        border: 1px solid rgba(74, 95, 109, 0.28);
+        background: rgba(255, 255, 255, 0.56);
+      }
+
+      .detail .pipe {
+        left: 18%;
+        top: 42px;
+        width: 120px;
+        height: 26px;
+        border-radius: 999px;
+      }
+
+      .detail .pane {
+        right: 14%;
+        top: 24px;
+        width: 80px;
+        height: 90px;
+        border-radius: 6px;
+      }
+
+      .detail .screen {
+        left: 34%;
+        bottom: 24px;
+        width: 94px;
+        height: 46px;
+        border-radius: 6px;
+      }
+
+      .objects {
+        background: linear-gradient(0deg, #e8eef1, #f7fafb);
+      }
+
+      .objects .sheet,
+      .objects .laptop,
+      .objects .module {
+        position: absolute;
+        border: 1px solid rgba(74, 95, 109, 0.25);
+        background: rgba(255, 255, 255, 0.78);
+      }
+
+      .objects .sheet {
+        left: 18px;
+        top: 28px;
+        width: 110px;
+        height: 88px;
+        border-radius: 5px;
+        transform: rotate(-3deg);
+      }
+
+      .objects .laptop {
+        right: 20px;
+        top: 54px;
+        width: 122px;
+        height: 56px;
+        border-radius: 6px;
+      }
+
+      .objects .module {
+        left: 43%;
+        top: 36px;
+        width: 46px;
+        height: 46px;
+        border-radius: 50%;
+      }
+
+      .signal {
+        background: linear-gradient(0deg, #edf4f6, #f9fbfc);
+      }
+
+      .signal .rail {
+        position: absolute;
+        left: 26px;
+        right: 26px;
+        height: 1px;
+        background: rgba(74, 95, 109, 0.28);
+      }
+
+      .signal .rail.one {
+        top: 40px;
+      }
+
+      .signal .rail.two {
+        top: 76px;
+      }
+
+      .signal .node {
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        border: 2px solid var(--teal);
+        border-radius: 50%;
+        background: #fff;
+      }
+
+      .recommend {
+        background-color: color-mix(in srgb, var(--teal) 7%, white);
+      }
+
+      .photo {
+        background-image: url("/mockups/pharma-process-backgrounds-contact-sheet.png");
+        background-repeat: no-repeat;
+        background-size: 100% 400%;
+      }
+
+      .photo.one {
+        background-position: center 0%;
+      }
+
+      .photo.two {
+        background-position: center 33.333%;
+      }
+
+      .photo.three {
+        background-position: center 66.666%;
+      }
+
+      .photo.four {
+        background-position: center 100%;
+      }
+
+      @media (max-width: 900px) {
+        .grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="intro">
+        <h1>People-free background directions</h1>
+        <p>
+          Mockups for replacing the AI-generated people portraits in the Recommended Path “How we work with you” cards.
+          These use the current layout and show three directions that avoid faces, hands, and uncanny anatomy.
+        </p>
+      </section>
+
+      <section class="option">
+        <div class="option-head">
+          <h2>A. Industry detail crops</h2>
+          <span class="pill">Recommended</span>
+        </div>
+        <p class="copy">
+          People-free environmental closeups: lab glass, manufacturing lines, data racks, dispatch boards, legal libraries,
+          field sensors. Keeps the page photographic and industry-specific without uncanny portraits.
+        </p>
+        <div class="frame">
+          <div class="section-head">
+            <div class="eyebrow">Our Process</div>
+            <h2>How we work with you</h2>
+            <p class="subcopy">What you prioritised: IT Management · Your situation: “outsource our IT”</p>
+          </div>
+          <div class="grid">
+            <article class="card">
+              <div class="band photo one"></div>
+              <div class="body"><h3>Understand</h3><ul><li>Map operating context and constraints.</li><li>Use a real environment crop, not a staged meeting.</li></ul></div>
+            </article>
+            <article class="card">
+              <div class="band photo two"></div>
+              <div class="body"><h3>Recommend</h3><ul><li>Suggest analysis without readable text.</li><li>Show tools, equipment, or category cues.</li></ul></div>
+            </article>
+            <article class="card">
+              <div class="band photo three"></div>
+              <div class="body"><h3>Implement</h3><ul><li>Feel hands-on without showing hands.</li><li>Use cabling, systems, racks, or machinery.</li></ul></div>
+            </article>
+            <article class="card">
+              <div class="band photo four"></div>
+              <div class="body"><h3>Manage</h3><ul><li>Feel calm, monitored, and operational.</li><li>Use dashboards with no readable text.</li></ul></div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="option">
+        <div class="option-head">
+          <h2>B. Process object still-lifes</h2>
+          <span class="pill">Safer fallback</span>
+        </div>
+        <p class="copy">
+          Desk-level objects tied to each step: intake notes, comparison sheets, keyboard modules, network devices,
+          monitoring displays. Less industry-specific, but highly controllable.
+        </p>
+        <div class="frame">
+          <div class="section-head">
+            <div class="eyebrow">Our Process</div>
+            <h2>How we work with you</h2>
+            <p class="subcopy">What you prioritised: IT Management · Your situation: “outsource our IT”</p>
+          </div>
+          <div class="grid">
+            <article class="card"><div class="band objects"><span class="sheet"></span><span class="laptop"></span><span class="module"></span></div><div class="body"><h3>Understand</h3><ul><li>Intake notes, blank diagrams, and planning artifacts.</li><li>No people, no readable words.</li></ul></div></article>
+            <article class="card"><div class="band objects"><span class="sheet" style="left:44px"></span><span class="laptop" style="top:40px"></span></div><div class="body"><h3>Recommend</h3><ul><li>Option sheets and neutral comparison objects.</li><li>Useful when an industry crop feels too literal.</li></ul></div></article>
+            <article class="card"><div class="band objects"><span class="module" style="left:22%;top:42px"></span><span class="module" style="left:44%;top:54px"></span><span class="laptop"></span></div><div class="body"><h3>Implement</h3><ul><li>Hardware, cables, terminals, and workstation details.</li><li>Still active without showing bodies.</li></ul></div></article>
+            <article class="card"><div class="band objects"><span class="laptop" style="left:24px;right:auto;width:95px"></span><span class="laptop" style="right:24px;width:112px"></span></div><div class="body"><h3>Manage</h3><ul><li>Monitoring surfaces with abstracted charts.</li><li>Clean and low-risk.</li></ul></div></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="option">
+        <div class="option-head">
+          <h2>C. Brand signal textures</h2>
+          <span class="pill">Safest</span>
+        </div>
+        <p class="copy">
+          Abstract infrastructure/data textures with subtle Pulse-like signals. No anatomy risk at all, but less premium
+          and less directly tied to each industry.
+        </p>
+        <div class="frame">
+          <div class="section-head">
+            <div class="eyebrow">Our Process</div>
+            <h2>How we work with you</h2>
+            <p class="subcopy">What you prioritised: IT Management · Your situation: “outsource our IT”</p>
+          </div>
+          <div class="grid">
+            <article class="card"><div class="band signal"><span class="rail one"></span><span class="rail two"></span><span class="node" style="left:42px;top:33px"></span><span class="node" style="left:168px;top:69px"></span></div><div class="body"><h3>Understand</h3><ul><li>Signal-mapping language without faux photos.</li><li>Most consistent across the full library.</li></ul></div></article>
+            <article class="card"><div class="band signal"><span class="rail one"></span><span class="rail two"></span><span class="node" style="left:92px;top:69px"></span><span class="node" style="right:54px;top:33px"></span></div><div class="body"><h3>Recommend</h3><ul><li>Shows structure and connection.</li><li>Least likely to age poorly.</li></ul></div></article>
+            <article class="card"><div class="band signal"><span class="rail one"></span><span class="rail two"></span><span class="node" style="left:52px;top:33px"></span><span class="node" style="left:126px;top:69px"></span><span class="node" style="right:70px;top:69px"></span></div><div class="body"><h3>Implement</h3><ul><li>Clean technical motion, no literal work scene.</li><li>Can be generated or drawn manually.</li></ul></div></article>
+            <article class="card"><div class="band signal"><span class="rail one"></span><span class="rail two"></span><span class="node" style="left:84px;top:33px"></span><span class="node" style="right:84px;top:69px"></span></div><div class="body"><h3>Manage</h3><ul><li>Reads as steady monitoring.</li><li>Safest production fallback.</li></ul></div></article>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

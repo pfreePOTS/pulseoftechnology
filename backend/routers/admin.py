@@ -99,7 +99,8 @@ def _spawn_long_admin_job(fn: Callable[[], None]) -> None:
     loops (industry/persona suggest-all) would otherwise freeze the API until they finish,
     which breaks the admin UI with endless \"Loading...\".
     """
-    threading.Thread(target=fn, daemon=True, name=fn.__name__).start()
+    thread_name = getattr(fn, "__name__", None) or getattr(getattr(fn, "func", None), "__name__", "admin_background_job")
+    threading.Thread(target=fn, daemon=True, name=thread_name).start()
 
 
 def _normalize_query_str_list(values: list[str] | None) -> list[str] | None:
@@ -863,17 +864,34 @@ class ArticleOut(BaseModel):
         return data
 
 
-def _days_on_radar_from_selected_at(selected_at: datetime | None) -> int | None:
-    """Whole calendar days since the topic was promoted to on-radar (UTC)."""
-    if selected_at is None:
-        return None
+def _utc_whole_days_since(anchor: datetime) -> int:
+    """Whole calendar days since anchor (UTC), non-negative."""
     now = datetime.now(UTC)
-    sa = selected_at
+    sa = anchor
     if sa.tzinfo is None:
         sa = sa.replace(tzinfo=UTC)
     else:
         sa = sa.astimezone(UTC)
     return max(0, (now - sa).days)
+
+
+def _first_linked_article_time_by_topic_ids(
+    db: Session, topic_ids: list[int]
+) -> dict[int, datetime]:
+    """Earliest coalesce(published_at, ingested_at) per topic among non-archived articles."""
+    if not topic_ids:
+        return {}
+    rows = (
+        db.query(
+            Article.topic_id,
+            func.min(func.coalesce(Article.published_at, Article.ingested_at)).label("first_at"),
+        )
+        .filter(Article.topic_id.in_(topic_ids))
+        .filter(Article.archived_at.is_(None))
+        .group_by(Article.topic_id)
+        .all()
+    )
+    return {int(r.topic_id): r.first_at for r in rows if r.first_at is not None}
 
 
 class TopicOut(BaseModel):
@@ -899,13 +917,20 @@ class TopicOut(BaseModel):
     latest_article_at: datetime | None = None
     # When status became selected (on radar); set on approve/select, cleared on demote.
     selected_at: datetime | None = None
+    # When set (list/detail only): earliest linked article time — used if selected_at is missing (legacy rows).
+    first_evidence_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
     @computed_field
     @property
     def days_on_radar(self) -> int | None:
-        return _days_on_radar_from_selected_at(self.selected_at)
+        if self.status != TopicStatus.selected.value:
+            return None
+        anchor = self.selected_at or self.first_evidence_at
+        if anchor is None:
+            return 0
+        return _utc_whole_days_since(anchor)
 
 
 class TopicDetail(TopicOut):
@@ -1045,6 +1070,11 @@ def list_topics(
         row.topic_id: row.latest_article_at for row in latest_article_rows
     }
 
+    legacy_selected_ids = [
+        t.id for t in topics if t.status == TopicStatus.selected and t.selected_at is None
+    ]
+    first_evidence_map = _first_linked_article_time_by_topic_ids(db, legacy_selected_ids)
+
     result = []
     for t in topics:
         sig = sig_map.get(t.id)
@@ -1073,6 +1103,9 @@ def list_topics(
                 signal_id=sig.id if sig else None,
                 latest_article_at=latest_article_map.get(t.id),
                 selected_at=t.selected_at,
+                first_evidence_at=first_evidence_map.get(t.id)
+                if t.status == TopicStatus.selected and t.selected_at is None
+                else None,
             )
         )
     return result
@@ -1100,59 +1133,182 @@ def trending_hot_of_day(
     return build_hot_of_day(db)
 
 
-def _run_analysis_industry_suggest_all_job() -> None:
+def _run_analysis_industry_suggest_all_job(job_id: str | None = None) -> None:
     """Background: AI industry grid for every on-radar topic; persists to DB."""
+    jid = job_id or uuid.uuid4().hex[:8]
     db = SessionLocal()
+    processed = 0
+    persisted = 0
+    skipped = 0
+    failed = 0
     try:
-        ids = [
-            r.id
-            for r in db.query(Topic.id)
+        rows = [
+            (r.id, r.name)
+            for r in db.query(Topic.id, Topic.name)
             .filter(Topic.status == TopicStatus.selected)
             .order_by(Topic.id)
             .all()
         ]
-        for tid in ids:
+        total = len(rows)
+        logger.info(
+            "Analysis industry suggest-all job %s started: %s selected topic(s)",
+            jid,
+            total,
+        )
+        if total == 0:
+            logger.info("Analysis industry suggest-all job %s complete: no selected topics", jid)
+            return
+        for idx, (tid, topic_name) in enumerate(rows, start=1):
+            logger.info(
+                "Analysis industry suggest-all job %s progress %s/%s: topic id=%s name=%r",
+                jid,
+                idx,
+                total,
+                tid,
+                topic_name,
+            )
             try:
                 result = suggest_industry_positions(tid, db)
                 sug = result.get("industry_suggestions")
                 if not isinstance(sug, dict):
+                    skipped += 1
+                    logger.warning(
+                        "Analysis industry suggest-all job %s skipped topic id=%s: "
+                        "industry_suggestions missing or invalid",
+                        jid,
+                        tid,
+                    )
                     continue
                 topic = db.query(Topic).filter(Topic.id == tid).first()
                 if topic is None:
+                    skipped += 1
+                    logger.warning(
+                        "Analysis industry suggest-all job %s skipped topic id=%s: topic disappeared",
+                        jid,
+                        tid,
+                    )
                     continue
                 topic.industry_positions = sug
                 db.commit()
+                persisted += 1
+                processed += 1
+                logger.info(
+                    "Analysis industry suggest-all job %s persisted topic id=%s (%s/%s)",
+                    jid,
+                    tid,
+                    idx,
+                    total,
+                )
             except Exception:
-                logger.exception("Background industry suggest-all failed for topic %s", tid)
+                failed += 1
+                logger.exception(
+                    "Analysis industry suggest-all job %s failed for topic id=%s (%s/%s)",
+                    jid,
+                    tid,
+                    idx,
+                    total,
+                )
                 db.rollback()
+        logger.info(
+            "Analysis industry suggest-all job %s complete: total=%s processed=%s persisted=%s "
+            "skipped=%s failed=%s",
+            jid,
+            total,
+            processed,
+            persisted,
+            skipped,
+            failed,
+        )
     finally:
         db.close()
 
 
-def _run_analysis_persona_suggest_all_job() -> None:
+def _run_analysis_persona_suggest_all_job(job_id: str | None = None) -> None:
     """Background: topic-level persona lines for every on-radar topic; persists to DB."""
+    jid = job_id or uuid.uuid4().hex[:8]
     db = SessionLocal()
+    processed = 0
+    persisted = 0
+    skipped = 0
+    failed = 0
     try:
-        ids = [
-            r.id
-            for r in db.query(Topic.id)
+        rows = [
+            (r.id, r.name)
+            for r in db.query(Topic.id, Topic.name)
             .filter(Topic.status == TopicStatus.selected)
             .order_by(Topic.id)
             .all()
         ]
-        for tid in ids:
+        total = len(rows)
+        logger.info(
+            "Analysis persona suggest-all job %s started: %s selected topic(s)",
+            jid,
+            total,
+        )
+        if total == 0:
+            logger.info("Analysis persona suggest-all job %s complete: no selected topics", jid)
+            return
+        for idx, (tid, topic_name) in enumerate(rows, start=1):
+            logger.info(
+                "Analysis persona suggest-all job %s progress %s/%s: topic id=%s name=%r",
+                jid,
+                idx,
+                total,
+                tid,
+                topic_name,
+            )
             try:
                 out = suggest_topic_persona_by_role(tid, db)
                 pbr = out.get("persona_by_role")
                 topic = db.query(Topic).filter(Topic.id == tid).first()
                 if topic is None:
+                    skipped += 1
+                    logger.warning(
+                        "Analysis persona suggest-all job %s skipped topic id=%s: topic disappeared",
+                        jid,
+                        tid,
+                    )
                     continue
                 if isinstance(pbr, dict):
                     topic.persona_by_role = pbr
                     db.commit()
+                    persisted += 1
+                    processed += 1
+                    logger.info(
+                        "Analysis persona suggest-all job %s persisted topic id=%s (%s/%s)",
+                        jid,
+                        tid,
+                        idx,
+                        total,
+                    )
+                else:
+                    skipped += 1
+                    logger.warning(
+                        "Analysis persona suggest-all job %s skipped topic id=%s: "
+                        "persona_by_role missing or invalid",
+                        jid,
+                        tid,
+                    )
             except Exception:
-                logger.exception("Background persona suggest-all failed for topic %s", tid)
+                failed += 1
+                logger.exception(
+                    "Analysis persona suggest-all job %s failed for topic id=%s (%s/%s)",
+                    jid,
+                    tid,
+                    idx,
+                    total,
+                )
                 db.rollback()
+        logger.info(
+            "Analysis persona suggest-all job %s complete: total=%s processed=%s persisted=%s "
+            "skipped=%s failed=%s",
+            jid,
+            total,
+            processed,
+            persisted,
+            skipped,
+            failed,
+        )
     finally:
         db.close()
 
@@ -1162,9 +1318,12 @@ def analysis_industry_suggest_all_background(
     _: AdminUser = Depends(require_admin),
 ):
     """Queue server-side industry AI for all on-radar topics. Continues if the admin navigates away."""
-    _spawn_long_admin_job(_run_analysis_industry_suggest_all_job)
+    job_id = uuid.uuid4().hex[:8]
+    logger.info("Queued Analysis industry suggest-all background job %s", job_id)
+    _spawn_long_admin_job(partial(_run_analysis_industry_suggest_all_job, job_id))
     return {
         "status": "queued",
+        "job_id": job_id,
         "message": "Industry AI suggest-all started in the background. Refresh the page later to load results.",
     }
 
@@ -1174,9 +1333,12 @@ def analysis_persona_suggest_all_background(
     _: AdminUser = Depends(require_admin),
 ):
     """Queue server-side persona AI for all on-radar topics. Continues if the admin navigates away."""
-    _spawn_long_admin_job(_run_analysis_persona_suggest_all_job)
+    job_id = uuid.uuid4().hex[:8]
+    logger.info("Queued Analysis persona suggest-all background job %s", job_id)
+    _spawn_long_admin_job(partial(_run_analysis_persona_suggest_all_job, job_id))
     return {
         "status": "queued",
+        "job_id": job_id,
         "message": "Persona AI suggest-all started in the background. Refresh the page later to load results.",
     }
 
@@ -1227,6 +1389,11 @@ def get_topic(
         default=None,
     )
 
+    first_evidence_at: datetime | None = None
+    if topic.status == TopicStatus.selected and topic.selected_at is None:
+        fe_rows = _first_linked_article_time_by_topic_ids(db, [topic.id])
+        first_evidence_at = fe_rows.get(topic.id)
+
     return TopicDetail(
         id=topic.id,
         name=topic.name,
@@ -1250,6 +1417,7 @@ def get_topic(
         signal_id=sig.id if sig else None,
         latest_article_at=latest_article_at,
         selected_at=topic.selected_at,
+        first_evidence_at=first_evidence_at,
         articles=articles,
     )
 

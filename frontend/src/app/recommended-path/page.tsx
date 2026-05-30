@@ -2,6 +2,7 @@ import BookingCalendar from "@/components/BookingCalendar";
 import GlobalFooter from "@/components/GlobalFooter";
 import GlobalHeader from "@/components/GlobalHeader";
 import RecommendedPathProgressiveBody from "@/components/RecommendedPathProgressiveBody";
+import { intakePlainText } from "@/lib/intakePlainText";
 import { resolveRecommendedPathHeroBackground } from "@/lib/recommendedPathHero";
 import type { RecommendedPathIntake } from "@/lib/recommendedPathTypes";
 
@@ -41,9 +42,13 @@ function firstParam(sp: Record<string, string | string[] | undefined>, key: stri
   return "";
 }
 
-function hasAnyRecommendedIntake(sp: Record<string, string | string[] | undefined>): boolean {
-  return ["region", "industry", "role", "issue", "stage"].some(
-    (k) => firstParam(sp, k).trim().length > 0,
+function hasAnyRecommendedIntake(intake: RecommendedPathIntake): boolean {
+  return (
+    intake.region.trim().length > 0 ||
+    intake.industry.trim().length > 0 ||
+    intake.role.trim().length > 0 ||
+    intake.issue.length > 0 ||
+    intake.stage.length > 0
   );
 }
 
@@ -54,13 +59,13 @@ export default async function RecommendedPathPage({
 }) {
   const sp = await searchParams;
   const intake: RecommendedPathIntake = {
-    region: firstParam(sp, "region"),
-    industry: firstParam(sp, "industry"),
-    role: firstParam(sp, "role"),
-    issue: firstParam(sp, "issue"),
-    stage: firstParam(sp, "stage").trim(),
+    region: firstParam(sp, "region").trim(),
+    industry: firstParam(sp, "industry").trim(),
+    role: firstParam(sp, "role").trim(),
+    issue: intakePlainText(firstParam(sp, "issue")),
+    stage: intakePlainText(firstParam(sp, "stage")),
   };
-  const hasIntake = hasAnyRecommendedIntake(sp);
+  const hasIntake = hasAnyRecommendedIntake(intake);
   const heroBg = resolveRecommendedPathHeroBackground(intake.industry, intake.issue, intake.stage);
 
   return (

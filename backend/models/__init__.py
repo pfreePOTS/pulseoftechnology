@@ -6,6 +6,7 @@ from .content import ContentItem
 from .hubspot_sync_log import HubSpotSyncLog
 from .newsletter_issue import NewsletterIssue
 from .prompt import PromptProposal, PromptTemplate
+from .recommended_path_process_card_library import RecommendedPathProcessCardLibrary
 from .role import Role
 from .signal import SignalRecommendation
 from .site_config import SiteConfig
@@ -35,4 +36,5 @@ __all__ = [
     "PromptTemplate",
     "PromptProposal",
     "AgentRun",
+    "RecommendedPathProcessCardLibrary",
 ]

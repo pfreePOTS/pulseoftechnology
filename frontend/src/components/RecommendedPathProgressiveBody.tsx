@@ -6,19 +6,92 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import ExperienceItemIcon from "@/components/ExperienceItemIcon";
 import RecommendedPathBuildingScreen from "@/components/RecommendedPathBuildingScreen";
 import RecommendedPathCaseStudies from "@/components/RecommendedPathCaseStudies";
-import { fetchRecommendedPathProgressive } from "@/lib/recommendedPathClientApi";
+import {
+  fetchRecommendedPathTwoStage,
+  fetchRecommendedPathWatchStories,
+} from "@/lib/recommendedPathClientApi";
 import { resolveExperienceItemIcon } from "@/lib/experienceItemInference";
 import type { RecommendedHeroImage } from "@/lib/recommendedPathHero";
-import { fallbackHeadlineFromIntake, roleLabelPluralHeadline } from "@/lib/recommendedPathIntakeCopy";
+import { fallbackHeadlineFromIntake } from "@/lib/recommendedPathIntakeCopy";
+import { synthesisCardHeroAbsoluteSrc } from "@/lib/recommendedPathSynthesisHero";
 import SynthesisCardBandImages from "@/components/SynthesisCardBandImages";
 import type { RecommendedPathIntake, RecommendedPathPayload } from "@/lib/recommendedPathTypes";
-import { distinctTopicSlugsForCards } from "@/lib/synthesisFocusBanner";
+import { distinctTopicSlugsForCards, type SynthesisFocusBannerSlug } from "@/lib/synthesisFocusBanner";
 
 type Props = {
   intake: RecommendedPathIntake;
   hasIntake: boolean;
   heroBg: RecommendedHeroImage;
 };
+
+type RecommendedPathOurProcessCardProps = {
+  card: NonNullable<RecommendedPathPayload["synthesis_cards"]>[number];
+  idx: number;
+  industry: string;
+  topicSlug: SynthesisFocusBannerSlug;
+};
+
+function RecommendedPathOurProcessCard({
+  card,
+  idx,
+  industry,
+  topicSlug,
+}: RecommendedPathOurProcessCardProps) {
+  const heroSrc = synthesisCardHeroAbsoluteSrc(card.hero_image_url);
+
+  return (
+    <article className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-[#e0e0e0] border-l-4 border-l-pulse-teal bg-light-bg">
+      {/*
+        Fixed pixel height triple-locked per breakpoint — min/h/max — so bands stay identical across
+        all four cards; pair with native `<img>` + object-cover in SynthesisCardBandImages (avoid
+        next/image fill wrapper quirks).
+      */}
+      <div className="relative isolate w-full shrink-0 flex-none overflow-hidden min-h-[148px] h-[148px] max-h-[148px] sm:min-h-[156px] sm:h-[156px] sm:max-h-[156px] lg:min-h-[172px] lg:h-[172px] lg:max-h-[172px]">
+        {heroSrc ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={heroSrc}
+              alt=""
+              className="absolute inset-0 z-[1] block h-full w-full object-cover"
+              loading="lazy"
+              decoding="async"
+            />
+          </>
+        ) : (
+          <SynthesisCardBandImages
+            key={`${card.title}-${idx}-${topicSlug}`}
+            industry={industry}
+            topicSlug={topicSlug}
+            variationIndex={idx}
+          />
+        )}
+        {/*
+          Light scrim to blend tile into ``light-bg`` body — kept subtle so JPG bands stay legible.
+          A full-opacity ``from-light-bg`` wiped ~½ the strip and reads as “everything is blurred”.
+        */}
+        <div
+          className="pointer-events-none absolute inset-0 z-[2] bg-[linear-gradient(to_top,rgba(244,248,250,0.58)_0%,rgba(244,248,250,0.12)_42%,transparent_72%)]"
+          aria-hidden
+        />
+      </div>
+      <div className="flex flex-1 flex-col px-6 pb-5 pt-4">
+        <h3 className="mb-3 font-sans text-[16px] font-bold leading-snug text-[#111]">{card.title}</h3>
+        <ul className="space-y-2.5">
+          {(card.bullets ?? []).map((bullet, bi) => (
+            <li
+              key={`${idx}-${bi}`}
+              className="flex gap-3 font-sans text-[14.5px] leading-relaxed text-[#555]"
+            >
+              <span className="mt-[0.42em] h-1.5 w-1.5 shrink-0 rounded-full bg-pulse-teal" aria-hidden />
+              <span>{bullet}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </article>
+  );
+}
 
 function scrollRecommendedPathViewportTop(): void {
   if (typeof window === "undefined") return;
@@ -30,6 +103,7 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
 
   const [data, setData] = useState<RecommendedPathPayload | null>(null);
   const [buildingOverlay, setBuildingOverlay] = useState(hasIntake);
+  const [watchStoriesLoading, setWatchStoriesLoading] = useState(false);
   const [fetchFailed, setFetchFailed] = useState(false);
   const overlayScrollRef = useRef<HTMLDivElement>(null);
   const prevBuildingOverlay = useRef(buildingOverlay);
@@ -56,25 +130,67 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
       setBuildingOverlay(false);
       setData(null);
       setFetchFailed(false);
+      setWatchStoriesLoading(false);
       return;
     }
 
-    let cancelled = false;
     setBuildingOverlay(true);
     setFetchFailed(false);
+    setWatchStoriesLoading(false);
     setData(null);
 
-    void (async () => {
-      const payload = await fetchRecommendedPathProgressive(intake);
-      if (cancelled) return;
+    let cancelled = false;
+    let watchStoriesStarted = false;
+    const ac = new AbortController();
 
-      if (payload === null) setFetchFailed(true);
-      else setData(payload);
-      setBuildingOverlay(false);
-    })();
+    const loadWatchStoriesOnce = async (): Promise<void> => {
+      if (watchStoriesStarted) return;
+      watchStoriesStarted = true;
+      setWatchStoriesLoading(true);
+      try {
+        const stories = await fetchRecommendedPathWatchStories(intake, ac.signal);
+        if (cancelled || ac.signal.aborted) return;
+        if (stories !== null) setData((prev) => (prev ? { ...prev, watch_stories: stories } : prev));
+      } finally {
+        setWatchStoriesLoading(false);
+      }
+    };
+
+    const { promise } = fetchRecommendedPathTwoStage(
+      intake,
+      {
+        onShell: (payload) => {
+          if (cancelled || ac.signal.aborted) return;
+          setData((prev) => prev ?? payload);
+          setBuildingOverlay(false);
+          void loadWatchStoriesOnce();
+        },
+        onAi: (payload) => {
+          if (cancelled || ac.signal.aborted) return;
+          setData((prev) => {
+            const merged: RecommendedPathPayload = { ...payload };
+            const prevStories = prev?.watch_stories;
+            if (Array.isArray(prevStories) && prevStories.length > 0) {
+              merged.watch_stories = prevStories;
+            }
+            return merged;
+          });
+          setBuildingOverlay(false);
+          void loadWatchStoriesOnce();
+        },
+        onError: () => {
+          if (cancelled || ac.signal.aborted) return;
+          setFetchFailed(true);
+          setBuildingOverlay(false);
+        },
+      },
+      ac.signal,
+    );
+    void promise;
 
     return () => {
       cancelled = true;
+      ac.abort();
     };
   }, [hasIntake, intake]);
 
@@ -215,41 +331,14 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
         </div>
       </section>
 
-      <section className="border-b border-[#e0e0e0] bg-white px-8 py-7">
-        <div className="mx-auto flex max-w-[1100px] flex-col items-start justify-between gap-3 md:flex-row md:items-center">
-          <div className="flex items-start gap-3 md:items-center">
-            <span
-              className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full bg-pulse-red md:mt-0"
-              aria-hidden
-            />
-            <p className="font-sans text-[15px] leading-relaxed text-[#333]">
-              <span className="font-bold text-[#111]">Prefer to skip the read?</span>{" "}
-              <span className="text-[#555]">
-                Talk with one of our advisors directly — no pitch, just a conversation about where you are.
-              </span>
-            </p>
-          </div>
-          <a
-            href="#schedule"
-            className="inline-flex shrink-0 items-center gap-2 rounded-md border border-pulse-red bg-pulse-red px-5 py-2.5 font-sans text-[13.5px] font-semibold text-white transition-colors hover:bg-[#a81117]"
-          >
-            Talk with an expert →
-          </a>
-        </div>
-      </section>
-
       <section className="border-b border-[#e0e0e0] bg-light-bg px-8 py-16 md:py-20">
         <div className="mx-auto max-w-[1100px]">
           <div className="mb-10 text-center">
             <span className="mb-3 block font-sans text-[13px] font-semibold tracking-[3px] text-pulse-teal uppercase">
-              Our Experience
+              Our Solutions
             </span>
             <h2 className="mx-auto max-w-[720px] font-sans text-[38px] leading-tight font-bold tracking-tight text-[#111]">
-              {industry && role
-                ? `What we do for ${roleLabelPluralHeadline(role)} in ${industry}`
-                : industry
-                  ? `What we do for ${industry} leaders${issue ? ` on ${issue}` : ""}`
-                  : "What we do for leaders facing this"}
+              What we can do to help
             </h2>
           </div>
           {experienceItems.length > 0 ? (
@@ -284,61 +373,75 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
         </div>
       </section>
 
+      <section className="border-b border-[#e0e0e0] bg-white px-8 py-7">
+        <div className="mx-auto flex max-w-[1100px] flex-col items-start justify-between gap-3 md:flex-row md:items-center">
+          <div className="flex items-start gap-3 md:items-center">
+            <span
+              className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full bg-pulse-red md:mt-0"
+              aria-hidden
+            />
+            <p className="font-sans text-[15px] leading-relaxed text-[#333]">
+              <span className="font-bold text-[#111]">Prefer to skip the read?</span>{" "}
+              <span className="text-[#555]">
+                Talk with one of our advisors directly — no pitch, just a conversation about where you are.
+              </span>
+            </p>
+          </div>
+          <a
+            href="#schedule"
+            className="inline-flex shrink-0 items-center gap-2 rounded-md border border-pulse-red bg-pulse-red px-5 py-2.5 font-sans text-[13.5px] font-semibold text-white transition-colors hover:bg-[#a81117]"
+          >
+            Talk with an expert →
+          </a>
+        </div>
+      </section>
+
       <section className="border-b border-[#e0e0e0] bg-white px-8 py-16">
         <div className="mx-auto max-w-[1100px]">
           <div className="mb-8 text-center">
             <span className="mb-3 block font-sans text-[13px] font-semibold tracking-[3px] text-pulse-teal uppercase">
-              What We Think
+              Our Process
             </span>
             <h2 className="mx-auto max-w-[720px] font-sans text-[38px] leading-tight font-bold tracking-tight text-[#111]">
-              {industry || role
-                ? `Strategic context for ${[role, industry].filter(Boolean).join(" · ")}`
-                : "Strategic context for your leadership team"}
+              How we work with you
             </h2>
+            {hasIntake && (stageForDisplay.trim() || issue.trim()) ?
+              <p className="mx-auto mt-4 max-w-[720px] font-sans text-[16px] leading-relaxed text-[#555]">
+                {issue.trim() ?
+                  <>
+                    <span className="font-semibold text-[#333]">What you prioritised:</span> {issue.trim()}
+                    {stageForDisplay.trim() ? " · " : ""}
+                  </>
+                : null}
+                {stageForDisplay.trim() ?
+                  <>
+                    <span className={issue.trim() ? "" : "font-semibold text-[#333]"}>
+                      {issue.trim() ? "Your situation: " : <>What you&apos;re looking for: </>}
+                    </span>
+                    <span className="italic text-[#444]">&ldquo;{stageForDisplay.trim()}&rdquo;</span>
+                  </>
+                : null}
+              </p>
+            : null}
           </div>
           {synthesisCards.length > 0 ? (
             <div
               className={
-                synthesisCards.length >= 3
-                  ? "grid gap-6 sm:grid-cols-2 lg:grid-cols-3"
-                  : "mx-auto grid max-w-[940px] gap-6 md:grid-cols-2"
+                synthesisCards.length >= 4
+                  ? "grid items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-4"
+                  : synthesisCards.length === 3
+                    ? "grid items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-3"
+                    : "mx-auto grid max-w-[940px] items-stretch gap-6 md:grid-cols-2"
               }
             >
               {synthesisCards.map((card, idx) => (
-                <article
+                <RecommendedPathOurProcessCard
                   key={`${card.title}-${idx}`}
-                  className="flex flex-col overflow-hidden rounded-lg border border-[#e0e0e0] border-l-4 border-l-pulse-teal bg-light-bg"
-                >
-                  <div className="relative isolate h-[120px] w-full shrink-0 overflow-hidden md:h-[132px]">
-                    <SynthesisCardBandImages
-                      key={`${card.title}-${idx}-${synthesisCardTopicSlugs[idx] ?? idx}`}
-                      industry={industry}
-                      topicSlug={synthesisCardTopicSlugs[idx]!}
-                      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 340px"
-                    />
-                    <div
-                      className="pointer-events-none absolute inset-0 z-[2] bg-gradient-to-t from-light-bg via-light-bg/25 to-transparent"
-                      aria-hidden
-                    />
-                  </div>
-                  <div className="px-6 pb-5 pt-4">
-                    <h3 className="mb-3 font-sans text-[16px] font-bold leading-snug text-[#111]">{card.title}</h3>
-                    <ul className="space-y-2.5">
-                      {(card.bullets ?? []).map((bullet, bi) => (
-                        <li
-                          key={`${idx}-${bi}`}
-                          className="flex gap-3 font-sans text-[14.5px] leading-relaxed text-[#555]"
-                        >
-                          <span
-                            className="mt-[0.42em] h-1.5 w-1.5 shrink-0 rounded-full bg-pulse-teal"
-                            aria-hidden
-                          />
-                          <span>{bullet}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </article>
+                  card={card}
+                  idx={idx}
+                  industry={industry}
+                  topicSlug={synthesisCardTopicSlugs[idx]!}
+                />
               ))}
             </div>
           ) : synthesisHtml ? (
@@ -360,7 +463,7 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
         </div>
       </section>
 
-      <RecommendedPathCaseStudies industry={industry || undefined} issue={issue || undefined} />
+      <RecommendedPathCaseStudies industry={industry || undefined} />
 
       <section className="border-b border-[#e8e8e8] bg-dark-bg px-8 py-16 md:py-20">
         <div className="mx-auto max-w-[1100px]">
@@ -370,8 +473,8 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
             </span>
             <h2 className="font-sans text-[38px] font-bold tracking-tight text-white">Radar signal tuned to what you shared</h2>
             <p className="mt-3 max-w-[720px] font-sans text-[15px] leading-relaxed text-white/55">
-              A short analysis and posture read based on your profile, anchored to themes and ingested briefing lines
-              from the Pulse — not an abstract technology laundry list.
+              Stories and themes from the live Pulse — the same ingested briefing pool as the radar — matched to your
+              profile.
             </p>
           </div>
 
@@ -397,7 +500,7 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
 
               <div>
                 <h3 className="mb-3 font-sans text-[12px] font-semibold tracking-[2px] text-white/45 uppercase">
-                  Stories tied to those themes on the Pulse
+                  Stories on the Pulse for these themes
                 </h3>
                 {watchStories.length > 0 ? (
                   <ul className="space-y-3">
@@ -407,26 +510,46 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
                           href={s.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="group block rounded-[10px] border border-white/[0.1] bg-white/[0.03] px-4 py-3.5 transition-colors hover:border-pulse-teal/40 hover:bg-white/[0.05]"
+                          className="group flex gap-3 rounded-[10px] border border-white/[0.1] bg-white/[0.03] px-3 py-3 transition-colors hover:border-pulse-teal/40 hover:bg-white/[0.05] sm:px-4 sm:py-3.5"
                         >
-                          <div className="mb-2 flex flex-wrap items-center gap-2">
-                            <span className="inline-block rounded bg-pulse-teal/15 px-2 py-0.5 font-sans text-[10px] font-bold tracking-wider text-pulse-teal uppercase">
-                              {s.domain}
-                            </span>
-                            <span className="font-sans text-[12px] text-white/40">Radar: {s.radar_topic_name}</span>
+                          {s.image_url ?
+                            <div className="relative h-[72px] w-[104px] shrink-0 overflow-hidden rounded-lg bg-white/[0.06] sm:h-20 sm:w-[120px]">
+                              {/* eslint-disable-next-line @next/next/no-img-element -- remote article thumbnails from many domains */}
+                              <img
+                                src={s.image_url}
+                                alt=""
+                                className="h-full w-full object-cover"
+                                loading="lazy"
+                                decoding="async"
+                                referrerPolicy="no-referrer"
+                              />
+                            </div>
+                          : null}
+                          <div className="min-w-0 flex-1 py-0.5">
+                            <div className="mb-2 flex flex-wrap items-center gap-2">
+                              <span className="inline-block rounded bg-pulse-teal/15 px-2 py-0.5 font-sans text-[10px] font-bold tracking-wider text-pulse-teal uppercase">
+                                {s.domain}
+                              </span>
+                              <span className="font-sans text-[12px] text-white/40">Radar: {s.radar_topic_name}</span>
+                            </div>
+                            <p className="mb-1.5 font-sans text-[15px] font-semibold leading-snug text-white underline-offset-4 group-hover:text-pulse-teal group-hover:underline">
+                              {s.title}
+                            </p>
+                            <p className="font-sans text-[13px] leading-relaxed text-white/62">{s.hook}</p>
                           </div>
-                          <p className="mb-1.5 font-sans text-[15px] font-semibold leading-snug text-white underline-offset-4 group-hover:text-pulse-teal group-hover:underline">
-                            {s.title}
-                          </p>
-                          <p className="font-sans text-[13px] leading-relaxed text-white/62">{s.hook}</p>
                         </a>
                       </li>
                     ))}
                   </ul>
+                ) : watchStoriesLoading ? (
+                  <div className="space-y-2.5 rounded-[10px] border border-white/[0.08] bg-white/[0.03] px-4 py-3">
+                    <div className="h-4 w-[55%] max-w-[240px] animate-pulse rounded bg-white/[0.12]" />
+                    <div className="h-4 w-[90%] max-w-[340px] animate-pulse rounded bg-white/[0.08]" />
+                    <p className="pt-1 font-sans text-sm text-white/45">Loading Pulse stories from the radar pool…</p>
+                  </div>
                 ) : (
                   <p className="rounded-[10px] border border-white/[0.08] bg-white/[0.03] px-4 py-3 font-sans text-sm text-white/45">
-                    Fresh ingested briefing lines are syncing for these radar themes — open the explorer for everything
-                    that&rsquo;s live right now.
+                    No recent Pulse stories matched these themes yet — try the live radar for the full feed.
                   </p>
                 )}
               </div>

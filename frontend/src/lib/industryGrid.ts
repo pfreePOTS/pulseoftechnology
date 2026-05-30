@@ -59,16 +59,18 @@ export const INDUSTRY_COLORS: Record<string, string> = {
   Other: DEFAULT_HEX,
 };
 
-/** Legacy topic / model labels → same hex as canonical grid (see backend `_INDUSTRY_NAME_ALIASES`) */
-const LEGACY_ALIASES: Record<string, string> = {
-  "Finance & Banking": CANONICAL["Financial Services"],
-  "Government & Public Sector": CANONICAL["Government"],
-  "Retail & E-Commerce": CANONICAL["Retail"],
-  "Energy & Utilities": CANONICAL["Energy"],
+/** Legacy topic / model labels → canonical grid label (see backend `_INDUSTRY_NAME_ALIASES`) */
+const INDUSTRY_NAME_ALIASES: Record<string, IndustryOption> = {
+  "Finance & Banking": "Financial Services",
+  "Government & Public Sector": "Government",
+  "Retail & E-Commerce": "Retail",
+  "Energy & Utilities": "Energy",
 };
 
 export function industryColor(name: string): string {
-  return LEGACY_ALIASES[name] ?? INDUSTRY_COLORS[name] ?? DEFAULT_HEX;
+  const canonical = canonicalIndustryLabel(name);
+  if (canonical) return CANONICAL[canonical];
+  return INDUSTRY_COLORS[name] ?? DEFAULT_HEX;
 }
 
 /**
@@ -82,13 +84,13 @@ export function canonicalIndustryLabel(name: string | null | undefined): Industr
   if ((INDUSTRY_OPTIONS as readonly string[]).includes(key)) {
     return key as IndustryOption;
   }
-  const alias = LEGACY_ALIASES[key];
+  const alias = INDUSTRY_NAME_ALIASES[key];
   if (alias) return alias;
   const low = key.toLowerCase();
   for (const label of INDUSTRY_OPTIONS) {
     if (label.toLowerCase() === low) return label;
   }
-  for (const [aliasKey, canonical] of Object.entries(LEGACY_ALIASES)) {
+  for (const [aliasKey, canonical] of Object.entries(INDUSTRY_NAME_ALIASES)) {
     if (aliasKey.toLowerCase() === low) return canonical;
   }
   return null;

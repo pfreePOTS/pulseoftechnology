@@ -806,9 +806,7 @@ def _article_eligible_for_watch_story(article: Article) -> bool:
     return article_qualifies_pulse_tracked_surface(article)
 
 
-def _newest_article_for_topic(
-    db: Session, topic_id: int, used_ids: set[int]
-) -> Article | None:
+def _newest_article_for_topic(db: Session, topic_id: int, used_ids: set[int]) -> Article | None:
     """Newest ingested article on a topic (thumbnail preferred), same pool as tracked stories."""
     base = db.query(Article).filter(
         Article.topic_id == topic_id,
@@ -893,9 +891,11 @@ def _articles_for_watch_stories(
         )
         if used_ids:
             q = q.filter(Article.id.notin_(used_ids))
-        candidates = q.order_by(
-            Article.published_at.desc().nullslast(), Article.ingested_at.desc()
-        ).limit(max(need * 8, 24)).all()
+        candidates = (
+            q.order_by(Article.published_at.desc().nullslast(), Article.ingested_at.desc())
+            .limit(max(need * 8, 24))
+            .all()
+        )
         candidates.sort(key=_thumb_sort_key_for_watch_pool)
         for hit in candidates:
             if len(pairs) >= limit:
@@ -920,9 +920,11 @@ def _articles_for_watch_stories(
         )
         if used_ids:
             q = q.filter(Article.id.notin_(used_ids))
-        candidates = q.order_by(
-            Article.published_at.desc().nullslast(), Article.ingested_at.desc()
-        ).limit(max(need * 12, 36)).all()
+        candidates = (
+            q.order_by(Article.published_at.desc().nullslast(), Article.ingested_at.desc())
+            .limit(max(need * 12, 36))
+            .all()
+        )
         candidates.sort(key=_thumb_sort_key_for_watch_pool)
         for hit in candidates:
             if len(pairs) >= limit:
@@ -1127,7 +1129,9 @@ def recommended_path(
     topics = _topics_for_recommended(db, issue, industry, role, stg, limit=6)
     watch_pairs: list[tuple[Topic, Article]] = []
     if not defer_articles:
-        watch_pairs = _articles_for_watch_stories(db, topics, limit=_RECOMMENDED_PATH_WATCH_STORIES_LIMIT)
+        watch_pairs = _articles_for_watch_stories(
+            db, topics, limit=_RECOMMENDED_PATH_WATCH_STORIES_LIMIT
+        )
     syn = generate_path_synthesis(
         db,
         region,
@@ -1203,7 +1207,8 @@ def recommended_path(
         skip_ai=skip_ai,
     )
     synthesis_cards_out = [
-        card.model_copy(update={"hero_image_url": url}) for card, url in zip(synthesis_cards_out, heroes, strict=True)
+        card.model_copy(update={"hero_image_url": url})
+        for card, url in zip(synthesis_cards_out, heroes, strict=True)
     ]
 
     raw_engagements = syn.get("engagement_examples") or []

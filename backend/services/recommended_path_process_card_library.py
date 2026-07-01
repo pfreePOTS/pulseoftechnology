@@ -25,9 +25,12 @@ logger = logging.getLogger(__name__)
 PROCESS_SECTION_SLUGS: Final[tuple[str, ...]] = ("understand", "recommend", "implement", "manage")
 PROCESS_SECTION_LABELS: Final[tuple[str, ...]] = ("Understand", "Recommend", "Implement", "Manage")
 
-_SECTION_LABEL_BY_SLUG: Final[dict[str, str]] = dict(zip(PROCESS_SECTION_SLUGS, PROCESS_SECTION_LABELS, strict=True))
+_SECTION_LABEL_BY_SLUG: Final[dict[str, str]] = dict(
+    zip(PROCESS_SECTION_SLUGS, PROCESS_SECTION_LABELS, strict=True)
+)
 _SECTION_SLUG_BY_LABEL: Final[dict[str, str]] = {
-    label.lower(): slug for slug, label in zip(PROCESS_SECTION_SLUGS, PROCESS_SECTION_LABELS, strict=True)
+    label.lower(): slug
+    for slug, label in zip(PROCESS_SECTION_SLUGS, PROCESS_SECTION_LABELS, strict=True)
 }
 
 GENERIC_INDUSTRY_SLUG: Final[str] = "generic"
@@ -87,7 +90,9 @@ def is_valid_section_slug(slug: str) -> bool:
     return slug in _SECTION_LABEL_BY_SLUG
 
 
-def process_card_library_href(industry_slug_value: str, section_slug_value: str, version: int | None = None) -> str:
+def process_card_library_href(
+    industry_slug_value: str, section_slug_value: str, version: int | None = None
+) -> str:
     """Path-only URL; browser merges with ``apiOriginForBrowser()`` (handles ``/__pulse_api`` proxy)."""
     path = f"/api/recommended-path/process-card-images/{industry_slug_value}/{section_slug_value}"
     if version is None:
@@ -247,11 +252,7 @@ def build_library_prompt(industry_label: str, section_slug_value: str) -> str:
     if not section_brief:
         raise ValueError(f"Unknown section slug: {section_slug_value!r}")
     scene = _INDUSTRY_SCENES.get(industry_label) or _INDUSTRY_SCENES[GENERIC_INDUSTRY_LABEL]
-    return (
-        f"Setting: {scene}. "
-        f"Action: {section_brief} "
-        f"{_STYLE_ANCHOR}"
-    )[:3950]
+    return (f"Setting: {scene}. Action: {section_brief} {_STYLE_ANCHOR}")[:3950]
 
 
 def attach_hero_urls_from_library(

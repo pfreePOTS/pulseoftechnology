@@ -1521,11 +1521,7 @@ def _domain_topics_for_subscriber(all_approved: list[Topic], subscriber: Subscri
     if allow is None:
         return list(all_approved)
     allow_l = {x.lower() for x in allow}
-    return [
-        t
-        for t in all_approved
-        if topic_domain_slug_for_filter(t) in allow_l
-    ]
+    return [t for t in all_approved if topic_domain_slug_for_filter(t) in allow_l]
 
 
 def _subscriber_industry_labels(subscriber: Subscriber | object) -> list[str]:
@@ -2120,7 +2116,7 @@ def send_contact_form_notification(
     def _row(label: str, value: str) -> str:
         safe_label = html.escape(label, quote=True)
         safe_val = html.escape(value, quote=True)
-        return f"<tr><td style=\"padding:4px 12px 4px 0;font-weight:600;vertical-align:top\">{safe_label}</td><td>{safe_val}</td></tr>"
+        return f'<tr><td style="padding:4px 12px 4px 0;font-weight:600;vertical-align:top">{safe_label}</td><td>{safe_val}</td></tr>'
 
     optional_rows: list[str] = []
     plain_optional: list[str] = []
@@ -2147,13 +2143,13 @@ def send_contact_form_notification(
     )
     html_body = (
         "<p>New contact form submission from <strong>pulseone.com/contact</strong>.</p>"
-        "<table style=\"border-collapse:collapse;font-family:sans-serif;font-size:14px\">"
+        '<table style="border-collapse:collapse;font-family:sans-serif;font-size:14px">'
         f"{_row('Name', name)}{_row('Email', email)}{_row('Company', company)}"
         f"{''.join(optional_rows)}"
         f"</table>"
-        f"<p style=\"margin-top:16px\"><strong>Message</strong></p>"
+        f'<p style="margin-top:16px"><strong>Message</strong></p>'
         f"<p>{safe_message}</p>"
-        f"<p style=\"margin-top:16px;font-size:13px;color:#666\">"
+        f'<p style="margin-top:16px;font-size:13px;color:#666">'
         f"Reply directly to {safe_email}.</p>"
     )
 

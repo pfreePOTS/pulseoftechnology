@@ -3,6 +3,13 @@ from .agent_run import AgentRun
 from .article import Article, ArticleStatus
 from .classification_feedback import ClassificationFeedback
 from .content import ContentItem
+from .domain import (
+    Domain,
+    DomainHealthSnapshot,
+    DomainInterestSignal,
+    DomainStatus,
+    DomainSuggestion,
+)
 from .hubspot_sync_log import HubSpotSyncLog
 from .newsletter_issue import NewsletterIssue
 from .prompt import PromptProposal, PromptTemplate
@@ -13,7 +20,6 @@ from .site_config import SiteConfig
 from .source import Source, SourceType
 from .subscriber import Subscriber
 from .survey_response import SurveyResponse
-from .domain import Domain, DomainHealthSnapshot, DomainInterestSignal, DomainStatus, DomainSuggestion
 from .topic import AdoptionState, Topic, TopicStatus
 
 __all__ = [

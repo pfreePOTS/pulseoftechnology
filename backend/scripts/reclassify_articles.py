@@ -21,14 +21,13 @@ from backend.models.domain import Domain
 from backend.models.signal import SignalRecommendation
 from backend.models.topic import Topic
 from backend.services.ai_service import (
-    _node_classify,
     _classification_feedback_context,
+    _node_classify,
     get_active_model,
     process_raw_articles,
     render_classify_system_prompt,
     resolve_domain,
 )
-from backend.services.domain_registry import slugify_domain
 
 logger = logging.getLogger(__name__)
 

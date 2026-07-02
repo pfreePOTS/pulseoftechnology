@@ -50,8 +50,6 @@ from ..models.source import Source, SourceType
 from ..models.subscriber import Subscriber, validate_industries_and_role_ids
 from ..models.survey_response import SurveyResponse
 from ..models.topic import AdoptionState, Topic, TopicStatus
-from ..services.domain_registry import pickable_domains, resolve_domain, slugify_domain
-from ..services.topic_serializers import topic_domain_short
 from ..rate_limits import limiter
 from ..services.ai_service import (
     INDUSTRY_GRID_LABELS,
@@ -62,6 +60,7 @@ from ..services.ai_service import (
     suggest_subdomain_for_topic,
     suggest_topic_persona_by_role,
 )
+from ..services.domain_registry import pickable_domains, resolve_domain
 from ..services.email_service import (
     generate_newsletter_preview,
     run_daily_newsletter,
@@ -87,6 +86,7 @@ from ..services.pipeline_settings import (
     merged_settings_public_dict,
     upsert_site_config,
 )
+from ..services.topic_serializers import topic_domain_short
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +101,9 @@ def _spawn_long_admin_job(fn: Callable[[], None]) -> None:
     loops (industry/persona suggest-all) would otherwise freeze the API until they finish,
     which breaks the admin UI with endless \"Loading...\".
     """
-    thread_name = getattr(fn, "__name__", None) or getattr(getattr(fn, "func", None), "__name__", "admin_background_job")
+    thread_name = getattr(fn, "__name__", None) or getattr(
+        getattr(fn, "func", None), "__name__", "admin_background_job"
+    )
     threading.Thread(target=fn, daemon=True, name=thread_name).start()
 
 
@@ -699,8 +701,9 @@ def _record_classification_feedback(
         action=action,
         article_title=article.title,
         content_excerpt=_feedback_excerpt(article),
-        original_domain=_original_ai_field(article, "domain")
-        or topic_domain_short(article.topic) if article.topic else None,
+        original_domain=_original_ai_field(article, "domain") or topic_domain_short(article.topic)
+        if article.topic
+        else None,
         original_subdomain=_original_ai_field(article, "subdomain") or article.subdomain or None,
         original_topic_name=_original_ai_field(article, "suggested_topic_name")
         or (article.topic.name if article.topic else None),

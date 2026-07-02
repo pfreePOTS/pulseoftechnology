@@ -132,7 +132,12 @@ def test_build_library_prompt_varies_by_section_without_people():
 
 
 def test_process_card_library_image_endpoint_serves_blob(client, db_session):
-    _seed(db_session, industry_slug_value="healthcare", section="understand", industry_label="Healthcare")
+    _seed(
+        db_session,
+        industry_slug_value="healthcare",
+        section="understand",
+        industry_label="Healthcare",
+    )
     r = client.get("/api/recommended-path/process-card-images/healthcare/understand")
     assert r.status_code == 200
     assert r.content == ONE_PX_PNG
@@ -147,14 +152,21 @@ def test_process_card_library_image_endpoint_404_when_missing(client):
 
 
 def test_process_card_library_image_endpoint_404_for_bad_section(client, db_session):
-    _seed(db_session, industry_slug_value="healthcare", section="understand", industry_label="Healthcare")
+    _seed(
+        db_session,
+        industry_slug_value="healthcare",
+        section="understand",
+        industry_label="Healthcare",
+    )
     r = client.get("/api/recommended-path/process-card-images/healthcare/not-a-section")
     assert r.status_code == 404
 
 
 def test_attach_hero_urls_returns_library_hrefs_when_seeded(db_session):
     for slug in PROCESS_SECTION_SLUGS:
-        _seed(db_session, industry_slug_value="healthcare", section=slug, industry_label="Healthcare")
+        _seed(
+            db_session, industry_slug_value="healthcare", section=slug, industry_label="Healthcare"
+        )
     cards = [
         ("Understand", ["a", "b"]),
         ("Recommend", ["a", "b"]),
@@ -187,11 +199,18 @@ def test_attach_hero_urls_falls_back_to_generic_when_industry_missing(db_session
         card_titles=["Understand", "Recommend", "Implement", "Manage"],
         industry="Healthcare",
     )
-    assert urls == [process_card_library_href(GENERIC_INDUSTRY_SLUG, s, 1) for s in PROCESS_SECTION_SLUGS]
+    assert urls == [
+        process_card_library_href(GENERIC_INDUSTRY_SLUG, s, 1) for s in PROCESS_SECTION_SLUGS
+    ]
 
 
 def test_attach_hero_urls_partial_seed_mixes_library_and_none(db_session):
-    _seed(db_session, industry_slug_value="healthcare", section="understand", industry_label="Healthcare")
+    _seed(
+        db_session,
+        industry_slug_value="healthcare",
+        section="understand",
+        industry_label="Healthcare",
+    )
     urls = attach_hero_urls_from_library(
         db=db_session,
         card_titles=["Understand", "Recommend", "Implement", "Manage"],

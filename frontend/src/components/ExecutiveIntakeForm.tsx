@@ -163,6 +163,7 @@ export default function ExecutiveIntakeForm({
         <span className="font-sans text-[13px] text-white/45">Or type your state:</span>
         <input
           type="text"
+          suppressHydrationWarning
           value={stateInput}
           onChange={(e) => setStateInput(e.target.value)}
           onKeyDown={(e) => {
@@ -272,6 +273,7 @@ export default function ExecutiveIntakeForm({
               <div className="mt-4 flex flex-wrap items-end gap-3">
                 <input
                   type="text"
+                  suppressHydrationWarning
                   value={industryOther}
                   onChange={(e) => setIndustryOther(e.target.value)}
                   placeholder="Please describe your industry…"
@@ -325,6 +327,7 @@ export default function ExecutiveIntakeForm({
               <div className="mt-4 flex flex-wrap items-end gap-3">
                 <input
                   type="text"
+                  suppressHydrationWarning
                   value={roleOther}
                   onChange={(e) => setRoleOther(e.target.value)}
                   placeholder="Please describe your role…"
@@ -378,6 +381,7 @@ export default function ExecutiveIntakeForm({
               <div className="mt-4 flex flex-wrap items-end gap-3">
                 <input
                   type="text"
+                  suppressHydrationWarning
                   value={issueOther}
                   onChange={(e) => setIssueOther(e.target.value)}
                   placeholder="Briefly describe your concern…"
@@ -412,6 +416,7 @@ export default function ExecutiveIntakeForm({
               No need for technical detail &mdash; just tell us what&rsquo;s on your mind.
             </p>
             <textarea
+              suppressHydrationWarning
               value={situation}
               onChange={(e) => setSituation(e.target.value)}
               rows={3}

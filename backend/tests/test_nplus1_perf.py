@@ -12,9 +12,6 @@ from __future__ import annotations
 from sqlalchemy import event
 
 from backend.models.signal import SignalRecommendation
-from backend.models.topic import Topic
-
-
 from backend.tests.domain_fixtures import make_topic
 
 

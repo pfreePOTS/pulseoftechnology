@@ -97,7 +97,11 @@ def _upsert_cell(
     prompt: str,
     model: str,
 ) -> RecommendedPathProcessCardLibrary:
-    industry_slug_value = industry_slug(industry_label) if industry_label != GENERIC_INDUSTRY_LABEL else GENERIC_INDUSTRY_SLUG
+    industry_slug_value = (
+        industry_slug(industry_label)
+        if industry_label != GENERIC_INDUSTRY_LABEL
+        else GENERIC_INDUSTRY_SLUG
+    )
     section_label = section_label_for_slug(section_slug_value) or section_slug_value.title()
     now = datetime.now(UTC)
     row = _existing_cell(
@@ -244,7 +248,9 @@ def main(argv: list[str] | None = None) -> int:
         to_run: list[tuple[str, str]] = []
         for industry_label, section_slug_value in all_cells:
             slug_value = (
-                GENERIC_INDUSTRY_SLUG if industry_label == GENERIC_INDUSTRY_LABEL else industry_slug(industry_label)
+                GENERIC_INDUSTRY_SLUG
+                if industry_label == GENERIC_INDUSTRY_LABEL
+                else industry_slug(industry_label)
             )
             existing = _existing_cell(
                 db, industry_slug_value=slug_value, section_slug_value=section_slug_value

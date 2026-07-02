@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy.orm import Session
 
 from backend.models.domain import Domain, DomainStatus
 from backend.services.domain_registry import CORE_DOMAIN_DEFS
+
+if TYPE_CHECKING:
+    from backend.models.topic import Topic
 
 
 def ensure_domains(db: Session) -> dict[str, Domain]:
@@ -48,7 +53,7 @@ def make_topic(
     domain_slug: str = "ai",
     subdomain: str = "",
     **kwargs,
-) -> "Topic":
+) -> Topic:
     from backend.models.topic import Topic
 
     did = domain_id_for(db, domain_slug)

@@ -12,9 +12,11 @@ from sqlalchemy.orm import Session
 from .admin_permissions import normalize_login_email, user_may_access_admin_path
 from .config import settings
 from .database import get_db
+from .log_events import client_ip, kv
 from .models.admin_user import AdminUser
 
 _bearer = HTTPBearer(auto_error=False)
+logger = logging.getLogger(__name__)
 
 # httpOnly cookie name for browser admin sessions
 ADMIN_COOKIE_NAME = "pulse_admin"
@@ -71,6 +73,7 @@ def get_admin_user_from_token(token: str, db: Session) -> AdminUser:
     try:
         payload = decode_admin_token(token)
     except jwt.PyJWTError as e:
+        logger.warning("[auth] invalid_token %s", kv(reason=type(e).__name__))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
@@ -78,6 +81,7 @@ def get_admin_user_from_token(token: str, db: Session) -> AdminUser:
         ) from e
     sub = payload.get("sub")
     if sub is None:
+        logger.warning("[auth] invalid_token %s", kv(reason="missing_sub"))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token",
@@ -86,6 +90,7 @@ def get_admin_user_from_token(token: str, db: Session) -> AdminUser:
     try:
         user_id = int(sub)
     except (TypeError, ValueError):
+        logger.warning("[auth] invalid_token %s", kv(reason="bad_sub"))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token",
@@ -93,6 +98,10 @@ def get_admin_user_from_token(token: str, db: Session) -> AdminUser:
         )
     user = db.get(AdminUser, user_id)
     if user is None or not user.is_active:
+        logger.warning(
+            "[auth] inactive_or_missing_user %s",
+            kv(user_id=user_id, active=bool(user and user.is_active)),
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
@@ -109,6 +118,10 @@ def require_admin(
     """Validate JWT and enforce page permissions for the request path."""
     token = get_token_from_request(request, credentials)
     if not token:
+        logger.info(
+            "[auth] unauthenticated %s",
+            kv(path=request.url.path, ip=client_ip(request)),
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
@@ -118,6 +131,10 @@ def require_admin(
     path = request.url.path
     perms = user.page_permissions if isinstance(user.page_permissions, list) else []
     if not user_may_access_admin_path(path, user.is_superuser, perms):
+        logger.warning(
+            "[auth] forbidden %s",
+            kv(user_id=user.id, email=user.email, path=path, ip=client_ip(request)),
+        )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
     return user
 
@@ -129,6 +146,10 @@ def require_superuser(
 ) -> AdminUser:
     token = get_token_from_request(request, credentials)
     if not token:
+        logger.info(
+            "[auth] unauthenticated %s",
+            kv(path=request.url.path, ip=client_ip(request)),
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
@@ -136,6 +157,10 @@ def require_superuser(
         )
     user = get_admin_user_from_token(token, db)
     if not user.is_superuser:
+        logger.warning(
+            "[auth] superuser_required %s",
+            kv(user_id=user.id, email=user.email, path=request.url.path, ip=client_ip(request)),
+        )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
     return user
 

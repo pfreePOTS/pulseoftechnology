@@ -90,12 +90,19 @@ def _hubspot_batch_job() -> None:
     from .config import settings
 
     if not (settings.hubspot_api_key or "").strip():
+        logger.debug("[job] hubspot_batch skipped reason=no_api_key")
         return
     if not settings.hubspot_batch_sync_enabled:
+        logger.debug("[job] hubspot_batch skipped reason=disabled")
         return
     from .services.hubspot_sync import reconcile_all_subscribers_to_hubspot
 
-    reconcile_all_subscribers_to_hubspot(source="scheduled_batch")
+    logger.info("[job] hubspot_batch started source=scheduled_batch")
+    try:
+        reconcile_all_subscribers_to_hubspot(source="scheduled_batch")
+        logger.info("[job] hubspot_batch finished source=scheduled_batch")
+    except Exception:
+        logger.exception("[job] hubspot_batch failed source=scheduled_batch")
 
 
 def schedule_hubspot_batch_job() -> None:

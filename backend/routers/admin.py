@@ -37,6 +37,7 @@ from ..dependencies import (
     require_superuser,
     verify_password,
 )
+from ..log_events import client_ip, kv
 from ..models.admin_user import AdminUser
 from ..models.agent_run import AgentRun
 from ..models.article import Article, ArticleStatus
@@ -189,23 +190,33 @@ def _issue_admin_cookie_response(user: AdminUser) -> JSONResponse:
 def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)) -> JSONResponse:
     """Issue a JWT and set an httpOnly cookie for browser clients."""
     email = normalize_login_email(payload.email)
+    ip = client_ip(request)
     user = db.query(AdminUser).filter(AdminUser.email == email).first()
     if user is None or not user.is_active:
+        logger.warning(
+            "[auth] login_failed %s", kv(email=email, ip=ip, reason="unknown_or_inactive")
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
     if not verify_password(payload.password, user.password_hash):
+        logger.warning("[auth] login_failed %s", kv(email=email, ip=ip, reason="bad_password"))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
+    logger.info(
+        "[auth] login_success %s",
+        kv(user_id=user.id, email=user.email, ip=ip, superuser=user.is_superuser),
+    )
     return _issue_admin_cookie_response(user)
 
 
 @router.post("/logout")
-def logout() -> JSONResponse:
+def logout(request: Request) -> JSONResponse:
     """Clear admin session cookie."""
+    logger.info("[auth] logout %s", kv(ip=client_ip(request)))
     secure, samesite = _admin_cookie_cross_site_settings()
     response = JSONResponse({"ok": True})
     response.delete_cookie(
@@ -3200,9 +3211,13 @@ def newsletter_test_send(
 
 
 def _run_ingest() -> None:
+    logger.info("[job] manual_ingest started")
     db = SessionLocal()
     try:
         run_all_sources(db)
+        logger.info("[job] manual_ingest finished")
+    except Exception:
+        logger.exception("[job] manual_ingest failed")
     finally:
         db.close()
 
@@ -3243,15 +3258,24 @@ def _run_process_raw() -> None:
 
 
 def _run_newsletter() -> None:
+    logger.info("[job] manual_newsletter started")
     db = SessionLocal()
     try:
         run_daily_newsletter(db)
+        logger.info("[job] manual_newsletter finished")
+    except Exception:
+        logger.exception("[job] manual_newsletter failed")
     finally:
         db.close()
 
 
 def _run_hubspot_reconcile_manual() -> None:
-    reconcile_all_subscribers_to_hubspot(source="manual_reconcile")
+    logger.info("[job] manual_hubspot_reconcile started")
+    try:
+        reconcile_all_subscribers_to_hubspot(source="manual_reconcile")
+        logger.info("[job] manual_hubspot_reconcile finished")
+    except Exception:
+        logger.exception("[job] manual_hubspot_reconcile failed")
 
 
 class HubSpotStatusOut(BaseModel):

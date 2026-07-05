@@ -46,6 +46,8 @@ def _discovered_env_files() -> tuple[Path, ...]:
 class Settings(BaseSettings):
     database_url: str = "postgresql://pulse_user:pulse_password@localhost:5432/pulse_db"
     environment: str = "development"
+    # Root log level for app modules (uvicorn access logs are separate)
+    log_level: str = "INFO"
     # Comma-separated browser origins for CORS (required when using credentials)
     cors_origins: str = "http://localhost:3000,http://localhost:3100"
     # HS256 signing key for admin JWTs — override in production

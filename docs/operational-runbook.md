@@ -36,26 +36,26 @@ The database tables need to be created before you can insert any data.
 
 1. Execute the Alembic migrations inside the backend container:
    ```bash
-   docker compose exec backend alembic upgrade head
+   docker compose exec -w /app/backend backend alembic upgrade head
    ```
-   You should see output indicating that all revisions (including the recent adoption state and industry position updates) were applied successfully.
+   You should see output indicating that all revisions were applied successfully.
 
-## 4. Seed the RSS Sources
+## 4. Seed reference content
 
-The system needs raw data to process. A seed script is included to populate the database with curated RSS feeds (security, IT press, wire services, healthcare IT, public-sector tech, and more).
+The system needs RSS sources, domain registry rows, radar topics, and role tags before ingestion and subscribe flows work end-to-end.
 
-1. Run the seed script inside the backend container:
+1. Run the bundled local dev seed (idempotent — safe to rerun):
    ```bash
-   docker compose exec backend python -m seed_sources
+   docker compose exec backend python -m backend.seed_local_dev
    ```
-2. You should see an output like: `Seeded 10 source(s). Skipped 0 already-present.`
+2. You should see output for sources, domains, topics, and roles. Individual modules (`backend.seed_sources`, `backend.seed_domains`, etc.) are also available if you need to rerun one layer.
 
 ## 5. Trigger the First AI Ingestion Run
 
 Now that sources exist, you can trigger the ingestion pipeline. This will fetch the latest articles from the RSS feeds and pass them to Claude (Haiku) for scoring, classification, and clustering into Topics.
 
 1. Open your browser and navigate to the Admin Dashboard: `http://localhost:3100/admin`
-2. Log in using the password you set in `.env` (or `pulseadmin`).
+2. Log in with **`FIRST_ADMIN_EMAIL`** (default `pulseoneadmin@pulseone.local`; short name `pulseoneadmin` also works) and **`ADMIN_PASSWORD`** (default `pulseadmin` unless you changed it in `.env`).
 3. Navigate to the **System Jobs** tab (`/admin/jobs`).
 4. Click the **"Run RSS Ingestion Now"** button.
 5. *Wait.* This process fetches hundreds of articles and makes an API call to Anthropic for each one. Depending on the volume of news, this first run could take 2–5 minutes.
@@ -80,3 +80,25 @@ Once you have published at least one topic to the radar, it becomes visible to t
 1. Navigate to the public frontend: `http://localhost:3100`
 2. Use the **Industry** and **Domain** filters in the radar control bar if you want to narrow the view.
 3. **Click or tap a star** on the radar to lock the side panel and read the full briefing for that signal (hover previews on desktop).
+
+## 8. Logs and troubleshooting
+
+Application logs use grep-friendly prefixes on important paths:
+
+| Prefix | Examples |
+|--------|----------|
+| `[auth]` | Login success/failure, logout, forbidden admin routes |
+| `[subscribe]` | Signup, reactivate, unsubscribe, preferences |
+| `[contact]` | Inbound contact form metadata |
+| `[job]` | Scheduled/manual ingest, newsletter, HubSpot batch |
+| `[recommended-path]` / `[everyone-overview]` | Public LLM route latency and counts |
+
+Tail backend logs:
+
+```bash
+docker compose logs -f backend
+```
+
+Optional: set **`LOG_LEVEL=DEBUG`** in `.env` (see `.env.example`) for more detail from services and RSS ingestion. Default is `INFO`.
+
+Operational log coverage is tested in `backend/tests/test_logging.py` (pytest `caplog` assertions).

@@ -712,9 +712,8 @@ def _record_classification_feedback(
         action=action,
         article_title=article.title,
         content_excerpt=_feedback_excerpt(article),
-        original_domain=_original_ai_field(article, "domain") or topic_domain_short(article.topic)
-        if article.topic
-        else None,
+        original_domain=_original_ai_field(article, "domain")
+        or (topic_domain_short(article.topic) if article.topic else None),
         original_subdomain=_original_ai_field(article, "subdomain") or article.subdomain or None,
         original_topic_name=_original_ai_field(article, "suggested_topic_name")
         or (article.topic.name if article.topic else None),

@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, dev, staging]
   pull_request:
-    branches: [main, dev]
+    branches: [main, dev, staging]
 
 # GitHub Actions: run JS-based actions on Node 24 (Node 20 runner deprecation).
 # https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

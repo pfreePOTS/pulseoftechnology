@@ -56,6 +56,8 @@ def test_review_endpoint_approves_article_and_records_feedback(client, db_sessio
     assert topic.subdomain == "Software Supply Chain"
     assert topic.name == "Package Registry Credential Theft"
     assert feedback.action == "approve"
+    # AI domain must be kept even when the article has no topic yet (ternary vs `or` precedence).
+    assert feedback.original_domain == "Other"
     assert feedback.original_topic_name == "Other: Review Needed"
     assert feedback.corrected_domain == "security"
 

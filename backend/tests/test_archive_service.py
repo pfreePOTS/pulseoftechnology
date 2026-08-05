@@ -7,8 +7,8 @@ from unittest.mock import patch
 from backend.models.article import Article, ArticleStatus
 from backend.models.source import Source, SourceType
 from backend.models.topic import Topic
-from backend.tests.domain_fixtures import make_topic
 from backend.services.archive_service import archive_outside_active_evidence_window
+from backend.tests.domain_fixtures import make_topic
 
 
 def _seed_article(db_session, *, age_days: int, topic: Topic | None = None) -> Article:

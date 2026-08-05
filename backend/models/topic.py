@@ -1,7 +1,18 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -24,12 +35,16 @@ class AdoptionState(str, enum.Enum):
 class Topic(Base):
     __tablename__ = "topics"
     __table_args__ = (
-        UniqueConstraint("domain_id", "subdomain", "name", name="uq_topics_domain_id_subdomain_name"),
+        UniqueConstraint(
+            "domain_id", "subdomain", "name", name="uq_topics_domain_id_subdomain_name"
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    domain_id: Mapped[int] = mapped_column(Integer, ForeignKey("domains.id"), nullable=False, index=True)
+    domain_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("domains.id"), nullable=False, index=True
+    )
     # Theme within domain (from classify + clustering); links articles only when domain+subdomain+name match
     subdomain: Mapped[str] = mapped_column(
         String(120), default="", server_default="", nullable=False

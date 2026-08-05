@@ -5,7 +5,6 @@ Domain registry helpers — slug normalization, resolution, and dynamic classifi
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -231,9 +230,7 @@ def render_classify_system_prompt(db: Session) -> str:
         for d in classifyable_domains(db)
         if d.status in (DomainStatus.core.value, DomainStatus.active.value)
     ]
-    candidates = [
-        d for d in classifyable_domains(db) if d.status == DomainStatus.candidate.value
-    ]
+    candidates = [d for d in classifyable_domains(db) if d.status == DomainStatus.candidate.value]
     main_labels = ", ".join(d.short_label for d in main) + ", Other"
     candidate_hint = ""
     if candidates:
@@ -270,7 +267,11 @@ def migrate_subscriber_domain_list(domains: list[str] | None) -> list[str] | Non
         return domains
     out: list[str] = []
     for d in domains:
-        slug = LEGACY_DOMAIN_TO_SLUG.get(d) or LEGACY_DOMAIN_TO_SLUG.get(d.strip()) or slugify_domain(d)
+        slug = (
+            LEGACY_DOMAIN_TO_SLUG.get(d)
+            or LEGACY_DOMAIN_TO_SLUG.get(d.strip())
+            or slugify_domain(d)
+        )
         if slug not in out:
             out.append(slug)
     return out or None

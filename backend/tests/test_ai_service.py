@@ -355,7 +355,9 @@ class TestFinanceSubdomainNormalization:
 
     def test_cleanup_review_needed_topics_moves_articles_out_of_trending(self, db_session):
         source = Source(name="Legacy", url="https://example.com/legacy-review", type=SourceType.rss)
-        topic = make_topic(db_session, name="Other: Review Needed", domain_slug="other", urgency_score=5)
+        topic = make_topic(
+            db_session, name="Other: Review Needed", domain_slug="other", urgency_score=5
+        )
         nontech = Article(
             source=source,
             topic=topic,

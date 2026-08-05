@@ -35,7 +35,7 @@ One command for local or remote DB reachable from `DATABASE_URL`:
 docker compose exec backend python -m backend.seed_local_dev
 ```
 
-That runs **`seed_sources`** (RSS catalogue), **`seed_topics`** (core radar domains, published on `/radar`), and **`seed_roles`** (CEO/CFO/CTO/CISO/COO/CMO personas). Scripts are **idempotent** — safe to rerun.
+That runs **`seed_sources`** (RSS catalogue), **`seed_domains`** (domain registry), **`seed_topics`** (core radar domains, published on `/radar`), and **`seed_roles`** (CEO/CFO/CTO/CISO/COO/CMO personas). Scripts are **idempotent** — safe to rerun.
 
 Alternatively run modules individually (`backend.seed_sources`, etc.). Scripts do **not** insert **articles**; use ingestion (`scripts/db/import_data.sh` for a full mirror).
 

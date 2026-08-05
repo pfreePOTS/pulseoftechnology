@@ -2,7 +2,6 @@
 
 from backend.models.domain import Domain, DomainStatus
 from backend.services.domain_registry import (
-    pickable_domains,
     render_classify_system_prompt,
     resolve_domain,
     slugify_domain,

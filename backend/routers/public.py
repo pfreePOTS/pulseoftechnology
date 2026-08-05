@@ -1,5 +1,6 @@
 import logging
 import re
+import time
 from datetime import UTC, datetime, timedelta
 from functools import partial
 
@@ -11,6 +12,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
+from ..log_events import client_ip, kv
 from ..models.article import Article, ArticleStatus
 from ..models.content import ContentItem
 from ..models.domain import Domain
@@ -465,6 +467,7 @@ def _subscriber_from_preferences_token(token: str, db: Session) -> Subscriber:
     try:
         subscriber_id, email = decode_subscriber_preferences_token(token)
     except (jwt.PyJWTError, KeyError, TypeError, ValueError):
+        logger.warning("[subscribe] invalid_preferences_token")
         raise HTTPException(status_code=401, detail="Invalid or expired preferences link") from None
     subscriber = db.query(Subscriber).filter(Subscriber.id == subscriber_id).first()
     if subscriber is None or subscriber.email.strip().lower() != email:
@@ -512,6 +515,10 @@ def update_subscriber_preferences(
     subscriber.is_active = True
     db.commit()
     db.refresh(subscriber)
+    logger.info(
+        "[subscribe] preferences_updated %s",
+        kv(subscriber_id=subscriber.id, email=subscriber.email, domains=doms),
+    )
     background_tasks.add_task(
         partial(sync_subscriber_to_hubspot, subscriber, source="preference_update")
     )
@@ -529,6 +536,10 @@ def unsubscribe_subscriber(
     subscriber.is_active = False
     db.commit()
     db.refresh(subscriber)
+    logger.info(
+        "[subscribe] unsubscribe %s",
+        kv(subscriber_id=subscriber.id, email=subscriber.email),
+    )
     background_tasks.add_task(partial(sync_subscriber_to_hubspot, subscriber, source="unsubscribe"))
     return subscriber
 
@@ -548,6 +559,10 @@ def subscribe(
     existing = db.query(Subscriber).filter(Subscriber.email == payload.email).first()
     if existing:
         if existing.is_active:
+            logger.info(
+                "[subscribe] duplicate %s",
+                kv(email=payload.email.strip().lower(), ip=client_ip(request)),
+            )
             raise HTTPException(status_code=409, detail="This email is already subscribed")
         # Re-activate lapsed subscriber and update their preferences
         existing.is_active = True
@@ -558,6 +573,16 @@ def subscribe(
         existing.role_ids = rids
         db.commit()
         db.refresh(existing)
+        logger.info(
+            "[subscribe] reactivate %s",
+            kv(
+                subscriber_id=existing.id,
+                email=existing.email,
+                domains=doms,
+                industries=inds,
+                ip=client_ip(request),
+            ),
+        )
         background_tasks.add_task(
             partial(sync_subscriber_to_hubspot, existing, source="subscribe_reactivate")
         )
@@ -576,6 +601,16 @@ def subscribe(
     db.add(subscriber)
     db.commit()
     db.refresh(subscriber)
+    logger.info(
+        "[subscribe] signup %s",
+        kv(
+            subscriber_id=subscriber.id,
+            email=subscriber.email,
+            domains=doms,
+            industries=inds,
+            ip=client_ip(request),
+        ),
+    )
     background_tasks.add_task(
         partial(sync_subscriber_to_hubspot, subscriber, source="subscribe_signup")
     )
@@ -606,17 +641,17 @@ def contact(
         return ContactResponse(message="Thanks — we'll be in touch within one business day.")
 
     logger.info(
-        "[contact] inbound submission",
-        extra={
-            "contact_name": payload.name,
-            "contact_email": payload.email,
-            "contact_company": payload.company,
-            "contact_phone": payload.phone or "",
-            "contact_industry": payload.industry or "",
-            "contact_role": payload.role or "",
-            "contact_message_chars": len(payload.message),
-            "client_ip": request.client.host if request.client else "unknown",
-        },
+        "[contact] inbound submission %s",
+        kv(
+            contact_name=payload.name,
+            contact_email=payload.email,
+            contact_company=payload.company,
+            contact_phone=payload.phone or "",
+            contact_industry=payload.industry or "",
+            contact_role=payload.role or "",
+            contact_message_chars=len(payload.message),
+            client_ip=client_ip(request),
+        ),
     )
 
     background_tasks.add_task(
@@ -648,6 +683,10 @@ def record_survey(
     )
     db.add(response)
     db.commit()
+    logger.info(
+        "[survey] recorded %s",
+        kv(email=email.strip().lower(), score=score, newsletter_date=date),
+    )
     html = """<!DOCTYPE html><html><head><meta charset="utf-8">
     <style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
     display:flex;align-items:center;justify-content:center;min-height:100vh;background:#F4F8FA;color:#111827;}
@@ -806,9 +845,7 @@ def _article_eligible_for_watch_story(article: Article) -> bool:
     return article_qualifies_pulse_tracked_surface(article)
 
 
-def _newest_article_for_topic(
-    db: Session, topic_id: int, used_ids: set[int]
-) -> Article | None:
+def _newest_article_for_topic(db: Session, topic_id: int, used_ids: set[int]) -> Article | None:
     """Newest ingested article on a topic (thumbnail preferred), same pool as tracked stories."""
     base = db.query(Article).filter(
         Article.topic_id == topic_id,
@@ -893,9 +930,11 @@ def _articles_for_watch_stories(
         )
         if used_ids:
             q = q.filter(Article.id.notin_(used_ids))
-        candidates = q.order_by(
-            Article.published_at.desc().nullslast(), Article.ingested_at.desc()
-        ).limit(max(need * 8, 24)).all()
+        candidates = (
+            q.order_by(Article.published_at.desc().nullslast(), Article.ingested_at.desc())
+            .limit(max(need * 8, 24))
+            .all()
+        )
         candidates.sort(key=_thumb_sort_key_for_watch_pool)
         for hit in candidates:
             if len(pairs) >= limit:
@@ -920,9 +959,11 @@ def _articles_for_watch_stories(
         )
         if used_ids:
             q = q.filter(Article.id.notin_(used_ids))
-        candidates = q.order_by(
-            Article.published_at.desc().nullslast(), Article.ingested_at.desc()
-        ).limit(max(need * 12, 36)).all()
+        candidates = (
+            q.order_by(Article.published_at.desc().nullslast(), Article.ingested_at.desc())
+            .limit(max(need * 12, 36))
+            .all()
+        )
         candidates.sort(key=_thumb_sort_key_for_watch_pool)
         for hit in candidates:
             if len(pairs) >= limit:
@@ -1121,13 +1162,16 @@ def recommended_path(
     """Personalized headline + synthesis (Claude), matching radar topics, and curated content.
 
     Any subset of query params may be supplied; at least one non-empty facet is required."""
+    started = time.monotonic()
     stg = _recommended_path_require_stage(
         region=region, industry=industry, role=role, issue=issue, stage=stage
     )
     topics = _topics_for_recommended(db, issue, industry, role, stg, limit=6)
     watch_pairs: list[tuple[Topic, Article]] = []
     if not defer_articles:
-        watch_pairs = _articles_for_watch_stories(db, topics, limit=_RECOMMENDED_PATH_WATCH_STORIES_LIMIT)
+        watch_pairs = _articles_for_watch_stories(
+            db, topics, limit=_RECOMMENDED_PATH_WATCH_STORIES_LIMIT
+        )
     syn = generate_path_synthesis(
         db,
         region,
@@ -1203,7 +1247,8 @@ def recommended_path(
         skip_ai=skip_ai,
     )
     synthesis_cards_out = [
-        card.model_copy(update={"hero_image_url": url}) for card, url in zip(synthesis_cards_out, heroes, strict=True)
+        card.model_copy(update={"hero_image_url": url})
+        for card, url in zip(synthesis_cards_out, heroes, strict=True)
     ]
 
     raw_engagements = syn.get("engagement_examples") or []
@@ -1227,6 +1272,20 @@ def recommended_path(
                     how_we_helped=str(row.get("how_we_helped", "")).strip()[:1200],
                 )
             )
+
+    elapsed_ms = int((time.monotonic() - started) * 1000)
+    logger.info(
+        "[recommended-path] ok %s",
+        kv(
+            industry=industry,
+            role=role,
+            issue=issue,
+            skip_ai=skip_ai,
+            defer_articles=defer_articles,
+            topics=len(topics),
+            latency_ms=elapsed_ms,
+        ),
+    )
 
     return RecommendedPathOut(
         headline=str(syn["headline"]),
@@ -1313,6 +1372,7 @@ def everyone_overview(db: Session = Depends(get_db)):
     everything") page. AI synthesis is grounded in live published topics, so
     the page genuinely changes day-to-day with the radar (not just headers
     swapped onto a static template)."""
+    started = time.monotonic()
     syn = generate_everyone_overview(db)
 
     # Top published topics across ALL domains/industries — broader than
@@ -1364,6 +1424,17 @@ def everyone_overview(db: Session = Depends(get_db)):
         .join(Topic, Article.topic_id == Topic.id)
         .filter(Topic.is_published == True)  # noqa: E712
         .scalar()
+    )
+
+    elapsed_ms = int((time.monotonic() - started) * 1000)
+    logger.info(
+        "[everyone-overview] ok %s",
+        kv(
+            topics=len(topics),
+            content_items=len(items),
+            published_topics=int(published_topics_count),
+            latency_ms=elapsed_ms,
+        ),
     )
 
     return EveryoneOverviewOut(

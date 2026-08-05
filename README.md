@@ -188,6 +188,7 @@ pulseoftechnology/
 │   ├── pyproject.toml      ← Ruff + pytest settings
 │   ├── main.py             ← FastAPI entrypoint
 │   ├── config.py
+│   ├── log_events.py       ← Shared kv()/client_ip() log helpers
 │   ├── database.py
 │   ├── scheduler.py        ← APScheduler RSS ingestion jobs
 │   ├── models/             ← SQLAlchemy models
@@ -224,6 +225,7 @@ pulseoftechnology/
 | `ADMIN_JWT_SECRET`     | (see `.env.example`) | HS256 signing key for admin JWT sessions |
 | `SUBSCRIBER_TOKEN_SECRET` | (see `.env.example`) | Separate HS256 signing key for subscriber preference/unsubscribe links |
 | `CORS_ORIGINS`         | `http://localhost:3000,http://localhost:3100` | Allowed browser origins (comma-separated) |
+| `LOG_LEVEL`            | `INFO`             | Root log level for app modules (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `SENDGRID_API_KEY`     | —                  | Email delivery (optional for dev)        |
 | `CONTACT_FORM_TO_EMAIL`| `marketing@pulseone.com` | Inbound `/contact` form notifications via SendGrid |
 | `HUBSPOT_API_KEY`      | —                  | CRM sync (optional)                      |
@@ -255,5 +257,6 @@ Admin users live in the **`admin_users`** table. On first startup, if the table 
 | **Client storage** | No admin tokens in `localStorage`; session uses **httpOnly** cookie. |
 | **LLM / RSS** | Untrusted article text is wrapped in **XML CDATA** (`<article>`, `<context>`) and system prompts instruct the model to **ignore instructions** inside those blocks. |
 | **Rate limits** | **SlowAPI**: `POST /api/admin/login` **10/minute**, `POST /api/subscribe` **30/minute** per client IP (tune in `routers/`). |
+| **Operational logs** | Grep-friendly prefixes (`[auth]`, `[subscribe]`, `[job]`, `[contact]`) via `backend/log_events.py`; tune with **`LOG_LEVEL`**. Coverage in `backend/tests/test_logging.py`. |
 | **Vector bucketing** | Placeholder embeddings use **SHA-256** for shingle buckets (not MD5). |
 | **Enterprise SSO** | Microsoft Entra ID / similar is not wired in this repo; add an OAuth2/OIDC layer in front of admin when required. |

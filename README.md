@@ -215,6 +215,7 @@ pulseoftechnology/
 | `DEEPSEEK_API_KEY`     | —                  | **Primary** LLM (OpenAI-compatible DeepSeek API). If `ANTHROPIC_API_KEY` is also set, failures fall back to Claude. |
 | `DEEPSEEK_BASE_URL`    | `https://api.deepseek.com` | API base URL                             |
 | `DEEPSEEK_MODEL`       | `deepseek-v4-pro`  | Default DeepSeek model id (`deepseek-v4-flash` for throughput) |
+| `RECOMMENDED_PATH_LLM_MODEL` | `deepseek-v4-flash` | Fast-tier model for user-facing `/recommended-path` and `/everyone` synthesis (thinking disabled on these calls) |
 | `ANTHROPIC_API_KEY`    | —                  | Optional **Anthropic Claude** fallback, or standalone LLM if DeepSeek key is omitted |
 | `OPENAI_API_KEY`       | —                  | Optional **OpenAI** (Images API) — used **only** by `backend/scripts/seed_process_card_library.py` to pre-render the Our Process card library (industry × section). Stored as BYTEA in Postgres; served from `GET /api/recommended-path/process-card-images/{industry_slug}/{section_slug}`. The request path never calls OpenAI. |
 | `RECOMMENDED_PATH_SYNTHESIS_IMAGES_ENABLED` | `true` | Set `false` to skip banner generation while keeping deterministic path/synthesis intact |

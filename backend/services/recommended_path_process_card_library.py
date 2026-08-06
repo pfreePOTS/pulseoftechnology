@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+import zlib
 from collections.abc import Sequence
 from typing import Final
 
@@ -117,29 +118,109 @@ def lookup_library_row(
 
 
 # ── Prompt builders ──────────────────────────────────────────────────────────
-# Photorealistic, people-free industry detail crops. Composition is tuned for a wide
-# banner crop (3:2 source rendered into a ~200x170 card with a soft white scrim over
-# the lower third), so the strongest visual detail sits in the upper two-thirds.
+# Photorealistic industry crops. "Understand" and "Implement" include people so the
+# process feels human; "Recommend" and "Manage" stay people-free still-lifes so a row
+# mixes both. Composition is tuned for a wide banner crop (3:2 source rendered into a
+# ~200x170 card with a soft white scrim over the lower third), so the strongest visual
+# detail sits in the upper two-thirds.
 
-_STYLE_ANCHOR: Final[str] = (
-    "Photorealistic professional editorial background photography, no people, no humans, no bodies, "
-    "no faces, no hands, no portraits, no silhouettes, no reflections of people. "
+_BASE_STYLE: Final[str] = (
+    "Photorealistic professional editorial photography. "
     "Strictly no readable text, no captions, no logos, no brand marks, no watermarks, no UI screenshots, "
     "no fake app screens, no generated words, no typography. "
     "Color: balanced daylight white balance around 5500K, neutral cool-to-neutral tone, not warm, not yellow, "
     "not orange, not sepia. Crisp realistic materials, clean modern enterprise environment. "
-    "Composition: wide horizontal 3:2 frame, card-banner crop safe, strongest industry detail in the upper "
+    "Composition: wide horizontal 3:2 frame, card-banner crop safe, strongest visual interest in the upper "
     "two-thirds, lower third simple and uncluttered so a soft white fade can sit there cleanly. "
     "Camera: full-frame DSLR, 35mm or 50mm lens, f/5.6, sharp environmental detail, mild depth of field. "
-    "Do not render people, faces, hands, limbs, mannequins, statues, dolls, humanoid robots, or anatomy of any kind. "
-    "Do not render cartoons, illustration, 3D CGI, sketch, painting, vintage film grain, or stock-photo people."
+    "Do not render cartoons, illustration, 3D CGI, sketch, painting, or vintage film grain."
 )
+
+_NO_PEOPLE_CLAUSE: Final[str] = (
+    "No people, no humans, no bodies, no faces, no hands, no portraits, no silhouettes, "
+    "no reflections of people. Do not render people, faces, hands, limbs, mannequins, statues, "
+    "dolls, humanoid robots, or anatomy of any kind."
+)
+
+_PEOPLE_CLAUSE: Final[str] = (
+    "Candid documentary style, not posed stock photography: nobody looks at the camera, natural "
+    "posture and imperfect real-world detail, anatomically correct hands. Render exactly the people "
+    "described and no additional people. No name tags or badges with readable text."
+)
+
+# Deliberately varied cast pool. A cell's people are picked deterministically from this
+# pool (offset by a per-cell hash), so different industries get visibly different people
+# instead of one generic prompt rendering the same face 40 times.
+_PEOPLE_CAST: Final[tuple[str, ...]] = (
+    "a Black woman in her early 50s with short gray-flecked natural hair",
+    "an East Asian man in his late 30s with rectangular glasses",
+    "a Latina woman in her 40s with shoulder-length dark curly hair",
+    "a white man in his early 60s with a trimmed silver beard",
+    "a South Asian woman in her early 30s with her hair in a long braid",
+    "a Middle Eastern man in his 40s with cropped dark hair and light stubble",
+    "a white woman in her late 20s with auburn hair tied back",
+    "a Black man in his mid-30s with a shaved head",
+    "a Southeast Asian man in his 50s with wire-frame glasses",
+    "a mixed-race woman in her 40s with close-cropped curls",
+)
+
+_INDUSTRY_ATTIRE: Final[dict[str, str]] = {
+    "Healthcare": "in clinical workwear (scrubs or a lab coat over business clothes)",
+    "Financial Services": "in tailored business attire",
+    "Technology": "in relaxed modern office wear",
+    "Manufacturing": "in hi-vis vests and safety glasses over work clothes",
+    "Energy": "in field workwear with hi-vis accents",
+    "Retail": "in smart-casual store operations wear",
+    "Government": "in conservative business attire",
+    "Education": "in casual professional campus wear",
+    "Telecommunications": "in technical field polos",
+    "Transportation": "in dispatch-office workwear with hi-vis accents",
+    "Media & Entertainment": "in relaxed studio wear",
+    "Real Estate": "in business attire",
+    "Agriculture": "in practical outdoor workwear",
+    "Pharma & Biotech": "in lab coats and safety glasses",
+    "Legal Services": "in formal business attire",
+    "Hospitality": "in hotel operations business casual",
+    "Nonprofit": "in everyday casual office wear",
+    "Defense & Aerospace": "in business attire",
+    "Insurance": "in business-casual office attire",
+    "Professional Services": "in business-casual attire",
+    GENERIC_INDUSTRY_LABEL: "in modern business-casual workwear",
+}
+
+
+def _cast_for_cell(industry_label: str, section_slug_value: str, count: int) -> list[str]:
+    """Stable, per-cell pick from the cast pool so reruns render the same people."""
+    seed = zlib.crc32(f"{industry_label}:{section_slug_value}".encode())
+    pool_size = len(_PEOPLE_CAST)
+    # Second pick uses a fixed odd stride so pairs never collapse to the same person.
+    return [_PEOPLE_CAST[(seed + i * 3) % pool_size] for i in range(count)]
+
+
+def _people_brief(industry_label: str, section_slug_value: str) -> str:
+    attire = _INDUSTRY_ATTIRE.get(industry_label) or _INDUSTRY_ATTIRE[GENERIC_INDUSTRY_LABEL]
+    if section_slug_value == "understand":
+        person_a, person_b = _cast_for_cell(industry_label, section_slug_value, 2)
+        return (
+            f"Two professionals — {person_a}, and {person_b} — both {attire}, in a working "
+            "conversation inside the setting: one gestures toward equipment or notes while the "
+            "other listens and takes notes, photographed candidly from a slight distance."
+        )
+    person = _cast_for_cell(industry_label, section_slug_value, 1)[0]
+    return (
+        f"One specialist — {person}, {attire} — actively working hands-on with the equipment or "
+        "systems in the setting, focused on the task, photographed from a side or three-quarter "
+        "angle."
+    )
+
+
+_PEOPLE_SECTIONS: Final[frozenset[str]] = frozenset({"understand", "implement"})
 
 _SECTION_BRIEFS: Final[dict[str, str]] = {
     "understand": (
-        "Environmental establishing detail crop that communicates discovery and context: glass partitions, "
-        "work surfaces, instruments, boards, shelves, route maps, or operational fixtures from the industry. "
-        "No meeting scene and no people."
+        "Discovery scene: the people are learning how work actually happens here, surrounded by "
+        "the operational fixtures of the industry — glass partitions, work surfaces, instruments, "
+        "boards, shelves, or route maps."
     ),
     "recommend": (
         "Decision and comparison still-life: blank comparison documents, blank planning sheets, unlabeled laptop "
@@ -147,7 +228,7 @@ _SECTION_BRIEFS: Final[dict[str, str]] = {
         "industry setting visible in the background."
     ),
     "implement": (
-        "Hands-on implementation detail without hands: equipment, cabling, server rack, workstation peripherals, "
+        "Hands-on implementation scene: equipment, cabling, server rack, workstation peripherals, "
         "machinery controls, installation-ready modules, clean tools, or technical components specific to the "
         "industry."
     ),
@@ -252,7 +333,10 @@ def build_library_prompt(industry_label: str, section_slug_value: str) -> str:
     if not section_brief:
         raise ValueError(f"Unknown section slug: {section_slug_value!r}")
     scene = _INDUSTRY_SCENES.get(industry_label) or _INDUSTRY_SCENES[GENERIC_INDUSTRY_LABEL]
-    return (f"Setting: {scene}. Action: {section_brief} {_STYLE_ANCHOR}")[:3950]
+    if section_slug_value in _PEOPLE_SECTIONS:
+        people = _people_brief(industry_label, section_slug_value)
+        return (f"Setting: {scene}. Action: {section_brief} People: {people} {_BASE_STYLE} {_PEOPLE_CLAUSE}")[:3950]
+    return (f"Setting: {scene}. Action: {section_brief} {_BASE_STYLE} {_NO_PEOPLE_CLAUSE}")[:3950]
 
 
 def attach_hero_urls_from_library(

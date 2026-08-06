@@ -13,7 +13,15 @@ from backend.tests.domain_fixtures import ensure_domains, make_topic
 def test_slugify_domain_legacy_labels(db_session):
     assert slugify_domain("AI") == "ai"
     assert slugify_domain("Finance") == "compliance"
-    assert slugify_domain("Leadership") == "ai"
+    # Leadership retired — must not collapse into the AI pillar (PULSE-018).
+    assert slugify_domain("Leadership") == "other"
+
+
+def test_migrate_subscriber_domain_list_drops_leadership(db_session):
+    from backend.services.domain_registry import migrate_subscriber_domain_list
+
+    assert migrate_subscriber_domain_list(["Leadership", "Security"]) == ["security"]
+    assert migrate_subscriber_domain_list(["leadership"]) is None
 
 
 def test_resolve_domain_auto_creates_candidate(db_session):

@@ -20,8 +20,20 @@ When the PR Review Council approves with follow-ups, add each actionable follow-
 | PULSE-001 | `client_ip` ignores `X-Forwarded-For` / Railway proxy — auth and subscribe logs may record the proxy hop, not the client | Minor | Open | 2026-08-05 | PR #12 council. `backend/log_events.py` `client_ip()`. Prefer trusted-proxy extraction (or SlowAPI’s remote address helper) before relying on IPs for abuse detection. |
 | PULSE-002 | Operational logs include subscriber/admin emails on auth, subscribe, and contact paths — retention/access policy unclear for long-lived Railway logs | Minor | Open | 2026-08-05 | PR #12 council. Intentional for ops (`[auth]` / `[subscribe]` / `[contact]`). Document retention expectations or redact/hash emails in production sinks. |
 | PULSE-003 | Signal velocity path still has embedding/Pinecone TODO — semantic topic velocity not re-enabled | Enhancement | Open | 2026-08-05 | `backend/services/signal_service.py` (~line 228). `vector_service` + Pinecone config exist; scorer still count-based until embeddings ship. Source: system audit / Prompt 24 lineage. |
-| PULSE-016 | Audit newsletter + other dynamic surfaces for hardcoded AI/domain bias (follow-up to recommended-path industry-first) | Enhancement | Open | 2026-08-05 | PR #13 council. Recommended-path fixed; review `email_service` assembly ladder, `ISSUE_DOMAINS` / stage→domain injections, and any remaining customer-facing AI-attribution copy (e.g. stale prompt docs). |
 | PULSE-017 | `_topic_industry_aligned` issues a per-topic article query while ranking the recommended-path pool | Minor | Open | 2026-08-05 | PR #13 council. `backend/routers/public.py` `_topics_for_recommended` → `_topic_industry_aligned`. Cap is ~48 topics; batch or cache if latency shows up under load. |
+
+### Hardcoded bias audit notes (2026-08-05)
+
+| Severity | Finding | Where |
+|----------|---------|-------|
+| Major | `Leadership` → `ai` legacy slug | `domain_registry.LEGACY_DOMAIN_TO_SLUG` → PULSE-018 |
+| Major | Newsletter can fill from domain cohort without industry once ≥5 fresh | `email_service._resolve_newsletter_topic_pool` → PULSE-019 |
+| Minor | Broad stage AI tokens (`assistant`, `generative`, `copilot`) | `public._domains_for_intake` → PULSE-020 |
+| Minor | Hero art maps many tech industries/issues to AI image | `recommendedPathHero.ts` → PULSE-021 |
+| Note | `Finance` → `compliance` legacy slug | intentional consolidation, not AI bias |
+| Note | Static `/custom-solutions` mock is Healthcare CEO + AI focus | marketing fixture; not live intake |
+| Note | README “AI-powered…” | repo-only, not public site |
+| Cleared | Strategy → AI hard-map + AI-curation customer copy | PR #13 |
 
 ---
 
@@ -38,6 +50,11 @@ Validated against current `dev` when the tracker was created (2026-08-05). Kept 
 | PULSE-014 | Role Profiles UI limited to hardcoded domain tag pills | Major | Fixed | ~2026-05 | Freeform `TagInput` on `frontend/src/app/admin/roles/page.tsx` |
 | PULSE-015 | Classification feedback dropped AI `original_domain` when article had no topic (ternary/`or` precedence after ruff wrap) | Major | Fixed | 2026-08-05 | `e8e7a36`; assert in `backend/tests/test_article_review_api.py` |
 | PULSE-004 | Staging `/recommended-path` Our Process cards showed flat SVG bands instead of photos — `recommended_path_process_card_library` was empty on Staging (0 rows vs 84 on Dev), so every cell 404'd and the frontend used its band fallback | Major | Fixed | 2026-08-05 | Data gap, not code: table exists at the shared head `20260530_domain_registry`, but the library was seeded on Dev after the last Staging restore, and Staging has no `OPENAI_API_KEY` to re-render. Copied all 84 cells with the new `backend/copy_process_card_images_between` (see [`scripts/db/README.md`](../../scripts/db/README.md)); Staging now serves 1536×1024 PNGs for all 21 industries × 4 sections. Regression test: `backend/tests/test_copy_process_card_images_between.py`. |
+| PULSE-016 | Audit newsletter + other surfaces for hardcoded AI/domain bias | Enhancement | Fixed | 2026-08-05 | Audit complete; remediations PULSE-018–021. Notes in Open section. |
+| PULSE-018 | Legacy `Leadership` domain slugified to `ai` | Major | Fixed | 2026-08-05 | Now → `other`; migrate drops Leadership; `test_domain_registry.py` |
+| PULSE-019 | Newsletter domain tiers dropped industry ordering | Major | Fixed | 2026-08-05 | `_order_newsletter_pool_industry_first`; email_service test |
+| PULSE-020 | Broad stage AI soft-boost tokens | Minor | Fixed | 2026-08-05 | Tight regex in `_domains_for_intake` |
+| PULSE-021 | Recommended-path hero defaulted tech sectors to AI art | Minor | Fixed | 2026-08-05 | `recommendedPathHero.ts` + Vitest |
 
 ---
 

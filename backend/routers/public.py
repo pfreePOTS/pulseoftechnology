@@ -799,24 +799,20 @@ def _domains_for_intake(issue: str, stage: str) -> list[str]:
     "cyber", …) so the radar slice stays anchored to domains the visitor cares about.
     """
     base = list(_domains_for_intake_issue(issue))
-    st = (stage or "").lower()
+    st = (stage or "").lower().strip()
     injections: list[str] = []
 
-    ai_tokens = (
-        "gpt",
-        "llm",
-        "genai",
-        "generative",
-        "copilot",
-        "assistant",
-        " machine learning",
-    )
     padded = f" {st} "
+    # Tight AI cues only (PULSE-020) — avoid bare "assistant" / "generative" / lone "copilot".
     if (
         (" ai " in padded)
-        or st.strip() == "ai"
+        or st == "ai"
         or st.startswith("ai ")
-        or any(x in st for x in ai_tokens)
+        or st.endswith(" ai")
+        or re.search(
+            r"\b(gpt[\w-]*|llm|genai|generative\s+ai|machine\s+learning|ai\s+agents?)\b",
+            st,
+        )
     ):
         injections.append("ai")
 

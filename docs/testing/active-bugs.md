@@ -20,7 +20,6 @@ When the PR Review Council approves with follow-ups, add each actionable follow-
 | PULSE-001 | `client_ip` ignores `X-Forwarded-For` / Railway proxy — auth and subscribe logs may record the proxy hop, not the client | Minor | Open | 2026-08-05 | PR #12 council. `backend/log_events.py` `client_ip()`. Prefer trusted-proxy extraction (or SlowAPI’s remote address helper) before relying on IPs for abuse detection. |
 | PULSE-002 | Operational logs include subscriber/admin emails on auth, subscribe, and contact paths — retention/access policy unclear for long-lived Railway logs | Minor | Open | 2026-08-05 | PR #12 council. Intentional for ops (`[auth]` / `[subscribe]` / `[contact]`). Document retention expectations or redact/hash emails in production sinks. |
 | PULSE-003 | Signal velocity path still has embedding/Pinecone TODO — semantic topic velocity not re-enabled | Enhancement | Open | 2026-08-05 | `backend/services/signal_service.py` (~line 228). `vector_service` + Pinecone config exist; scorer still count-based until embeddings ship. Source: system audit / Prompt 24 lineage. |
-| PULSE-022 | `/approach` page carries legacy voice and stale claims: "Better IT" / "get IT done" hero, "best-in-class" (banned by identity doc), "global IT services company" (contradicts SMB/US positioning + JSON-LD `areaServed`), hardcoded insight card tagged retired `Leadership` pillar, weak stats band (4.3★) | Minor | Open | 2026-08-05 | PR #21 council. `frontend/src/app/approach/page.tsx`. Scheduled as part of the marketing/funnel work branching from `dev` after #21; full context in the site content audit (canvas + chat 2026-08-05). |
 
 ### Hardcoded bias audit notes (2026-08-05)
 
@@ -56,6 +55,7 @@ Validated against current `dev` when the tracker was created (2026-08-05). Kept 
 | PULSE-019 | Newsletter domain tiers dropped industry ordering | Major | Fixed | 2026-08-05 | `_order_newsletter_pool_industry_first`; email_service test |
 | PULSE-020 | Broad stage AI soft-boost tokens | Minor | Fixed | 2026-08-05 | Tight regex in `_domains_for_intake` |
 | PULSE-021 | Recommended-path hero defaulted tech sectors to AI art | Minor | Fixed | 2026-08-05 | `recommendedPathHero.ts` + Vitest |
+| PULSE-022 | `/approach` page carried legacy voice and stale claims ("Better IT" / "get IT done" hero, "best-in-class", "global IT services company", retired `Leadership` insight tag, 4.3★ stats band) | Minor | Fixed | 2026-08-05 | Partnership-framed hero + copy rewrite in `frontend/src/app/approach/page.tsx` (funnel/positioning branch). Regression test: `frontend/src/app/approach/voice.test.ts` scans public pages/components for the banned phrases. |
 
 ---
 

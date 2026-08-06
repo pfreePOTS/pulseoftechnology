@@ -63,7 +63,7 @@ const INSIGHT_CARDS_DEFAULT = [
   },
   {
     tagClass: "bg-pulse-red/8 text-pulse-red",
-    tagLabel: "Leadership",
+    tagLabel: "Business Continuity",
     title: "The COO's Guide to Mitigating the Cost of Operational Downtime",
     body: "Ransomware and unplanned outages cost organizations an average of $5,600 per minute. This guide walks COOs through the continuity planning decisions that separate organizations that recover quickly from those that don't.",
     href: "https://blog.pulseone.com/the-coos-guide-to-mitigating-the-cost-of-operational-downtime",
@@ -117,7 +117,7 @@ const TIMELINE = [
   {
     year: "Now & Future",
     title: "National Reach, Local Heart",
-    body: "As a global IT services company, we prioritize supporting local businesses and business owners with the same dedication to customer service and relationships that have been our cornerstone.",
+    body: "We support businesses and business owners nationwide with the same dedication to customer service and relationships that has been our cornerstone since 2002.",
     dotBorder: "border-[#13c3bd]" as const,
     yearTint: "text-[#13c3bd]" as const,
     accentBg: true,
@@ -180,12 +180,16 @@ export default function ApproachPage() {
               <div className="mx-auto mb-4 inline-block rounded-full border border-pulse-teal/35 bg-pulse-teal/12 px-3.5 py-1.5 font-sans text-[13px] font-semibold tracking-[4px] text-pulse-teal uppercase">
                 People · Technology · Progress
               </div>
-              <h1 className="mb-5 font-sans text-[clamp(2.125rem,5vw,58px)] leading-[1.1] font-bold tracking-tight text-white xl:whitespace-nowrap">
-                Our Approach to{" "}
-                <span className="text-pulse-red [text-shadow:0_0_40px_rgba(213,23,30,0.4)]">Better IT</span>
+              <h1 className="mb-5 font-sans text-[clamp(2.125rem,5vw,58px)] leading-[1.1] font-bold tracking-tight text-white">
+                You know your company.{" "}
+                <span className="text-pulse-red [text-shadow:0_0_40px_rgba(213,23,30,0.4)]">
+                  We work beside you.
+                </span>
               </h1>
-              <p className="mx-auto max-w-[580px] font-sans text-lg leading-relaxed text-white/78">
-                Your success is our success. PulseOne is your &quot;get IT done&quot; people.
+              <p className="mx-auto max-w-[640px] font-sans text-lg leading-relaxed text-white/78">
+                PulseOne combines industry knowledge, business-process understanding, and
+                technology expertise to help your organization run better, longer, and more
+                productively.
               </p>
             </div>
           </div>
@@ -207,12 +211,12 @@ export default function ApproachPage() {
                     helped small and mid-sized organizations navigate the technology decisions that matter.
                   </p>
                   <p>
-                    We are passionate about the power of people and technology to transform a company. We are
-                    confident we can significantly enhance your business objectives and profitability.
+                    The people who advise on a decision are the people who implement it. That keeps the
+                    advice honest and the delivery accountable — we live with what we recommend.
                   </p>
                   <p>
-                    With team members across the United States and internationally, we combine the responsiveness
-                    of a local partner with the depth of an enterprise-level back office.
+                    With team members across the United States, we combine the responsiveness of a local
+                    partner with the depth of a national back office.
                   </p>
                 </div>
               </div>
@@ -285,7 +289,9 @@ export default function ApproachPage() {
                 Our Services + Our Partners = Business Solutions
               </h2>
               <p className="mx-auto max-w-[600px] font-sans text-base leading-relaxed text-[#646464]">
-                We work with best-in-class technology partners to deliver integrated solutions.
+                Our recommendations are vendor-neutral. These are the platform partnerships
+                delivery requires — and we say plainly when a recommendation is something we
+                would also implement.
               </p>
             </div>
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -394,20 +400,22 @@ export default function ApproachPage() {
               <p className="mt-1.5 font-sans text-[13px] leading-snug text-[#646464]">Years in Business</p>
             </div>
             <div className="border-[#e0e0e0] px-6 py-2 text-center md:border-r md:last:border-r-0">
-              <p className="font-sans text-[22px] font-bold leading-snug text-[#1a1a1a]">All U.S. Regions</p>
-              <p className="mt-1.5 font-sans text-[13px] leading-snug text-[#646464]">We got you covered</p>
-            </div>
-            <div className="border-[#e0e0e0] px-6 py-2 text-center md:border-r md:last:border-r-0">
               <p className="font-sans text-[38px] font-bold leading-none text-[#1a1a1a]">
                 30<span className="text-pulse-teal">+</span>
               </p>
               <p className="mt-1.5 font-sans text-[13px] leading-snug text-[#646464]">Industries Served</p>
             </div>
-            <div className="border-[#e0e0e0] px-6 py-2 text-center">
+            <div className="border-[#e0e0e0] px-6 py-2 text-center md:border-r md:last:border-r-0">
               <p className="font-sans text-[38px] font-bold leading-none text-[#1a1a1a]">
-                4.3 <span className="inline-block text-[22px] translate-y-[-1px] align-middle text-[#1a1a1a]">★</span>
+                5
               </p>
-              <p className="mt-1.5 font-sans text-[13px] leading-snug text-[#646464]">On Google</p>
+              <p className="mt-1.5 font-sans text-[13px] leading-snug text-[#646464]">Offices Nationwide</p>
+            </div>
+            <div className="border-[#e0e0e0] px-6 py-2 text-center">
+              <p className="font-sans text-[22px] font-bold leading-snug text-[#1a1a1a]">
+                Advisory <span className="text-pulse-teal">+</span> Delivery
+              </p>
+              <p className="mt-1.5 font-sans text-[13px] leading-snug text-[#646464]">One accountable team</p>
             </div>
           </div>
         </section>

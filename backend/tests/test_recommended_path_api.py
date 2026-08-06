@@ -202,3 +202,111 @@ def test_recommended_path_watch_stories_dedupes_same_title(client, db_session):
     stories = r.json().get("watch_stories") or []
     titles = [row["title"] for row in stories]
     assert titles.count(shared_title) <= 1
+
+
+def test_domains_for_intake_strategy_does_not_map_to_ai():
+    from backend.routers.public import _domains_for_intake, _domains_for_intake_issue
+
+    assert _domains_for_intake_issue("Strategy") == []
+    assert "ai" not in _domains_for_intake("Strategy", "investment and governance")
+    assert "ai" not in _domains_for_intake_issue("board leadership culture")
+    assert _domains_for_intake_issue("AI") == ["ai"]
+    assert "ai" in _domains_for_intake("AI", "planning for AI adoption")
+
+
+def test_strategy_intake_prefers_industry_aligned_theme_and_story(client, db_session):
+    """Strategy must not collapse to AI when an industry-aligned topic/story exists."""
+    from datetime import UTC, datetime
+
+    source = Source(name="Feed", url="https://example.com/rp-industry", type=SourceType.rss)
+    ai_topic = make_topic(
+        db_session,
+        name="AI Agent Enterprise Adoption",
+        domain_slug="ai",
+        subdomain="Agents",
+        status=TopicStatus.selected,
+        is_published=True,
+        urgency_score=99.0,
+    )
+    insurance_topic = make_topic(
+        db_session,
+        name="Insurance cyber and ops modernization",
+        domain_slug="security",
+        subdomain="Insurance Ops",
+        status=TopicStatus.selected,
+        is_published=True,
+        urgency_score=35.0,
+        industry_positions={
+            "Insurance": {
+                "industry_impact": "Carriers face rising cyber underwriting and claims ops pressure.",
+                "risk": "high",
+                "adoption_state": "piloting",
+            }
+        },
+    )
+    now = datetime.now(UTC)
+    ai_article = Article(
+        source=source,
+        topic=ai_topic,
+        title="Meta enters the AI coding wars with Muse Spark",
+        url="https://example.com/meta-ai-muse",
+        content="Agentic coding assistants expand enterprise AI tooling.",
+        status=ArticleStatus.processed,
+        ingested_at=now,
+        published_at=now,
+        image_url="https://example.com/ai.jpg",
+    )
+    insurance_article = Article(
+        source=source,
+        topic=insurance_topic,
+        title="Insurers harden claims platforms against cyber fraud",
+        url="https://example.com/insurance-cyber-claims",
+        content=(
+            "Insurance carriers are rebuilding claims workflows and identity controls "
+            "after a wave of cyber-enabled fraud targeting underwriting desks."
+        ),
+        status=ArticleStatus.processed,
+        ingested_at=now,
+        published_at=now,
+        image_url="https://example.com/ins.jpg",
+        persona_impacts={
+            "IT Manager / Director": (
+                "IT directors in Insurance must align claims platform controls with underwriting risk."
+            )
+        },
+    )
+    db_session.add_all([source, ai_topic, insurance_topic, ai_article, insurance_article])
+    db_session.commit()
+
+    themes = client.get(
+        "/api/recommended-path",
+        params={
+            "industry": "Insurance",
+            "role": "IT Manager / Director",
+            "issue": "Strategy",
+            "stage": "investment and governance",
+            "skip_ai": True,
+            "defer_articles": True,
+        },
+    )
+    assert themes.status_code == 200, themes.text
+    theme_names = [t["name"] for t in (themes.json().get("topics") or [])]
+    assert "Insurance cyber and ops modernization" in theme_names
+    # Industry-aligned theme should appear before pure AI urgency filler when both are present.
+    assert theme_names.index("Insurance cyber and ops modernization") < theme_names.index(
+        "AI Agent Enterprise Adoption"
+    )
+
+    stories = client.get(
+        "/api/recommended-path/watch-stories",
+        params={
+            "industry": "Insurance",
+            "role": "IT Manager / Director",
+            "issue": "Strategy",
+            "stage": "investment and governance",
+        },
+    )
+    assert stories.status_code == 200, stories.text
+    titles = [row["title"] for row in stories.json().get("watch_stories") or []]
+    assert titles, "expected at least one watch story"
+    assert titles[0] == "Insurers harden claims platforms against cyber fraud"

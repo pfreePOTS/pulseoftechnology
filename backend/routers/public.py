@@ -854,6 +854,84 @@ def _article_eligible_for_watch_story(article: Article) -> bool:
     return article_qualifies_pulse_tracked_surface(article)
 
 
+def _topic_industry_aligned_from_metadata(topic: Topic, industry: str) -> bool:
+    """True when industry appears on the topic grid or topic blurb (no article scan)."""
+    needle = (industry or "").strip()
+    if len(needle) < 2:
+        return False
+    if industry_radar_bonus(topic, needle) > 0:
+        return True
+    ip = getattr(topic, "industry_positions", None)
+    if isinstance(ip, dict):
+        il = needle.lower()
+        for key in ip.keys():
+            if il in str(key).lower():
+                return True
+    return False
+
+
+def _topic_ids_with_industry_article_hit(
+    db: Session,
+    topic_ids: list[int],
+    industry: str,
+    *,
+    since: datetime,
+    per_topic_cap: int = 40,
+) -> set[int]:
+    """One batched query: topic ids whose recent articles mention ``industry`` (PULSE-017)."""
+    needle = (industry or "").strip()
+    if len(needle) < 2 or not topic_ids:
+        return set()
+    fetch_cap = min(max(len(topic_ids) * per_topic_cap, per_topic_cap), 2000)
+    rows = (
+        db.query(Article)
+        .filter(
+            Article.topic_id.in_(topic_ids),
+            Article.archived_at.is_(None),
+            Article.ingested_at >= since,
+        )
+        .order_by(Article.topic_id.asc(), Article.ingested_at.desc())
+        .limit(fetch_cap)
+        .all()
+    )
+    hits: set[int] = set()
+    seen_per_topic: dict[int, int] = {}
+    for art in rows:
+        tid = art.topic_id
+        if tid is None or tid in hits:
+            continue
+        n = seen_per_topic.get(tid, 0)
+        if n >= per_topic_cap:
+            continue
+        seen_per_topic[tid] = n + 1
+        if article_industry_bonus(art, needle) > 0:
+            hits.add(tid)
+    return hits
+
+
+def _industry_aligned_topic_ids(
+    db: Session,
+    topics: list[Topic],
+    industry: str,
+    *,
+    since: datetime,
+) -> set[int]:
+    """Metadata hits plus one batched article scan for the remainder."""
+    needle = (industry or "").strip()
+    if len(needle) < 2 or not topics:
+        return set()
+    aligned: set[int] = set()
+    need_articles: list[int] = []
+    for t in topics:
+        if _topic_industry_aligned_from_metadata(t, needle):
+            aligned.add(t.id)
+        else:
+            need_articles.append(t.id)
+    if need_articles:
+        aligned |= _topic_ids_with_industry_article_hit(db, need_articles, needle, since=since)
+    return aligned
+
+
 def _topic_industry_aligned(
     db: Session,
     topic: Topic,
@@ -862,29 +940,7 @@ def _topic_industry_aligned(
     since: datetime,
 ) -> bool:
     """True when industry appears on the topic grid, topic blurb, or a recent article."""
-    needle = (industry or "").strip()
-    if len(needle) < 2:
-        return False
-    if industry_radar_bonus(topic, needle) > 0:
-        return True
-    ip = topic.industry_positions
-    if isinstance(ip, dict):
-        il = needle.lower()
-        for key in ip.keys():
-            if il in str(key).lower():
-                return True
-    rows = (
-        db.query(Article)
-        .filter(
-            Article.topic_id == topic.id,
-            Article.archived_at.is_(None),
-            Article.ingested_at >= since,
-        )
-        .order_by(Article.ingested_at.desc())
-        .limit(40)
-        .all()
-    )
-    return any(article_industry_bonus(a, needle) > 0 for a in rows)
+    return topic.id in _industry_aligned_topic_ids(db, [topic], industry, since=since)
 
 
 def _watch_article_industry_hit(topic: Topic, article: Article, industry: str) -> bool:
@@ -1177,11 +1233,13 @@ def _topics_for_recommended(
             score += _RECOMMENDED_PATH_DOMAIN_SOFT_BOOST
         scored.append((score, t))
 
+    aligned_ids = _industry_aligned_topic_ids(db, pool, industry, since=since)
+
     industry_first: list[tuple[float, Topic]] = []
     domain_next: list[tuple[float, Topic]] = []
     remainder: list[tuple[float, Topic]] = []
     for score, t in scored:
-        if (industry or "").strip() and _topic_industry_aligned(db, t, industry, since=since):
+        if t.id in aligned_ids:
             industry_first.append((score, t))
         elif preferred_domains and topic_domain_slug(t) in preferred_domains:
             domain_next.append((score, t))

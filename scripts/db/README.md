@@ -53,6 +53,24 @@ Pick the **export** source as whichever Postgres **already has the rows** you wa
     python -m backend.sync_newsletter_cms_between
   ```
 
+- **Our Process card banners** (`recommended_path_process_card_library` — the `/recommended-path` card images):
+
+  Symptom that you need this: the four Our Process cards render flat red→teal SVG bands instead of
+  photos, and `GET /api/recommended-path/process-card-images/<industry>/<section>` returns 404. The
+  seeder (`backend.scripts.seed_process_card_library`) needs `OPENAI_API_KEY` and burns image quota,
+  so copy the blobs Dev already rendered instead:
+
+  ```bash
+  TARGET=$(railway variables -s "Backend - Staging" -e staging --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["DATABASE_PUBLIC_URL"])')
+  docker compose exec -T -e TARGET_DATABASE_URL="$TARGET" backend bash -lc \\
+    'SOURCE_DATABASE_URL="$DATABASE_URL" python -u -m backend.copy_process_card_images_between'
+  ```
+
+  Upserts by `(industry_slug, section_slug)` and preserves `version` (the public href uses it as the
+  `?v=` cache key). Cells already present at the same version are skipped and each cell commits on
+  its own, so a run interrupted mid-transfer can simply be re-run — ~170 MB total for the 21 × 4
+  sweep. Set `FORCE=1` to re-send every cell after re-rendering images on Dev.
+
 ## Requirements
 
 - **Export (Compose)**: Docker Compose stack with `db` running; `pg_dump` runs inside the `db` image.

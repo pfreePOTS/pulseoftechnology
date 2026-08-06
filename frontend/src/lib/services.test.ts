@@ -51,18 +51,6 @@ describe("service content", () => {
     }
   });
 
-  it("gives every service a composite vignette in the composite voice", () => {
-    for (const service of SERVICES) {
-      expect(service.vignette.title.length).toBeGreaterThan(0);
-      expect(service.vignette.body.length).toBeGreaterThan(0);
-      for (const paragraph of service.vignette.body) {
-        expect(paragraph.length).toBeGreaterThan(0);
-        // Identity doc: composites only — never name or imply a real client.
-        expect(paragraph).not.toMatch(/\bour client\b/i);
-      }
-    }
-  });
-
   it("keeps the path-forward section opt-in for other services", () => {
     const others = SERVICES.filter((service) => service.slug !== "ai-and-emerging-tech");
     expect(others.length).toBeGreaterThan(0);

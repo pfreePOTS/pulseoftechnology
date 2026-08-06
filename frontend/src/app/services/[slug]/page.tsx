@@ -290,32 +290,6 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
           </div>
         </section>
 
-        {/* Composite engagement vignette — trust content for the nearly
-            convinced, so it sits directly above the contact CTA. */}
-        <section className="border-t border-[#e8e8e8] bg-white px-6 py-[80px]">
-          <div className="mx-auto max-w-[1200px]">
-            <div className="max-w-[760px]">
-              <span className="mb-3 block font-sans text-[11px] font-semibold tracking-[3px] text-pulse-teal uppercase">
-                How an Engagement Looks
-              </span>
-              <h2 className="mb-6 font-sans text-[30px] font-bold leading-tight text-[#1a1a1a]">
-                {service.vignette.title}
-              </h2>
-              {service.vignette.body.map((paragraph) => (
-                <p
-                  key={paragraph.slice(0, 40)}
-                  className="mb-5 font-sans text-[16px] leading-[1.8] text-[#4a4a4a]"
-                >
-                  {paragraph}
-                </p>
-              ))}
-              <p className="mt-2 font-sans text-[13px] italic leading-relaxed text-[#8a8a8a]">
-                A composite of similar engagements, not a named client.
-              </p>
-            </div>
-          </div>
-        </section>
-
         <section className="relative overflow-hidden border-t-[3px] border-pulse-red bg-dark-bg px-6 py-[80px] text-center">
           <div
             className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_50%,rgba(213,23,30,0.12)_0%,transparent_70%)]"

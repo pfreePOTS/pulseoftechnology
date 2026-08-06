@@ -708,8 +708,7 @@ _EMAIL_TEMPLATE = """\
               Good morning, {first_name}.
             </p>
             <p style="margin:0 0 14px;font-size:14px;color:#4A5F6D;font-family:{ff};line-height:1.65;">
-              Here are the top technology signals your team needs to know about{industry_line},
-              curated by AI and reviewed by PulseOne analysts.
+              Here are the top technology signals your team needs to know about{industry_line}.
             </p>
             <p style="margin:0;font-size:13px;font-family:{ff};line-height:1.65;">
               <span style="color:#4A5F6D;">Share:</span>

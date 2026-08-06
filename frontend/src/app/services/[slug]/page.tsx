@@ -127,7 +127,7 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
             </div>
             <aside className="rounded-xl border border-[#e0e0e0] bg-[#f4f8fa] p-8">
               <h2 className="mb-3 font-sans text-[15px] font-bold text-[#1a1a1a]">
-                Where this stops
+                {service.boundaryHeading ?? "Where this stops"}
               </h2>
               <p className="mb-7 font-sans text-[14.5px] leading-[1.75] text-[#646464]">
                 {service.boundary}

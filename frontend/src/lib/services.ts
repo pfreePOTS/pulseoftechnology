@@ -41,6 +41,8 @@ export type ServiceContent = {
   industryFocus?: ServiceIndustryFocus;
   /** Stated scope limit. Renders visibly and feeds `llms.txt`. */
   boundary: string;
+  /** Sidebar heading above `boundary`. Defaults to "Where this stops". */
+  boundaryHeading?: string;
   faq: ServiceFaq[];
 };
 
@@ -61,7 +63,7 @@ export const SERVICES: ServiceContent[] = [
       "Small and mid-market organizations modernizing the platforms, data, and automation their operations depend on",
     intro: [
       "Managed business technology means PulseOne takes ongoing ownership of the systems your organization runs on and the work of making them better: adopting new tools properly, tuning what is already in place, connecting platforms that do not talk to each other, and governing the data and agentic tools now moving into everyday work. Keeping the environment stable is included. It is the starting condition rather than the deliverable.",
-      "Most organizations cannot name a performance problem. What they have is a dozen platforms bought at different times, staff quietly working around the gaps, and agentic tools arriving before anyone decided what those tools may touch. This service exists to own that picture continuously, across security, data, automation, and the written policy behind all three, instead of revisiting it once a year.",
+      "Most organizations cannot name a performance problem. What they have is a dozen platforms bought at different times, staff quietly working around the gaps, and agentic tools arriving before anyone decided what those tools may touch. This service exists to own that picture continuously across your core technology capabilities, instead of revisiting it once a year.",
     ],
     capabilities: [
       {
@@ -96,7 +98,7 @@ export const SERVICES: ServiceContent[] = [
     industryFocus: {
       heading: "What changes by industry",
       intro:
-        "The four managed pillars are the same everywhere. What they mean in practice is not, because the data, the rules, and the tolerance for a wrong answer differ by industry.",
+        "The core capabilities are the same everywhere. What they mean in practice is not, because the data, the rules, and the tolerance for a wrong answer differ by industry.",
       items: [
         {
           industry: "Healthcare",
@@ -116,8 +118,9 @@ export const SERVICES: ServiceContent[] = [
         },
       ],
     },
+    boundaryHeading: "How we work with you",
     boundary:
-      "PulseOne manages the technology layer: platforms, data, integrations, agentic tools, and the policies governing them. We do not train foundation models, we do not run HR, finance, marketing, or general business operations, and we do not install or commission production equipment.",
+      "You know your company, your customers, and how work actually gets done. PulseOne combines industry knowledge, business process understanding, and technology expertise to help you run better, longer, and more productively. We manage the platforms, data, integrations, agentic tools, and policies your business depends on, so improvement compounds over time rather than resetting every year.",
     faq: [
       {
         question: "What is managed business technology?",

@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-This document cross-references every recommendation from the CEO Review, Design Review (deep-dive), and Eng Review against the current `dev` branch as of this commit. Items marked DONE are already implemented. Items marked REMAINING are broken into individual, sequenced Cursor prompts below.
+This document cross-references every recommendation from the CEO Review, Design Review (deep-dive), and Eng Review against the current `dev` branch as of this commit. Items marked DONE are already implemented. Status table re-validated **2026-08-05** — former REMAINING admin/radar UX rows are done or superseded (see [`docs/testing/active-bugs.md`](../testing/active-bugs.md) stale-doc notes). The sequenced prompts below are historical implementation guides, not an open backlog.
 
 ### From Prompt 27 (Personalization & Workbench)
 
@@ -24,34 +24,34 @@ This document cross-references every recommendation from the CEO Review, Design 
 |---|------|--------|
 | 28-1 | Raw Research page at `/admin/research` | **DONE** — dense table, pagination, status filter |
 | 28-2 | Trend Discovery merges signals inline | **DONE** — velocity, acceleration, rationale, AI analyze, approve all on `/admin` |
-| 28-3 | Industry Analysis page at `/admin/analysis` | **PARTIAL** — page exists but uses accordions + sliders, not spreadsheet grid |
+| 28-3 | Industry Analysis page at `/admin/analysis` | **DONE** (re-checked 2026-08-05) — spreadsheet grid |
 | 28-4 | Sidebar nav updated to 1-2-3-4 pipeline | **DONE** — `layout.tsx` lines 11-14 |
-| 28-5 | Transaction safety on approve | **PARTIAL** — single `db.commit()` but no explicit `begin()` block |
+| 28-5 | Transaction safety on approve | **DONE enough** (2026-08-05) — try/`commit`/`rollback` on `approve_topic`; explicit `begin()` not required |
 | 28-6 | Signal dedup uses latest by `max(id)` | **DONE** — `admin.py` line 251 (uses `max(id)` subquery) |
 | 28-7 | Pagination on raw articles | **DONE** — `limit`/`offset` with 200 default |
 | 28-8 | Null-safe velocity display | **DONE** — `fmtOneDecimal` returns "—" for null |
-| 28-9 | Industry Analysis as spreadsheet grid | **REMAINING** — still accordion + sliders |
-| 28-10 | Signal rationale truncation | **REMAINING** — rationale renders full-length inline |
+| 28-9 | Industry Analysis as spreadsheet grid | **DONE** (2026-08-05) — CSS grid spreadsheet on `/admin/analysis` |
+| 28-10 | Signal rationale truncation | **DONE** (2026-08-05) — `line-clamp-2` on Trend Discovery |
 
 ### From Design Review (Deep-Dive)
 
 | # | Item | Status |
 |---|------|--------|
 | DR-1 | Collection as dense table | **DONE** |
-| DR-2 | Trend Discovery as master-detail split pane | **REMAINING** — still a flat table, no detail drawer |
-| DR-3 | Industry Analysis as spreadsheet grid | **REMAINING** — same as 28-9 |
-| DR-4 | Newsletter preview: horizontal control bar + auto-refresh | **REMAINING** — still left rail + manual refresh |
-| DR-5 | Publishing page includes radar publish controls | **REMAINING** — `/admin/newsletter` only has newsletter preview, no radar toggles |
-| DR-6 | Radar click-to-lock stars | **REMAINING** — hover only (`onMouseEnter`/`onMouseLeave`) |
-| DR-7 | Radar default panel content | **REMAINING** — shows "Hover a star" placeholder |
-| DR-8 | Radar subscribe CTA in tooltip | **REMAINING** — no CTA link |
-| DR-9 | Subscribe Wizard "None selected = All" visual fix | **REMAINING** — still allows empty with no visual "All" state |
+| DR-2 | Trend Discovery as master-detail split pane | **DONE** (2026-08-05) — detail drawer on `/admin` |
+| DR-3 | Industry Analysis as spreadsheet grid | **DONE** (2026-08-05) — same as 28-9 |
+| DR-4 | Newsletter preview: horizontal control bar + auto-refresh | **DONE** (2026-08-05) — `NewsletterSandboxPanel` |
+| DR-5 | Publishing page includes radar publish controls | **DONE** (2026-08-05) — `/admin/publishing` + `RadarPublishingSection` |
+| DR-6 | Radar click-to-lock stars | **DONE** (2026-08-05) — `lockedKey` in `RadarChart.tsx` |
+| DR-7 | Radar default panel content | **DONE** (2026-08-05) — `RadarDefaultPanel` intro + Top 3 |
+| DR-8 | Radar subscribe CTA in tooltip | **DONE** (2026-08-05) — “Get briefings on {topic} →” |
+| DR-9 | Subscribe Wizard "None selected = All" visual fix | **SUPERSEDED** (2026-08-05) — requires ≥1 domain; empty≠all |
 
 ### From Eng Review
 
 | # | Item | Status |
 |---|------|--------|
-| ER-1 | Explicit transaction block on approve | **REMAINING** — uses implicit session commit |
+| ER-1 | Explicit transaction block on approve | **DONE enough** (2026-08-05) — see 28-5 |
 | ER-2 | Signal dedup defensive query | **DONE** |
 | ER-3 | Pagination on articles | **DONE** |
 | ER-4 | Null-safe velocity | **DONE** |
@@ -60,9 +60,9 @@ This document cross-references every recommendation from the CEO Review, Design 
 
 | # | Item | Status |
 |---|------|--------|
-| CL-1 | Remove 9 unused `Workbench*.tsx` files | **REMAINING** — files exist, no imports found |
-| CL-2 | Remove or redirect `/admin/signals` | **REMAINING** — still redirects to old `?step=signals` |
-| CL-3 | Consolidate standalone Radar Preview into Publishing | **REMAINING** — separate page still exists |
+| CL-1 | Remove 9 unused `Workbench*.tsx` files | **DONE** (2026-08-05) — no `Workbench*.tsx` in tree |
+| CL-2 | Remove or redirect `/admin/signals` | **DONE** (2026-08-05) — merge notice + link to `/admin` |
+| CL-3 | Consolidate standalone Radar Preview into Publishing | **WONTFIX / intentional** (2026-08-05) — Publishing = toggles; Radar Preview = chart modes |
 
 ---
 

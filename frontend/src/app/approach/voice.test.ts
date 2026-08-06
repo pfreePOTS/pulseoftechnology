@@ -19,6 +19,19 @@ const BANNED_PHRASES = [
   "global IT services company",
 ];
 
+/**
+ * Internal/developer vocabulary that must never render on a public page
+ * (loading states, error states, empty states). Ops notes belong in code
+ * comments or docs, not in copy a visitor can see — a radar loading screen
+ * once told visitors to run `docker compose up`.
+ */
+const BANNED_DEV_NOTES = [
+  "SERVER_API_URL",
+  "docker compose",
+  "http://backend:8000",
+  "verify the Pulse API",
+];
+
 const APP_DIR = fileURLToPath(new URL("../", import.meta.url));
 const COMPONENTS_DIR = fileURLToPath(new URL("../../components", import.meta.url));
 
@@ -45,6 +58,11 @@ describe("public site voice (PULSE-022)", () => {
   });
 
   it.each(BANNED_PHRASES)("never uses the retired phrase %s", (phrase) => {
+    const offenders = files.filter((file) => readFileSync(file, "utf8").includes(phrase));
+    expect(offenders).toEqual([]);
+  });
+
+  it.each(BANNED_DEV_NOTES)("never exposes internal dev note %s", (phrase) => {
     const offenders = files.filter((file) => readFileSync(file, "utf8").includes(phrase));
     expect(offenders).toEqual([]);
   });

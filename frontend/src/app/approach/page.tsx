@@ -33,7 +33,7 @@ const FAQ: FaqItem[] = [
   {
     question: "How does an engagement with PulseOne start?",
     answer:
-      "Engagements start with a conversation rather than a proposal. PulseOne listens to where your organization is and what is causing pressure, then runs a structured review of your technology environment. A roadmap follows, prioritized with you, and delivery works through it in that order.",
+      "Engagements start with a conversation, not a proposal. PulseOne listens to where your organization is and what's causing pressure, then runs a structured review of your technology environment. A roadmap follows, prioritized with you, and delivery works through it in that order.",
   },
   {
     question: "Do you replace our existing IT team?",
@@ -48,7 +48,7 @@ const FAQ: FaqItem[] = [
   {
     question: "Are you tied to particular technology vendors?",
     answer:
-      "PulseOne is vendor-neutral in its recommendations and works in categories of action rather than product pitches. We maintain partnerships with major platform providers because delivery requires it, and we say plainly when a recommendation is something we would also implement.",
+      "PulseOne is vendor-neutral and recommends categories of action, not products. We maintain partnerships with major platform providers because the delivery work requires it, and we tell you plainly when a recommendation is something we would also implement.",
   },
 ];
 
@@ -211,8 +211,9 @@ export default function ApproachPage() {
                     helped small and mid-sized organizations navigate the technology decisions that matter.
                   </p>
                   <p>
-                    The people who advise on a decision are the people who implement it. That keeps the
-                    advice honest and the delivery accountable — we live with what we recommend.
+                    The people who advise on a decision are the people who implement it. That keeps
+                    the advice honest and the delivery accountable, because we live with what we
+                    recommend.
                   </p>
                   <p>
                     With team members across the United States, we combine the responsiveness of a local
@@ -290,8 +291,8 @@ export default function ApproachPage() {
               </h2>
               <p className="mx-auto max-w-[600px] font-sans text-base leading-relaxed text-[#646464]">
                 Our recommendations are vendor-neutral. These are the platform partnerships
-                delivery requires — and we say plainly when a recommendation is something we
-                would also implement.
+                the delivery work requires, and we tell you plainly when a recommendation is
+                something we would also implement.
               </p>
             </div>
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">

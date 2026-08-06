@@ -72,19 +72,19 @@ type OverviewPayload = {
 const ENGAGEMENT_STEPS: Array<{ title: string; body: string }> = [
   {
     title: "Introductory Call",
-    body: "A 30-minute no-pressure conversation with one of our advisors. We listen first — no pitch, no agenda. Just an honest conversation about where you are.",
+    body: "A 30-minute conversation with one of our advisors. No pitch, no agenda. We mostly listen, and we tell you honestly whether we can help.",
   },
   {
     title: "Situation Review",
-    body: "We take the time to understand your organization, your team, and the specific technology challenges you're navigating — including AI exposure and governance readiness.",
+    body: "We take time to understand your organization, your team, and the specific technology challenges in front of you, including AI exposure and governance.",
   },
   {
     title: "Recommended Path",
-    body: "We present a clear, tailored recommendation — whether that's a single assessment, an advisory engagement, or a longer-term partnership. You decide what fits.",
+    body: "We come back with a clear recommendation. That might be a single assessment, an advisory engagement, or a longer-term partnership. You decide what fits.",
   },
   {
     title: "We Work Alongside You",
-    body: "Our team becomes an extension of yours — available, accountable, and always aligned with your business objectives, not just your technology stack.",
+    body: "Our team works as an extension of yours: available, accountable, and focused on your business goals, not just your technology stack.",
   },
 ];
 
@@ -194,7 +194,7 @@ export default async function EveryonePage() {
                   </span>
                   <h3 className="mb-2 font-sans text-base font-bold text-white">{t.name}</h3>
                   <p className="font-sans text-sm leading-relaxed text-white/50">
-                    {t.summary ?? "Published radar topic — open the full radar for more context."}
+                    {t.summary ?? "Published radar topic. Open the full radar for more context."}
                   </p>
                   <p className="mt-3 font-sans text-xs text-white/35">
                     Urgency {t.urgency_score.toFixed(1)}
@@ -203,7 +203,7 @@ export default async function EveryonePage() {
               ))}
               {(!data?.topics || data.topics.length === 0) && (
                 <p className="font-sans text-sm text-white/45 md:col-span-2 lg:col-span-3">
-                  No published topics yet — explore the full radar for live signals.
+                  No published topics yet. Explore the full radar for live signals.
                 </p>
               )}
             </div>
@@ -301,7 +301,7 @@ export default async function EveryonePage() {
               <em className="text-pulse-teal not-italic">your</em> organization.
             </>
           }
-          description="Send us a message about where you are and where you want to go — an advisor will follow up within one business day."
+          description="Tell us where you are and where you want to go. An advisor will follow up within one business day."
         />
       </main>
       <GlobalFooter />

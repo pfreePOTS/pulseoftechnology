@@ -181,7 +181,7 @@ export default async function RadarPage() {
               </h2>
               <p className="font-sans text-[15px] leading-relaxed text-white/60">
                 The radar is run by the advisors and engineers who manage business technology
-                for our clients every day — not by a research desk.
+                for our clients every day, not by a research desk.
               </p>
             </div>
             <Link
@@ -199,8 +199,8 @@ export default async function RadarPage() {
               Get Personalised Intelligence
             </h2>
             <p className="mb-8 text-center text-gray-600">
-              Receive curated radar briefings tailored to your industry and domains — delivered
-              daily to your inbox.
+              Curated radar briefings for your industry and domains, in your inbox every
+              morning.
             </p>
             <SubscribeWizard apiBase={API_BASE} />
           </div>

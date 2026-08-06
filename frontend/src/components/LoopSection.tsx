@@ -9,19 +9,19 @@ import Link from "next/link";
 const BEATS = [
   {
     title: "See it coming",
-    body: "Our advisors track what is moving and what it means for your industry. The Pulse of Technology Radar and daily briefing keep you pointed in the right direction, without the noise.",
+    body: "Our advisors track what's moving and what it means for your industry. The Pulse of Technology Radar and daily briefing keep you pointed in the right direction without burying you in noise.",
     cta: "Get the Daily Briefing",
     href: "#subscribe",
   },
   {
     title: "Know where you stand",
-    body: "Sixty seconds of context — your industry, your role, what is on your mind — returns a recommended path: where you stand and what to do next. No sales call required.",
+    body: "Give us sixty seconds of context: your industry, your role, and what's on your mind. You get back a recommended path showing where you stand and what to do next. No sales call required.",
     cta: "Start the 60-Second Intake",
     href: "#how-can-we-help",
   },
   {
     title: "Make the most of it",
-    body: "When a signal turns into work, the same team does the work. Managed business technology, security, and AI adoption that keeps improving instead of just staying up.",
+    body: "When a signal turns into a project, the same team does the work: managed business technology, security, and AI adoption that keeps getting better, not just staying up.",
     cta: "See Our Services",
     href: "/services",
   },
@@ -39,9 +39,9 @@ export default function LoopSection() {
             See it coming. Know where you stand. Make the most of it.
           </h2>
           <p className="font-sans text-[16px] leading-[1.8] text-[#646464]">
-            We watch the technology landscape so you don&rsquo;t have to, tell you what it
-            means for your industry and where you stand, and then do the work — and keep
-            improving it.
+            We watch the technology landscape so you don&rsquo;t have to. We&rsquo;ll tell
+            you what it means for your industry, show you where you stand, and then do the
+            work and keep improving it.
           </p>
         </div>
         <ol className="grid gap-10 md:grid-cols-3 md:gap-8">

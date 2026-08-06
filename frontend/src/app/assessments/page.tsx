@@ -50,7 +50,7 @@ const ASSESSMENT_GROUPS: Array<{
         primaryConcernTag: "Cybersecurity",
         concern: "cybersecurity",
         description:
-          "Carriers now ask detailed questions about sign-in protection, backups, patching, and incident response before they quote or renew. This assessment checks your environment against those controls, scored by section, so gaps surface before the renewal questionnaire arrives — and stronger answers often mean better premiums.",
+          "Carriers now ask detailed questions about sign-in protection, backups, patching, and incident response before they quote or renew. This assessment checks your environment against those controls, scored by section, so gaps surface before the renewal questionnaire arrives. Stronger answers often mean better premiums, too.",
       },
     ],
   },
@@ -341,7 +341,7 @@ export default function AssessmentsPage() {
               Or don&apos;t see what you&apos;re looking for?
             </>
           }
-          description="Tell us what you need — complete an assessment with our team or request a custom assessment for your situation."
+          description="Tell us what you need. Complete an assessment with our team, or ask us to build a custom one for your situation."
           buttonLabel="Contact us"
         />
 

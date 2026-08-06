@@ -655,7 +655,7 @@ export default function RadarChart({
       <svg
         viewBox={`0 ${svgCoord(RADAR_VIEW_TOP)} ${SIZE} ${svgCoord(RADAR_VIEW_HEIGHT)}`}
         className="w-full h-auto"
-        aria-label="PulseOne Industry Radar — wedge shows adoption stage; distance shows impact band (9+ toward centre)"
+        aria-label="PulseOne Industry Radar. Wedge shows adoption stage; distance shows impact band (9+ toward centre)"
       >
         <defs>
           <radialGradient id="radarBg" cx="50%" cy="50%" r="50%">

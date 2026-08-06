@@ -78,7 +78,7 @@ export default function ContactForm() {
 
       if (!res.ok) {
         // Pydantic 422 returns `{ detail: [{ msg, loc }, ...] }`.
-        let detail = "Sorry — your message couldn't be sent. Please try again.";
+        let detail = "Sorry, your message couldn't be sent. Please try again.";
         try {
           const body = await res.json();
           if (Array.isArray(body?.detail) && body.detail[0]?.msg) {
@@ -96,7 +96,7 @@ export default function ContactForm() {
 
       setState("success");
     } catch {
-      setErrorMessage("Network error — please check your connection and try again.");
+      setErrorMessage("Network error. Please check your connection and try again.");
       setState("error");
     }
   };
@@ -133,7 +133,7 @@ export default function ContactForm() {
           Message received.
         </h3>
         <p className="mx-auto max-w-[420px] font-sans text-[15px] leading-relaxed text-[#555]">
-          Thanks, {name.split(" ")[0] || "there"} — one of our advisors will reply within one
+          Thanks, {name.split(" ")[0] || "there"}. One of our advisors will reply within one
           business day.
         </p>
       </div>

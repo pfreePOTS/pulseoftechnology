@@ -142,7 +142,7 @@ export default function USAMap({ selectedRegion, onSelect }: USAMapProps) {
         id="usa-map"
         viewBox="0 0 960 600"
         xmlns="http://www.w3.org/2000/svg"
-        aria-label="USA map — click a region"
+        aria-label="USA map. Click a region"
       >
         <title>Select your region</title>
 

@@ -103,8 +103,8 @@ export default function RecommendedPathBuildingScreen({ embedded = false }: Prop
       </div>
 
       <p className="mt-6 max-w-[460px] text-center font-sans text-[12px] leading-relaxed text-white/35">
-        Synthesis is grounded in PulseOne&rsquo;s understanding of your industry, needs and solutions — your specific
-        recommendations will be ready in a moment.
+        Synthesis is grounded in PulseOne&rsquo;s understanding of your industry, needs, and
+        solutions. Your specific recommendations will be ready in a moment.
       </p>
     </div>
   );

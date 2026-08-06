@@ -65,7 +65,7 @@ export default function IndustryIntakeModal({ industry, onClose }: IndustryIntak
             id="industry-intake-modal-title"
             className="font-sans text-[13px] font-semibold tracking-[2px] text-white/85 uppercase"
           >
-            Build a Custom Path{industry ? ` — ${industry}` : ""}
+            Build a Custom Path{industry ? `: ${industry}` : ""}
           </h2>
         </div>
         <button

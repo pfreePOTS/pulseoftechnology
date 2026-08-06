@@ -20,6 +20,7 @@ When the PR Review Council approves with follow-ups, add each actionable follow-
 | PULSE-001 | `client_ip` ignores `X-Forwarded-For` / Railway proxy — auth and subscribe logs may record the proxy hop, not the client | Minor | Open | 2026-08-05 | PR #12 council. `backend/log_events.py` `client_ip()`. Prefer trusted-proxy extraction (or SlowAPI’s remote address helper) before relying on IPs for abuse detection. |
 | PULSE-002 | Operational logs include subscriber/admin emails on auth, subscribe, and contact paths — retention/access policy unclear for long-lived Railway logs | Minor | Open | 2026-08-05 | PR #12 council. Intentional for ops (`[auth]` / `[subscribe]` / `[contact]`). Document retention expectations or redact/hash emails in production sinks. |
 | PULSE-003 | Signal velocity path still has embedding/Pinecone TODO — semantic topic velocity not re-enabled | Enhancement | Open | 2026-08-05 | `backend/services/signal_service.py` (~line 228). `vector_service` + Pinecone config exist; scorer still count-based until embeddings ship. Source: system audit / Prompt 24 lineage. |
+| PULSE-022 | `/approach` page carries legacy voice and stale claims: "Better IT" / "get IT done" hero, "best-in-class" (banned by identity doc), "global IT services company" (contradicts SMB/US positioning + JSON-LD `areaServed`), hardcoded insight card tagged retired `Leadership` pillar, weak stats band (4.3★) | Minor | Open | 2026-08-05 | PR #21 council. `frontend/src/app/approach/page.tsx`. Scheduled as part of the marketing/funnel work branching from `dev` after #21; full context in the site content audit (canvas + chat 2026-08-05). |
 
 ### Hardcoded bias audit notes (2026-08-05)
 
@@ -30,7 +31,7 @@ When the PR Review Council approves with follow-ups, add each actionable follow-
 | Minor | Broad stage AI tokens (`assistant`, `generative`, `copilot`) | `public._domains_for_intake` → PULSE-020 |
 | Minor | Hero art maps many tech industries/issues to AI image | `recommendedPathHero.ts` → PULSE-021 |
 | Note | `Finance` → `compliance` legacy slug | intentional consolidation, not AI bias |
-| Note | Static `/custom-solutions` mock is Healthcare CEO + AI focus | marketing fixture; not live intake |
+| Cleared | Static `/custom-solutions` mock is Healthcare CEO + AI focus | route removed during SEO/AIEO pass; replaced by `/services` |
 | Note | README “AI-powered…” | repo-only, not public site |
 | Cleared | Strategy → AI hard-map + AI-curation customer copy | PR #13 |
 

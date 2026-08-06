@@ -84,14 +84,15 @@ export default function RadarSection({
         >
           {/* Title — adoption-stage explanations live in the hover tooltip on each radar pill */}
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h1
+            {/* h2, not h1: the pages embedding this section own their own h1. */}
+            <h2
               className={
                 "font-sans font-bold tracking-tight text-pulse-teal " +
                 (compact ? "text-xl leading-snug" : "text-3xl")
               }
             >
               Key Trending Topics
-            </h1>
+            </h2>
             {lastUpdated ? (
               <span className="text-[13px] font-medium text-gray-500">
                 Updated {lastUpdated}

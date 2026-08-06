@@ -99,6 +99,8 @@ services:
     environment:
       # Browser-facing API URL (host port maps backend 8000 → 8100)
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8100}
+      # Canonical origin for SEO metadata (canonicals, sitemap, robots, Open Graph)
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3100}
       # Same-origin browser API via next.config.ts rewrites (fixes admin cookies under 127.0.0.1 / headless Chromium)
       BACKEND_PROXY_TARGET: http://backend:8000
       NEXT_PUBLIC_USE_RELATIVE_API: "1"

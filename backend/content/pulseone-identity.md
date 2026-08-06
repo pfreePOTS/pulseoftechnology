@@ -26,6 +26,9 @@ All customer-facing copy must describe work PulseOne actually provides:
 - Identity, access, and sign-in discipline
 - Technology **assessments**, advisory, and governance cadence
 - Agentic tool and automation rollouts with guardrails (see vocabulary below)
+- **Ongoing management** of agentic tools already in production: access boundaries, review steps, monitoring, and change control as platforms shift
+- **Data management** — where business information lives, who may reach it, retention, and fitness for the tools reading it
+- **Technology policy management** — acceptable use, data handling, access, and review rules kept current and enforced in the systems
 - **IT-only** procurement and vendor selection (technology vendors—not food, equipment, or facilities suppliers)
 
 ### Operational equipment boundary

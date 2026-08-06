@@ -16,6 +16,15 @@ const nextConfig: NextConfig = {
   experimental: {
     proxyTimeout: Number(process.env.NEXT_PROXY_TIMEOUT_MS ?? 180_000),
   },
+  async redirects() {
+    return [
+      {
+        source: "/services/managed-it-services",
+        destination: "/services/managed-business-technology",
+        permanent: true,
+      },
+    ];
+  },
   async rewrites() {
     if (!backendProxyTarget) return [];
     const base = backendProxyTarget.replace(/\/$/, "");

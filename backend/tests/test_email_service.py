@@ -268,6 +268,40 @@ class TestAssembleNewsletterTopics:
         mock_r.assert_called_once()
 
 
+def test_order_newsletter_pool_industry_first_prefers_grid_hits():
+    """PULSE-019: high-urgency AI without industry signals sorts after industry hits."""
+    ingest = email_service.NewsletterArticleIngestCutoffs(
+        top_rank_peak=datetime.now(UTC),
+        deep_dive_primary=datetime.now(UTC),
+        legacy_fallback=datetime.now(UTC),
+    )
+    ai_hot = SimpleNamespace(
+        id=1,
+        name="AI Agents Everywhere",
+        urgency_score=99.0,
+        industry_positions=None,
+        domain="AI",
+    )
+    insurance = SimpleNamespace(
+        id=2,
+        name="Insurance cyber ops",
+        urgency_score=40.0,
+        industry_positions={
+            "Insurance": {"industry_impact": "Carriers face claims pressure."},
+        },
+        domain="Security",
+    )
+    sub = _sub(industries=["Insurance"], domains=["AI", "Security"])
+    ordered = email_service._order_newsletter_pool_industry_first(
+        [ai_hot, insurance],
+        db=MagicMock(),
+        subscriber=sub,
+        role_names=None,
+        ingest=ingest,
+    )
+    assert [t.name for t in ordered] == ["Insurance cyber ops", "AI Agents Everywhere"]
+
+
 # ---------------------------------------------------------------------------
 # run_daily_newsletter integration
 # ---------------------------------------------------------------------------

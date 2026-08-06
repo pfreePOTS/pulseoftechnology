@@ -1566,6 +1566,51 @@ def _sort_topics_by_urgency_desc(topics: list[Topic]) -> list[Topic]:
     return sorted(topics, key=lambda t: float(t.urgency_score or 0.0), reverse=True)
 
 
+def _topic_has_industry_grid_hit(topic: Topic, industries: list[str]) -> bool:
+    ip = getattr(topic, "industry_positions", None)
+    if not isinstance(ip, dict) or not industries:
+        return False
+    for ind in industries:
+        il = ind.strip().lower()
+        if len(il) < 2:
+            continue
+        for key in ip.keys():
+            if il in str(key).lower():
+                return True
+    return False
+
+
+def _order_newsletter_pool_industry_first(
+    pool: list[Topic],
+    *,
+    db: Session,
+    subscriber: Subscriber | object,
+    role_names: list[str] | None,
+    ingest: NewsletterArticleIngestCutoffs,
+) -> list[Topic]:
+    """Within an assembled pool, surface industry-aligned themes before generic urgency fill.
+
+    Domain-only / fresh-domain tiers (PULSE-019) can still include high-urgency AI topics;
+    this keeps Insurance (etc.) hits ahead of them when present in the pool.
+    """
+    industries = _subscriber_industry_labels(subscriber)
+    if not industries or not pool:
+        return _sort_topics_by_urgency_desc(pool)
+
+    aligned: list[Topic] = []
+    rest: list[Topic] = []
+    for topic in pool:
+        if _topic_has_industry_grid_hit(topic, industries):
+            aligned.append(topic)
+            continue
+        art = _newsletter_first_article_via_chain(topic, db, role_names, ingest)
+        if art is not None and _industry_signals_for_article(topic, art, industries):
+            aligned.append(topic)
+        else:
+            rest.append(topic)
+    return _sort_topics_by_urgency_desc(aligned) + _sort_topics_by_urgency_desc(rest)
+
+
 def _assemble_topics_strict_profile(
     cohort: list[Topic],
     *,
@@ -1712,7 +1757,16 @@ def _resolve_newsletter_topic_pool(
                 min_topics,
                 getattr(subscriber, "email", "?"),
             )
-            return _sort_topics_by_urgency_desc(pool), label
+            return (
+                _order_newsletter_pool_industry_first(
+                    pool,
+                    db=db,
+                    subscriber=subscriber,
+                    role_names=role_names,
+                    ingest=ingest,
+                ),
+                label,
+            )
         if pool:
             if (
                 best_pick is None
@@ -1731,7 +1785,16 @@ def _resolve_newsletter_topic_pool(
             min_topics,
             getattr(subscriber, "email", "?"),
         )
-        return _sort_topics_by_urgency_desc(plist), lbl
+        return (
+            _order_newsletter_pool_industry_first(
+                plist,
+                db=db,
+                subscriber=subscriber,
+                role_names=role_names,
+                ingest=ingest,
+            ),
+            lbl,
+        )
 
     return [], "empty"
 

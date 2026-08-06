@@ -78,6 +78,7 @@ CORE_DOMAIN_DEFS: list[dict[str, str | int | None]] = [
 ]
 
 # Legacy short_label / slug mappings for migration and subscriber rewrite.
+# Leadership was retired as a radar pillar — never rewrite it to ``ai`` (PULSE-018).
 LEGACY_DOMAIN_TO_SLUG: dict[str, str] = {
     "ai": "ai",
     "security": "security",
@@ -87,7 +88,7 @@ LEGACY_DOMAIN_TO_SLUG: dict[str, str] = {
     "infrastructure": "infrastructure",
     "other": "other",
     "finance": "compliance",
-    "leadership": "ai",
+    "leadership": "other",
     "AI": "ai",
     "Security": "security",
     "Cloud": "cloud",
@@ -96,8 +97,11 @@ LEGACY_DOMAIN_TO_SLUG: dict[str, str] = {
     "Infrastructure": "infrastructure",
     "Other": "other",
     "Finance": "compliance",
-    "Leadership": "ai",
+    "Leadership": "other",
 }
+
+# Labels that must not become subscriber domain picks (retired pillars).
+_RETIRED_SUBSCRIBER_DOMAIN_LABELS = frozenset({"leadership"})
 
 _CLASSIFY_BOUNDARY_TABLE = """\
 **Domain semantics (critical):**
@@ -262,16 +266,27 @@ def validate_subscriber_domain_slugs(db: Session, slugs: list[str]) -> list[str]
 
 
 def migrate_subscriber_domain_list(domains: list[str] | None) -> list[str] | None:
-    """Rewrite legacy short_label picks to slugs (best-effort)."""
+    """Rewrite legacy short_label picks to slugs (best-effort).
+
+    Retired pillars such as Leadership are dropped — they must not collapse into ``ai``.
+    """
     if not domains:
         return domains
     out: list[str] = []
     for d in domains:
+        raw = (d or "").strip()
+        if not raw:
+            continue
+        if raw.lower() in _RETIRED_SUBSCRIBER_DOMAIN_LABELS:
+            continue
         slug = (
-            LEGACY_DOMAIN_TO_SLUG.get(d)
-            or LEGACY_DOMAIN_TO_SLUG.get(d.strip())
-            or slugify_domain(d)
+            LEGACY_DOMAIN_TO_SLUG.get(raw)
+            or LEGACY_DOMAIN_TO_SLUG.get(raw.strip())
+            or slugify_domain(raw)
         )
+        if slug == "other":
+            # Hidden fallback pillar — not a subscriber pick.
+            continue
         if slug not in out:
             out.append(slug)
     return out or None

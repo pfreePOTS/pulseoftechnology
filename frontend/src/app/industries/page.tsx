@@ -10,7 +10,7 @@ import { breadcrumbSchema } from "@/lib/schema";
 import type { FaqItem } from "@/lib/schema";
 
 const DESCRIPTION =
-  "Twenty industries, one common challenge. See how PulseOne fits managed IT, security, and integration work to the sector you actually operate in.";
+  "Twenty industries, one common challenge. See how PulseOne fits managed business technology, security, and integration work to the sector you actually operate in.";
 
 export const metadata: Metadata = {
   title: "IT Support by Industry: 20 Sectors We Serve",
@@ -33,7 +33,7 @@ const FAQ: FaqItem[] = [
   {
     question: "Does the industry change what PulseOne actually does?",
     answer:
-      "The industry changes the context, not the scope. Managed IT, remote support, security, and integration work are the same services everywhere. What differs is the systems involved, the rules the sector answers to, and the hours when an outage costs the most. A restaurant group and a manufacturer need the same discipline applied to very different constraints.",
+      "The industry changes the context, not the scope. Managed business technology, remote support, security, and integration work are the same services everywhere. What differs is the systems involved, the rules the sector answers to, and the hours when an outage costs the most. A restaurant group and a manufacturer need the same discipline applied to very different constraints.",
   },
   {
     question: "Do you support organizations with multiple locations?",

@@ -13,18 +13,18 @@ const DESCRIPTION =
   "PulseOne works alongside your team rather than replacing it. See how engagements start, how our partners fit, and what two decades of delivery looks like.";
 
 export const metadata: Metadata = {
-  title: "How We Work: Co-Managed IT and Advisory",
+  title: "How We Work: Co-Managed Technology and Advisory",
   description: DESCRIPTION,
   alternates: { canonical: "/approach" },
   openGraph: {
     type: "website",
     url: "/approach",
-    title: "How We Work: Co-Managed IT and Advisory",
+    title: "How We Work: Co-Managed Technology and Advisory",
     description: DESCRIPTION,
   },
   twitter: {
     card: "summary_large_image",
-    title: "How We Work: Co-Managed IT and Advisory",
+    title: "How We Work: Co-Managed Technology and Advisory",
     description: DESCRIPTION,
   },
 };

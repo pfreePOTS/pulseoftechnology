@@ -4,7 +4,7 @@ import { SITE_TAGLINE } from "@/lib/site";
 
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
-export const alt = "PulseOne — managed IT and technology advisory since 2002";
+export const alt = "PulseOne — managed business technology and advisory since 2002";
 
 /**
  * Default social share card. Satori applies no browser defaults, so every
@@ -41,7 +41,7 @@ export default function OpengraphImage() {
               letterSpacing: -1.5,
             }}
           >
-            Managed IT and advisory
+            Managed business technology
           </div>
           <div
             style={{

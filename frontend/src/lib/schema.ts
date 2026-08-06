@@ -25,7 +25,7 @@ const WEBSITE_ID = `${SITE_URL}/#website`;
 
 /** Topical authority signals. Sourced from the in-scope service list. */
 const KNOWS_ABOUT = [
-  "Managed IT services",
+  "Managed business technology services",
   "Co-managed IT services",
   "Remote and multi-site IT support",
   "IT help desk and escalation",
@@ -33,6 +33,8 @@ const KNOWS_ABOUT = [
   "Cybersecurity and compliance reviews",
   "Cloud and Microsoft workplace platforms",
   "Software and line-of-business integration",
+  "Business data management",
+  "Technology policy management",
   "Phone and VoIP systems",
   "Identity and access management",
   "Technology assessments and advisory",

@@ -16,7 +16,7 @@ const ibmPlexSans = IBM_Plex_Sans({
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "Managed IT and Advisory for Mid-Market Leaders | PulseOne",
+    default: "Managed Business Technology and Advisory | PulseOne",
     template: `%s | ${SITE_NAME}`,
   },
   description: SITE_DESCRIPTION,
@@ -29,12 +29,12 @@ export const metadata: Metadata = {
     siteName: SITE_NAME,
     locale: "en_US",
     url: "/",
-    title: "Managed IT and Advisory for Mid-Market Leaders",
+    title: "Managed Business Technology and Advisory for Mid-Market Leaders",
     description: SITE_DESCRIPTION,
   },
   twitter: {
     card: "summary_large_image",
-    title: "Managed IT and Advisory for Mid-Market Leaders",
+    title: "Managed Business Technology and Advisory for Mid-Market Leaders",
     description: SITE_DESCRIPTION,
   },
   robots: {

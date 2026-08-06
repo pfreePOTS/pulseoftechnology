@@ -14,7 +14,7 @@ import { SITE_DESCRIPTION } from "@/lib/site";
  */
 export const metadata: Metadata = {
   title: {
-    absolute: "Managed IT and Advisory for Mid-Market Leaders | PulseOne",
+    absolute: "Managed Business Technology and Advisory | PulseOne",
   },
   description: SITE_DESCRIPTION,
   alternates: { canonical: "/" },

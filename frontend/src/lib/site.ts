@@ -18,7 +18,7 @@ export const SITE_TAGLINE = "People | Technology | Progress";
 export const FOUNDING_YEAR = "2002";
 
 export const SITE_DESCRIPTION =
-  "Managed IT, remote multi-site support, security, and cloud for small and mid-market organizations. Advisory plus hands-on delivery from PulseOne since 2002.";
+  "Managed business technology, security, and remote multi-site support for small and mid-market organizations. Advisory plus hands-on delivery from PulseOne since 2002.";
 
 /** Offices as listed in the global footer. */
 export const OFFICE_LOCATIONS = [

@@ -8,7 +8,7 @@ import JsonLd from "@/components/JsonLd";
 import { breadcrumbSchema, contactPageSchema } from "@/lib/schema";
 
 const DESCRIPTION =
-  "Tell us what you're working on. Reach the PulseOne team by form or phone for managed IT, security, compliance, and technology advisory work.";
+  "Tell us what you're working on. Reach the PulseOne team by form or phone for managed business technology, security, compliance, and advisory work.";
 
 export const metadata: Metadata = {
   // Absolute: the root template would otherwise render "Contact PulseOne | PulseOne".

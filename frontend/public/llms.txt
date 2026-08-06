@@ -36,16 +36,16 @@ People | Technology | Progress.
 
 PulseOne provides technology services only.
 
-In scope: managed and co-managed IT, remote and multi-site support, help desk
-and escalation, monitoring, backups, patching, security and compliance-oriented
-reviews, cloud and Microsoft-style workplace platforms, software and
-line-of-business integration, point-of-sale and ordering system integration at
-the technology layer, phone and unified communications, website management and
-related hosting and domain administration, identity and access management,
-technology standards for store openings and expansion, technology assessments
-and advisory, agentic tool and automation rollouts with guardrails, ongoing
-management of agentic tools in production, data management, technology policy
-management, and technology-only procurement and vendor selection.
+In scope: managed business technology, co-managed IT, remote and multi-site
+support, help desk and escalation, monitoring, backups, patching, security and
+compliance-oriented reviews, cloud and Microsoft-style workplace platforms,
+software and line-of-business integration, point-of-sale and ordering system
+integration at the technology layer, phone and unified communications, website
+management and related hosting and domain administration, identity and access
+management, technology standards for store openings and expansion, technology
+assessments and advisory, agentic tool and automation rollouts with guardrails,
+ongoing management of agentic tools in production, data management, technology
+policy management, and technology-only procurement and vendor selection.
 
 Sites may contain operational or production equipment such as robotics,
 packaging lines, industrial machinery, production ovens, warehouse automation,

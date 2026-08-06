@@ -33,14 +33,15 @@ export default function LoopSection() {
       <div className="mx-auto max-w-[1200px]">
         <div className="mb-12 max-w-[760px]">
           <span className="mb-3 block font-sans text-[13px] font-semibold tracking-[3px] text-pulse-teal uppercase">
-            How It Fits Together
+            How PulseOne Works
           </span>
           <h2 className="mb-4 border-l-[5px] border-pulse-red py-0 pl-[18px] font-sans text-[34px] leading-tight font-bold tracking-tight text-[#1a1a1a]">
             See it coming. Know where you stand. Make the most of it.
           </h2>
           <p className="font-sans text-[16px] leading-[1.8] text-[#646464]">
-            One team watches the technology landscape, tells you what it means for your
-            industry, and then does the work — and keeps improving it.
+            The radar, the assessments, and the services are one loop: we watch the technology
+            landscape, tell you what it means for your industry, and then do the work — and
+            keep improving it.
           </p>
         </div>
         <ol className="grid gap-10 md:grid-cols-3 md:gap-8">

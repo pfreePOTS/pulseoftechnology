@@ -214,6 +214,17 @@ def test_domains_for_intake_strategy_does_not_map_to_ai():
     assert "ai" in _domains_for_intake("AI", "planning for AI adoption")
 
 
+def test_domains_for_intake_stage_ai_tokens_are_tight():
+    """PULSE-020: bare assistant / generative / copilot must not soft-boost AI."""
+    from backend.routers.public import _domains_for_intake
+
+    assert "ai" not in _domains_for_intake("Strategy", "Need an executive assistant workflow")
+    assert "ai" not in _domains_for_intake("Cloud", "Microsoft Copilot licensing rollout")
+    assert "ai" not in _domains_for_intake("Other", "planning generative design tools")
+    assert "ai" in _domains_for_intake("Other", "planning generative AI rollout")
+    assert "ai" in _domains_for_intake("Other", "evaluate llm vendors")
+
+
 def test_strategy_intake_prefers_industry_aligned_theme_and_story(client, db_session):
     """Strategy must not collapse to AI when an industry-aligned topic/story exists."""
     from datetime import UTC, datetime

@@ -10,21 +10,22 @@ export type RecommendedHeroImage = {
   objectPosition: string;
 };
 
-function mentionsAi(stage: string, issue: string): boolean {
+/** Explicit AI focus only — not generic “agents”, “generative”, or tech-sector defaults (PULSE-021). */
+export function mentionsAi(stage: string, issue: string): boolean {
+  if (issue.trim() === "AI") return true;
   const s = `${issue} ${stage}`.toLowerCase();
   return (
-    /\b(ai|ml|gpt|llm|genai)\b/i.test(s) ||
-    /\b(ai agents?|agents?)\b/i.test(s) ||
-    /\bcopilot\b/i.test(s) ||
+    /\b(gpt[\w-]*|llm|genai)\b/i.test(s) ||
+    /\bai\s+agents?\b/i.test(s) ||
+    /\bgenerative\s+ai\b/i.test(s) ||
     s.includes("machine learning") ||
-    s.includes("generative") ||
-    (s.includes("planning") && s.includes("ai"))
+    /(^|[^a-z])ai([^a-z]|$)/i.test(s)
   );
 }
 
 /**
- * Prefer AI-focused art when intake mentions AI tooling; otherwise map canonical
- * industry phrases to bundled hero art. Fallback keeps the PulseOne corridor
+ * Prefer AI-focused art only when intake explicitly mentions AI; otherwise map
+ * industry phrases to sector / enterprise art. Fallback keeps the PulseOne corridor
  * treatment used elsewhere on marketing pages.
  */
 export function resolveRecommendedPathHeroBackground(
@@ -41,19 +42,6 @@ export function resolveRecommendedPathHeroBackground(
 
   if (mentionsAi(stage, issue)) {
     return { src: "/recommended-path/hero-recommended-ai.png", objectPosition: "center 42%" };
-  }
-
-  const techIndustry =
-    ind.includes("technology") ||
-    ind.includes("telecommunication") ||
-    ind.includes("software") ||
-    ind.includes("media") ||
-    ind.includes("internet");
-  const techIssue = /\b(ai|software|saas|platform|digital|analytics|machine learning)\b/i.test(
-    `${issue} ${stage}`,
-  );
-  if (techIndustry || techIssue) {
-    return { src: "/recommended-path/hero-recommended-ai.png", objectPosition: "center 40%" };
   }
 
   /* Broad professional sectors — subtle glass / executive ambience */
@@ -76,7 +64,12 @@ export function resolveRecommendedPathHeroBackground(
     ind.includes("biotech") ||
     ind.includes("real estate") ||
     ind.includes("professional") ||
-    ind.includes("entertain");
+    ind.includes("entertain") ||
+    ind.includes("technology") ||
+    ind.includes("telecommunication") ||
+    ind.includes("software") ||
+    ind.includes("media") ||
+    ind.includes("internet");
 
   if (enterprise) {
     return { src: "/recommended-path/hero-recommended-enterprise.png", objectPosition: "center 35%" };

@@ -45,7 +45,7 @@ This design system aligns the Pulse of Technology platform with the parent brand
 ## Spacing & Layout
 - **Base unit:** 4px (Tailwind default)
 - **Density:** Comfortable. Generous whitespace to convey executive-level clarity, not overwhelming density.
-- **Grid:** Max-w-7xl for main content areas.
+- **Containers:** `max-w-[1200px]` for all page-level content sections (matches `GlobalHeader` / `GlobalFooter`, so column edges align down the page). Centered full-bleed hero wrappers use `max-w-[1320px]`. Narrower widths inside a section (e.g. `max-w-[720px]` text measures, `max-w-2xl` forms) are reading-width constraints, not containers — they are fine, but the section container itself must be 1200.
 - **Border radius:** Rounded-lg (8px) or rounded-xl (12px) for cards. Not overly pill-shaped.
 
 ## Header & Logo

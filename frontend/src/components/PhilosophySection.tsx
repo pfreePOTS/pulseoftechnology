@@ -3,7 +3,7 @@ import Image from "next/image";
 const pillars = [
   {
     title: "We Listen",
-    body: "Every technology decision starts and ends with the people it serves. We work closely with your team to ensure you're getting the partnership you need.",
+    body: "Every technology decision starts and ends with the people it serves. We spend time with your team and listen before we recommend anything.",
     image: "/images/people_team.jpg",
     imageAlt: "People collaborating",
     badgeClass: "bg-pulse-red",
@@ -18,7 +18,7 @@ const pillars = [
   },
   {
     title: "We Understand",
-    body: "We view technology as a strategic ally. We monitor, interpret, and manage the technology landscape so you can act with confidence.",
+    body: "We watch the technology landscape every day and translate it into what actually matters for your business, so you can decide with confidence.",
     image: "/images/technology_server.jpg",
     imageAlt: "Technology infrastructure",
     badgeClass: "bg-pulse-teal",
@@ -33,7 +33,7 @@ const pillars = [
   },
   {
     title: "We Deliver",
-    body: "At PulseOne, we harness the power of technology to accelerate your business growth, making measurable advancements along each step of the way.",
+    body: "We do the work ourselves, measure the results, and show you what changed at each step. You should be able to point at the progress.",
     image: "/images/progress_handshake.jpg",
     imageAlt: "Business progress and partnership",
     badgeClass: "bg-[#1a1a1a]",

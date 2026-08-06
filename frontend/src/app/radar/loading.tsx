@@ -19,10 +19,8 @@ export default function RadarLoading() {
         </div>
         <p className="font-sans text-lg font-semibold text-[#111]">Opening the radar</p>
         <p className="mt-2 max-w-md text-center font-sans text-sm leading-relaxed text-[#555]">
-          Fetching trending topics and recent briefing stories. If this hangs, verify the Pulse API is
-          running (e.g. <span className="font-mono text-xs">docker compose up</span>) — server-side loads
-          use <span className="font-mono text-xs">SERVER_API_URL</span> inside the frontend container
-          (<span className="font-mono text-xs">http://backend:8000</span> in Compose).
+          Pulling the latest trending topics and briefing stories. This usually takes just a
+          moment.
         </p>
       </main>
       <GlobalFooter />

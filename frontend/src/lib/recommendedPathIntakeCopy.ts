@@ -1,10 +1,32 @@
 /**
+ * Multi-named intake role identifiers ("CEO / President / Owner") organize content
+ * behind the scenes, but the slash combo reads oddly in page copy. Map them to a
+ * natural collective phrase for display; single titles pass through unchanged.
+ * Mirrors ROLE_DISPLAY_PHRASES in backend `ai_service.py`.
+ */
+export const ROLE_DISPLAY_PHRASES: Record<string, string> = {
+  "CEO / President / Owner": "organizational leaders",
+  "CIO / CTO": "technology leaders",
+  "IT Manager / Director": "IT leaders",
+  "Other / Not Sure": "leadership teams",
+};
+
+/** Customer-facing phrase for an intake role; the raw identifier stays in data/URLs. */
+export function roleDisplayPhrase(roleLabel: string): string {
+  const t = roleLabel.trim();
+  return ROLE_DISPLAY_PHRASES[t] ?? t;
+}
+
+/**
  * Headline/helper copy often uses naive "{role}s" phrasing ("CFOs in …").
  * Role labels such as Operations already end in "s"; avoid "Operationss".
+ * Mapped multi-named roles come back as their collective phrase, un-pluralized.
  */
 export function roleLabelPluralHeadline(roleLabel: string): string {
   const t = roleLabel.trim();
   if (!t) return t;
+  const mapped = ROLE_DISPLAY_PHRASES[t];
+  if (mapped) return mapped;
   if (/s$/i.test(t)) return t;
   return `${t}s`;
 }

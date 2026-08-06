@@ -79,7 +79,7 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
             className="pointer-events-none absolute -top-24 -right-24 size-[420px] rounded-full bg-[radial-gradient(circle,rgba(213,23,30,0.12)_0%,transparent_70%)]"
             aria-hidden
           />
-          <div className="relative z-[1] mx-auto max-w-[1100px]">
+          <div className="relative z-[1] mx-auto max-w-[1200px]">
             <nav aria-label="Breadcrumb" className="mb-6">
               <ol className="flex flex-wrap items-center gap-2 font-sans text-[13px] text-white/45">
                 <li>
@@ -114,7 +114,7 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
         </section>
 
         <section className="px-6 py-[90px]">
-          <div className="mx-auto grid max-w-[1100px] gap-14 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:gap-20">
+          <div className="mx-auto grid max-w-[1200px] gap-14 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:gap-20">
             <div>
               <h2 className="mb-6 border-l-[5px] border-pulse-red py-0 pl-[18px] font-sans text-[30px] font-bold leading-tight text-[#1a1a1a]">
                 What {service.navLabel} means at PulseOne
@@ -144,6 +144,14 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
               >
                 Start with an Assessment
               </Link>
+              <p className="mt-6 border-t border-[#e0e0e0] pt-5 font-sans text-[13px] leading-relaxed text-[#646464]">
+                Our advisors track the technology landscape continuously. The{" "}
+                <Link href="/radar" className="font-semibold text-pulse-teal hover:underline">
+                  Pulse of Technology Radar
+                </Link>{" "}
+                is the industry-tuned view we publish, so you can see the direction we are
+                steering from.
+              </p>
             </aside>
           </div>
         </section>
@@ -176,9 +184,49 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
           </div>
         </section>
 
+        {service.pathForward ? (
+          <section className="px-6 py-[90px]">
+            <div className="mx-auto max-w-[1200px]">
+              <div className="mb-12 max-w-[720px]">
+                <span className="mb-3 block font-sans text-[11px] font-semibold tracking-[3px] text-pulse-teal uppercase">
+                  Where to Start
+                </span>
+                <h2 className="mb-4 font-sans text-4xl font-bold text-[#1a1a1a]">
+                  {service.pathForward.heading}
+                </h2>
+                <p className="font-sans text-[16px] leading-[1.8] text-[#4a4a4a]">
+                  {service.pathForward.intro}
+                </p>
+              </div>
+              <ol className="grid gap-x-12 gap-y-9 sm:grid-cols-2">
+                {service.pathForward.steps.map((step, index) => (
+                  <li key={step.title} className="flex gap-5">
+                    <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-pulse-red font-sans text-sm font-bold text-white">
+                      {index + 1}
+                    </div>
+                    <div>
+                      <h3 className="mb-1.5 font-sans text-lg font-bold text-[#1a1a1a]">
+                        {step.title}
+                      </h3>
+                      <p className="font-sans text-[15px] leading-[1.75] text-[#646464]">
+                        {step.body}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+              {service.pathForward.outro ? (
+                <p className="mt-11 max-w-[720px] border-l-[3px] border-pulse-teal pl-5 font-sans text-[15px] leading-[1.75] text-[#4a4a4a]">
+                  {service.pathForward.outro}
+                </p>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
         {service.industryFocus ? (
           <section className="px-6 py-[90px]">
-            <div className="mx-auto max-w-[1100px]">
+            <div className="mx-auto max-w-[1200px]">
               <div className="mb-10 max-w-[720px]">
                 <span className="mb-3 block font-sans text-[11px] font-semibold tracking-[3px] text-pulse-teal uppercase">
                   By Industry
@@ -219,7 +267,7 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
         />
 
         <section className="border-t border-[#e8e8e8] bg-[#f4f4f4] px-6 py-[70px]">
-          <div className="mx-auto max-w-[1100px]">
+          <div className="mx-auto max-w-[1200px]">
             <h2 className="mb-8 font-sans text-[22px] font-bold text-[#1a1a1a]">
               Other services
             </h2>

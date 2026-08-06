@@ -37,7 +37,7 @@ export default function FaqSection({
       }`}
     >
       <JsonLd data={faqSchema(items)} />
-      <div className="mx-auto max-w-[1000px]">
+      <div className="mx-auto max-w-[1200px]">
         <div className="mb-12">
           <span className="mb-3 block font-sans text-[11px] font-semibold tracking-[3px] text-pulse-teal uppercase">
             {eyebrow}

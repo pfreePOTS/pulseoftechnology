@@ -14,7 +14,7 @@ export default function EveryoneLoading() {
 
       {/* Hero */}
       <div className="border-b-4 border-pulse-teal bg-[#111] px-8 py-16">
-        <div className="mx-auto max-w-[1100px] space-y-4">
+        <div className="mx-auto max-w-[1200px] space-y-4">
           <div className="h-6 w-56 animate-pulse rounded-full bg-white/10" />
           <div className="h-12 w-3/4 animate-pulse rounded bg-white/10" />
           <div className="h-5 w-2/3 animate-pulse rounded bg-white/[0.06]" />
@@ -28,7 +28,7 @@ export default function EveryoneLoading() {
 
       {/* Context */}
       <div className="bg-light-bg px-8 py-16">
-        <div className="mx-auto max-w-[1100px] space-y-6">
+        <div className="mx-auto max-w-[1200px] space-y-6">
           <div className="mx-auto h-4 w-44 animate-pulse rounded bg-gray-200" />
           <div className="mx-auto h-8 w-2/3 max-w-[680px] animate-pulse rounded bg-gray-200" />
           <div className="mx-auto h-44 max-w-[820px] animate-pulse rounded-lg border-l-4 border-l-pulse-teal bg-gray-200" />
@@ -38,7 +38,7 @@ export default function EveryoneLoading() {
 
       {/* Radar snapshot */}
       <div className="bg-dark-bg px-8 py-16">
-        <div className="mx-auto max-w-[1100px] space-y-6">
+        <div className="mx-auto max-w-[1200px] space-y-6">
           <div className="h-4 w-36 animate-pulse rounded bg-white/10" />
           <div className="h-8 w-1/2 animate-pulse rounded bg-white/10" />
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -64,7 +64,7 @@ export default function EveryoneLoading() {
 
       {/* How We Work — 4 steps */}
       <div className="border-t border-[#e0e0e0] bg-light-bg px-8 py-20">
-        <div className="mx-auto max-w-[1100px] space-y-8">
+        <div className="mx-auto max-w-[1200px] space-y-8">
           <div className="mx-auto h-8 w-1/2 max-w-md animate-pulse rounded bg-gray-200" />
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {[1, 2, 3, 4].map((i) => (

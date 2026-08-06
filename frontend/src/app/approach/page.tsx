@@ -33,7 +33,7 @@ const FAQ: FaqItem[] = [
   {
     question: "How does an engagement with PulseOne start?",
     answer:
-      "Engagements start with a conversation rather than a proposal. PulseOne listens to where your organization is and what is causing pressure, then runs a structured review of your technology environment. A roadmap follows, prioritized with you, and delivery works through it in that order.",
+      "Engagements start with a conversation, not a proposal. PulseOne listens to where your organization is and what's causing pressure, then runs a structured review of your technology environment. A roadmap follows, prioritized with you, and delivery works through it in that order.",
   },
   {
     question: "Do you replace our existing IT team?",
@@ -48,7 +48,7 @@ const FAQ: FaqItem[] = [
   {
     question: "Are you tied to particular technology vendors?",
     answer:
-      "PulseOne is vendor-neutral in its recommendations and works in categories of action rather than product pitches. We maintain partnerships with major platform providers because delivery requires it, and we say plainly when a recommendation is something we would also implement.",
+      "PulseOne is vendor-neutral and recommends categories of action, not products. We maintain partnerships with major platform providers because the delivery work requires it, and we tell you plainly when a recommendation is something we would also implement.",
   },
 ];
 
@@ -63,7 +63,7 @@ const INSIGHT_CARDS_DEFAULT = [
   },
   {
     tagClass: "bg-pulse-red/8 text-pulse-red",
-    tagLabel: "Leadership",
+    tagLabel: "Business Continuity",
     title: "The COO's Guide to Mitigating the Cost of Operational Downtime",
     body: "Ransomware and unplanned outages cost organizations an average of $5,600 per minute. This guide walks COOs through the continuity planning decisions that separate organizations that recover quickly from those that don't.",
     href: "https://blog.pulseone.com/the-coos-guide-to-mitigating-the-cost-of-operational-downtime",
@@ -117,7 +117,7 @@ const TIMELINE = [
   {
     year: "Now & Future",
     title: "National Reach, Local Heart",
-    body: "As a global IT services company, we prioritize supporting local businesses and business owners with the same dedication to customer service and relationships that have been our cornerstone.",
+    body: "We support businesses and business owners nationwide with the same dedication to customer service and relationships that has been our cornerstone since 2002.",
     dotBorder: "border-[#13c3bd]" as const,
     yearTint: "text-[#13c3bd]" as const,
     accentBg: true,
@@ -180,12 +180,16 @@ export default function ApproachPage() {
               <div className="mx-auto mb-4 inline-block rounded-full border border-pulse-teal/35 bg-pulse-teal/12 px-3.5 py-1.5 font-sans text-[13px] font-semibold tracking-[4px] text-pulse-teal uppercase">
                 People · Technology · Progress
               </div>
-              <h1 className="mb-5 font-sans text-[clamp(2.125rem,5vw,58px)] leading-[1.1] font-bold tracking-tight text-white xl:whitespace-nowrap">
-                Our Approach to{" "}
-                <span className="text-pulse-red [text-shadow:0_0_40px_rgba(213,23,30,0.4)]">Better IT</span>
+              <h1 className="mb-5 font-sans text-[clamp(2.125rem,5vw,58px)] leading-[1.1] font-bold tracking-tight text-white">
+                You know your company.{" "}
+                <span className="text-pulse-red [text-shadow:0_0_40px_rgba(213,23,30,0.4)]">
+                  We work beside you.
+                </span>
               </h1>
-              <p className="mx-auto max-w-[580px] font-sans text-lg leading-relaxed text-white/78">
-                Your success is our success. PulseOne is your &quot;get IT done&quot; people.
+              <p className="mx-auto max-w-[640px] font-sans text-lg leading-relaxed text-white/78">
+                PulseOne combines industry knowledge, business-process understanding, and
+                technology expertise to help your organization run better, longer, and more
+                productively.
               </p>
             </div>
           </div>
@@ -207,12 +211,13 @@ export default function ApproachPage() {
                     helped small and mid-sized organizations navigate the technology decisions that matter.
                   </p>
                   <p>
-                    We are passionate about the power of people and technology to transform a company. We are
-                    confident we can significantly enhance your business objectives and profitability.
+                    The people who advise on a decision are the people who implement it. That keeps
+                    the advice honest and the delivery accountable, because we live with what we
+                    recommend.
                   </p>
                   <p>
-                    With team members across the United States and internationally, we combine the responsiveness
-                    of a local partner with the depth of an enterprise-level back office.
+                    With team members across the United States, we combine the responsiveness of a local
+                    partner with the depth of a national back office.
                   </p>
                 </div>
               </div>
@@ -240,7 +245,7 @@ export default function ApproachPage() {
             className="pointer-events-none absolute -top-20 -right-20 size-[400px] rounded-full bg-[radial-gradient(circle,rgba(213,23,30,0.1)_0%,transparent_70%)]"
             aria-hidden
           />
-          <div className="relative z-[1] mx-auto max-w-[1100px]">
+          <div className="relative z-[1] mx-auto max-w-[1200px]">
             <div className="mb-14 text-center">
               <span className="mb-3 block font-sans text-[11px] font-semibold tracking-[3px] text-pulse-teal uppercase">
                 Our History
@@ -285,7 +290,9 @@ export default function ApproachPage() {
                 Our Services + Our Partners = Business Solutions
               </h2>
               <p className="mx-auto max-w-[600px] font-sans text-base leading-relaxed text-[#646464]">
-                We work with best-in-class technology partners to deliver integrated solutions.
+                Our recommendations are vendor-neutral. These are the platform partnerships
+                the delivery work requires, and we tell you plainly when a recommendation is
+                something we would also implement.
               </p>
             </div>
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -386,7 +393,7 @@ export default function ApproachPage() {
         <ExecutiveIntakeForm />
 
         <section className="border-x-0 border-b border-t border-[#e8e8e8] border-t-[3px] border-t-pulse-teal bg-white px-6 py-12">
-          <div className="mx-auto grid max-w-[1100px] md:grid-cols-4">
+          <div className="mx-auto grid max-w-[1200px] md:grid-cols-4">
             <div className="border-[#e0e0e0] px-6 py-2 text-center md:border-r md:last:border-r-0">
               <p className="font-sans text-[38px] font-bold leading-none text-[#1a1a1a]">
                 20<span className="text-pulse-teal">+</span>
@@ -394,20 +401,22 @@ export default function ApproachPage() {
               <p className="mt-1.5 font-sans text-[13px] leading-snug text-[#646464]">Years in Business</p>
             </div>
             <div className="border-[#e0e0e0] px-6 py-2 text-center md:border-r md:last:border-r-0">
-              <p className="font-sans text-[22px] font-bold leading-snug text-[#1a1a1a]">All U.S. Regions</p>
-              <p className="mt-1.5 font-sans text-[13px] leading-snug text-[#646464]">We got you covered</p>
-            </div>
-            <div className="border-[#e0e0e0] px-6 py-2 text-center md:border-r md:last:border-r-0">
               <p className="font-sans text-[38px] font-bold leading-none text-[#1a1a1a]">
                 30<span className="text-pulse-teal">+</span>
               </p>
               <p className="mt-1.5 font-sans text-[13px] leading-snug text-[#646464]">Industries Served</p>
             </div>
-            <div className="border-[#e0e0e0] px-6 py-2 text-center">
+            <div className="border-[#e0e0e0] px-6 py-2 text-center md:border-r md:last:border-r-0">
               <p className="font-sans text-[38px] font-bold leading-none text-[#1a1a1a]">
-                4.3 <span className="inline-block text-[22px] translate-y-[-1px] align-middle text-[#1a1a1a]">★</span>
+                5
               </p>
-              <p className="mt-1.5 font-sans text-[13px] leading-snug text-[#646464]">On Google</p>
+              <p className="mt-1.5 font-sans text-[13px] leading-snug text-[#646464]">Offices Nationwide</p>
+            </div>
+            <div className="border-[#e0e0e0] px-6 py-2 text-center">
+              <p className="font-sans text-[22px] font-bold leading-snug text-[#1a1a1a]">
+                Advisory <span className="text-pulse-teal">+</span> Delivery
+              </p>
+              <p className="mt-1.5 font-sans text-[13px] leading-snug text-[#646464]">One accountable team</p>
             </div>
           </div>
         </section>
@@ -417,7 +426,7 @@ export default function ApproachPage() {
             className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_60%_50%,rgba(213,23,30,0.12)_0%,transparent_70%)]"
             aria-hidden
           />
-          <div className="relative mx-auto grid max-w-[1100px] gap-14 lg:grid-cols-2 lg:items-start lg:gap-20">
+          <div className="relative mx-auto grid max-w-[1200px] gap-14 lg:grid-cols-2 lg:items-start lg:gap-20">
             <div>
               <span className="mb-3 block font-sans text-[11px] font-semibold tracking-[3px] text-pulse-teal uppercase">
                 How to Engage Us

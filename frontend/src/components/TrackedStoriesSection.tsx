@@ -61,7 +61,7 @@ export default function TrackedStoriesSection({
       style={{ backgroundColor: "#E5E5E5" }}
       className="border-t border-gray-300 px-6 py-8"
     >
-      <div className="mx-auto max-w-7xl">
+      <div className="mx-auto max-w-[1200px]">
         <div className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h2 className="font-sans text-2xl leading-tight font-bold tracking-tight text-pulse-teal md:text-[28px] md:leading-snug">
             Stories we&apos;re tracking

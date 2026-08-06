@@ -159,6 +159,7 @@ def _complete_deepseek(
     user: str,
     max_tokens: int,
     json_response: bool = False,
+    disable_thinking: bool = False,
 ) -> tuple[str, int | None]:
     model = resolved_model(requested_model)
     client = _get_openai_client()
@@ -170,6 +171,11 @@ def _complete_deepseek(
         ],
         max_tokens=max_tokens,
     )
+    if disable_thinking:
+        # DeepSeek V4 models reason by default and the reasoning tokens count
+        # against max_tokens — a latency-sensitive call can burn most of its
+        # budget thinking and truncate the visible JSON mid-string.
+        kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
     if json_response:
         # OpenAI-compatible JSON mode — some DeepSeek builds return null/blank content in this mode.
         kwargs["response_format"] = {"type": "json_object"}
@@ -239,10 +245,14 @@ def chat_completion_result(
     user: str,
     max_tokens: int,
     json_response: bool = False,
+    disable_thinking: bool = False,
 ) -> ChatCompletionResult:
     """
     Run chat completion: DeepSeek first when configured; Anthropic on missing key, after DeepSeek
     error, or as sole provider.
+
+    ``disable_thinking`` turns off DeepSeek reasoning for latency-sensitive calls
+    (Anthropic fallback ignores it — those models don't think by default here).
     """
     if not is_llm_configured():
         raise RuntimeError("Configure DEEPSEEK_API_KEY and/or ANTHROPIC_API_KEY")
@@ -257,6 +267,7 @@ def chat_completion_result(
                 user=user,
                 max_tokens=max_tokens,
                 json_response=json_response,
+                disable_thinking=disable_thinking,
             )
             mid = resolved_model(requested_model)
             latency_ms = int((time.perf_counter() - started) * 1000)

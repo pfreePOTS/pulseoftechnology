@@ -8,6 +8,18 @@ PulseOne is a strategic technology advisory firm and managed service provider (M
 
 Tagline: **People | Technology | Progress**.
 
+### What to highlight (positioning hierarchy)
+
+The offer is **managing the customer's business technology**, and what we highlight is
+**our approach, our experience, and our knowledge of their industry**. Customers know their
+company; we work beside them with industry, business-process, and technology knowledge.
+
+The **Pulse of Technology Radar** is a tool we use in that work—a directional, guiding
+instrument that shows where technology is heading and helps a leader see where they stand.
+Never present the radar (or any tool) as the product or the primary feature; the advisors
+and the delivery work always lead, and tools appear as evidence that the guidance stays
+current.
+
 ## What we deliver (in scope)
 
 All customer-facing copy must describe work PulseOne actually provides:

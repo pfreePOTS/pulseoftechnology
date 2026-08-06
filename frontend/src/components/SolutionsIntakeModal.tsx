@@ -59,7 +59,7 @@ export default function SolutionsIntakeModal({ open, onClose, sessionKey }: Solu
             id="solutions-intake-modal-title"
             className="truncate font-sans text-[13px] font-semibold tracking-[2px] text-white/85 uppercase"
           >
-            Solutions — build your path
+            Solutions: build your path
           </h2>
         </div>
         <button

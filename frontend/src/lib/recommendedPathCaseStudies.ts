@@ -2,11 +2,11 @@ import { canonicalIndustryLabel, type IndustryOption } from "@/lib/industryGrid"
 
 /**
  * Illustrative PulseOne engagement narratives for `/recommended-path`.
- * Composites—not named clients—with sector-specific framing and stable `id`s
+ * Composites, not named clients, with sector-specific framing and stable `id`s
  * for icons (see `CaseStudyHeroIcon.tsx`).
  *
  * Scope: IT and technology integration only (advisory, security, cloud, MSP,
- * integration, phones, websites)—not operational equipment install (robotics,
+ * integration, phones, websites), not operational equipment install (robotics,
  * packaging, production machinery); networking/security for those assets is OK.
  * AI-generated cards follow `backend/content/pulseone-identity.md` + path synthesis prompts.
  */
@@ -35,7 +35,7 @@ export const RECOMMENDED_PATH_CASE_STUDIES_DEFAULT: RecommendedCaseStudy[] = [
     provided:
       "A phased rollout: priority integrations first, executive scorecards with rollback triggers, then a pattern other sites could reuse",
     teaser:
-      "Regional operations leader aligning core systems, workflows, and agent-assisted tools across distributed sites — illustrative composite.",
+      "Regional operations leader aligning core systems, workflows, and agent-assisted tools across distributed sites.",
     approach:
       "We would map which workflows can tolerate automation and which need a person in the loop, with decision rights clear before vendor demos.",
     solution:
@@ -51,9 +51,9 @@ export const RECOMMENDED_PATH_CASE_STUDIES_DEFAULT: RecommendedCaseStudy[] = [
     provided:
       "Board-ready summary of posture claims, phased fixes where it mattered, and a quarterly refresh rhythm",
     teaser:
-      "Leadership pairing financial and cyber narratives under tight renewal deadlines — illustrative composite.",
+      "Leadership pairing financial and cyber narratives under tight renewal deadlines.",
     approach:
-      "We would pull stakeholder input into one evidence trail—tools, logs, and contracts mapped to risks partners actually ask about—with a named owner per claim.",
+      "We would pull stakeholder input into one evidence trail, tools, logs, and contracts mapped to risks partners actually ask about, with a named owner per claim.",
     solution:
       "You could expect a board-ready posture summary, phased remediation where it matters, and a quarterly refresh cadence instead of hero rescues.",
     howWeHelped:
@@ -67,9 +67,9 @@ export const RECOMMENDED_PATH_CASE_STUDIES_DEFAULT: RecommendedCaseStudy[] = [
     provided:
       "A lightweight office model: clear intake, vendor scorecards, and escalation paths that respect procurement and architecture",
     teaser:
-      "Organization outgrowing ad hoc IT escalations needing steady rhythms without staffing a full C-suite bench — illustrative composite.",
+      "Organization outgrowing ad hoc IT escalations needing steady rhythms without staffing a full C-suite bench.",
     approach:
-      "We would anchor cadence on revenue continuity, resilience through platform change, and clear capital and operating guardrails—meetings follow outcomes.",
+      "We would anchor cadence on revenue continuity, resilience through platform change, and clear capital and operating guardrails, meetings follow outcomes.",
     solution:
       "A typical model includes clear intake owners, evergreen vendor scorecards, and escalation routes that respect procurement and architecture.",
     howWeHelped:
@@ -77,14 +77,14 @@ export const RECOMMENDED_PATH_CASE_STUDIES_DEFAULT: RecommendedCaseStudy[] = [
   },
 ];
 
-/** Three engagement patterns × industry — IDs align with hero icons/panels only. */
+/** Three engagement patterns × industry, IDs align with hero icons/panels only. */
 const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
   Healthcare: [
     {
       id: "ops-ai-sequencing",
       title: "Clinical-facing AI sandbox without weakening EHR trust",
       teaser:
-        "Digital health VP piloting ambient documentation and care-path assist — balanced against HIPAA-grade logging and clinician change fatigue (illustrative example).",
+        "Digital health VP piloting ambient documentation and care-path assist, balanced against HIPAA-grade logging and clinician change fatigue (illustrative example).",
       approach:
         "We separated ‘safe experimentation’ wards from billing-critical integrations, mapped PHI flows end-to-end, and required human attestation checkpoints before widening model scope.",
       solution:
@@ -108,7 +108,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "fractional-office",
       title: "Interim governance across hospitals absorbing new platforms",
       teaser:
-        "Multi-site rollout of EHR modules and RPM vendors — portfolios competing for the same analyst hours (illustrative example).",
+        "Multi-site rollout of EHR modules and RPM vendors, portfolios competing for the same analyst hours (illustrative example).",
       approach:
         "Defined decision rights among CMIO, revenue cycle, and IT so intake didn’t bottleneck on one hero PM; vendor scorecards favored integration debt reduction.",
       solution:
@@ -122,7 +122,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "ops-ai-sequencing",
       title: "Payments modernization with AI copilots gated on fraud tolerance",
       teaser:
-        "COO aligning ISO 20022, legacy wire platforms, and document AI for ops teams — illustrative example tuned to regulated payments.",
+        "COO aligning ISO 20022, legacy wire platforms, and document AI for ops teams.",
       approach:
         "Modeled latency and anomaly thresholds before procurement; segregation-of-duties for model changes mirrored existing wire-release controls.",
       solution:
@@ -134,7 +134,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "governance-sprint",
       title: "Regulator-ready third-party and cloud posture in a compressed window",
       teaser:
-        "Mid-size institution facing examiner questions on critical outsourcers and tenant isolation — illustrative composite.",
+        "Mid-size institution facing examiner questions on critical outsourcers and tenant isolation.",
       approach:
         "Mapped contractual exit rights to actual failover evidence; surfaced cloud shared-responsibility blind spots finance hadn’t modeled for capital.",
       solution:
@@ -146,7 +146,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "fractional-office",
       title: "Operating model through M&A carve-out tech separation",
       teaser:
-        "Acquirer standing up transitional services while peeling shared infrastructure — illustrative composite.",
+        "Acquirer standing up transitional services while peeling shared infrastructure.",
       approach:
         "Prioritized TSA exit risks (identity, treasury connectivity) over feature parity; staffed governance for decisions that legally couldn’t drift.",
       solution:
@@ -160,7 +160,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "ops-ai-sequencing",
       title: "Product-led AI rollout with customer-trust thresholds",
       teaser:
-        "SaaS scale-up layering copilots into support and success workflows without surprise billing or SLA breaches — illustrative composite.",
+        "SaaS scale-up layering copilots into support and success workflows without surprise billing or SLA breaches.",
       approach:
         "Defined ‘model change’ events that merit customer notice; tied rollout waves to SOC2 controls and uptime budgets already promised in contracts.",
       solution:
@@ -172,9 +172,9 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "governance-sprint",
       title: "Board cyber narrative ahead of IPO / diligence cycle",
       teaser:
-        "CISO prepping breach communications, vendor concentration, and appsec metrics for investors — illustrative example.",
+        "CISO prepping breach communications, vendor concentration, and appsec metrics for investors.",
       approach:
-        "Rebuilt metrics around material incidents and remediation velocity—not vanity scan counts—with named owners per gap.",
+        "Rebuilt metrics around material incidents and remediation velocity, not vanity scan counts, with named owners per gap.",
       solution:
         "One diligence packet mapping controls to frameworks buyers asked about; phased hardening roadmap with cash impact.",
       howWeHelped:
@@ -184,7 +184,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "fractional-office",
       title: "Engineering-led portfolio office for hyperscale hiring",
       teaser:
-        "VP Eng juggling platform debt vs new SKU bets while reliability targets slip — illustrative composite.",
+        "VP Eng juggling platform debt vs new SKU bets while reliability targets slip.",
       approach:
         "Converted implicit trade-offs into a weekly portfolio lane with SRE veto on launches breaching error budgets.",
       solution:
@@ -198,7 +198,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "ops-ai-sequencing",
       title: "OT–IT segmentation before shop-floor automation pilots",
       teaser:
-        "Plant network leader sequencing computer-vision QA and predictive maintenance without opening lateral movement paths — illustrative example.",
+        "Plant network leader sequencing computer-vision QA and predictive maintenance without opening lateral movement paths.",
       approach:
         "Asset inventory crossing Purdue levels; choke points for DMZ crossings; patching windows reconciled with production calendars.",
       solution:
@@ -210,7 +210,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "governance-sprint",
       title: "Supply-chain cyber narrative for insurer and Tier-1 audits",
       teaser:
-        "CISO pressured after partner incidents — need defensible segmentation and MFA evidence fast — illustrative composite.",
+        "CISO pressured after partner incidents, need defensible segmentation and MFA evidence fast.",
       approach:
         "Incident timelines tied to MFA coverage and logging retention — not hypotheticals; supplier tiering grounded in BOM criticality.",
       solution:
@@ -222,7 +222,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "fractional-office",
       title: "Digital-thread governance across plants and HQ",
       teaser:
-        "VP Ops harmonizing MES rollouts competing with ERP upgrade waves — illustrative example.",
+        "VP Ops harmonizing MES rollouts competing with ERP upgrade waves.",
       approach:
         "Single architectural board for integrations consuming historian data; RACI bridging plant managers and corp IT.",
       solution:
@@ -236,7 +236,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "ops-ai-sequencing",
       title: "Grid-edge analytics pilots with reliability guardrails",
       teaser:
-        "VP Operations coupling IoT ingestion and outage prediction — without destabilizing SCADA-aligned change windows (illustrative example).",
+        "VP Operations coupling IoT ingestion and outage prediction, without destabilizing SCADA-aligned change windows (illustrative example).",
       approach:
         "Segmented experimentation from bulk electric system controls; clarified what ‘AI assist’ meant for human operators under NERC-style discipline.",
       solution:
@@ -248,9 +248,9 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "governance-sprint",
       title: "Cyber–physical tabletop tied to capex remediation",
       teaser:
-        "Board asking for ransomware and vendor concentration evidence after sector headlines — illustrative composite.",
+        "Board asking for ransomware and vendor concentration evidence after sector headlines.",
       approach:
-        "Storylines referenced actual choke points — remote access paths, patching exceptions, immutable backup coverage — mapped to dollarized outage durations.",
+        "Storylines referenced actual choke points, remote access paths, patching exceptions, immutable backup coverage — mapped to dollarized outage durations.",
       solution:
         "Narratives plus 120-day prioritized program with outage-hour assumptions finance validated.",
       howWeHelped:
@@ -260,7 +260,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "fractional-office",
       title: "Portfolio office for renewables + legacy asset IT",
       teaser:
-        "CIO juggling greenfield telemetry platforms with aging DCS integrations — illustrative example.",
+        "CIO juggling greenfield telemetry platforms with aging DCS integrations.",
       approach:
         "Single intake for capex-heavy initiatives; escalation when shared network segments risked cascading trips.",
       solution:
@@ -274,7 +274,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "ops-ai-sequencing",
       title: "Store and e-com AI without loyalty or pricing surprises",
       teaser:
-        "CX lead piloting personalization and inventory copilots while PCI scope stays bounded — illustrative composite.",
+        "CX lead piloting personalization and inventory copilots while PCI scope stays bounded.",
       approach:
         "Separated training data domains; human review for interventions affecting margin or substitutions that touch PCI flows.",
       solution:
@@ -286,7 +286,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "governance-sprint",
       title: "Breach-ready comms before peak season scrutiny",
       teaser:
-        "CISO pairing payment terminal posture with ransomware recovery ahead of audits — illustrative example.",
+        "CISO pairing payment terminal posture with ransomware recovery ahead of audits.",
       approach:
         "Terminal estate truth vs paper policies; MFA and logging proofs store managers could corroborate during incidents.",
       solution:
@@ -298,7 +298,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "fractional-office",
       title: "Unified digital runway across stores and 3PL",
       teaser:
-        "COO converging omnichannel promises with brittle WMS integrations — illustrative composite.",
+        "COO converging omnichannel promises with brittle WMS integrations.",
       approach:
         "Lane-based portfolio: customer-facing launches vs foundational integration debt with explicit deferrals.",
       solution:
@@ -312,7 +312,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "ops-ai-sequencing",
       title: "Responsible automation for constituent services",
       teaser:
-        "Agency CTO piloting NLP triage across call centers — within accessibility and records rules — illustrative example.",
+        "Agency CTO piloting NLP triage across call centers, within accessibility and records rules.",
       approach:
         "Human escalation paths audited; bilingual coverage and ADA considerations baked into rollout gates.",
       solution:
@@ -324,7 +324,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "governance-sprint",
       title: "Zero-trust storyline for legislators and auditors",
       teaser:
-        "CIO needing jargon-free ransomware and MFA coverage summaries before hearings — illustrative composite.",
+        "CIO needing jargon-free ransomware and MFA coverage summaries before hearings.",
       approach:
         "Converted technical controls into service disruption narratives residents would recognize.",
       solution:
@@ -336,9 +336,9 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "fractional-office",
       title: "Portfolio governance across bureaus and shared infrastructure",
       teaser:
-        "Secretariat-level tensions on cloud migration vs on-prem mandates — illustrative example.",
+        "Secretariat-level tensions on cloud migration vs on-prem mandates.",
       approach:
-        "Outcome-first lanes: sovereignty, interoperability, citizen UX — not vendor religious wars.",
+        "Outcome-first lanes: sovereignty, interoperability, citizen UX, not vendor religious wars.",
       solution:
         "Monthly investment board packets with capped parallel migrations; escalation for cross-cutting identity decisions.",
       howWeHelped:
@@ -366,7 +366,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       who: "CFO plus IT procurement for an education nonprofit.",
       provided: "Entitlement baseline, reclaim path, and contract language checklist for renewals.",
       approach:
-        "Inventory matched to HR and SSO reality — not spreadsheets from three years ago.",
+        "Inventory matched to HR and SSO reality, not spreadsheets from three years ago.",
       solution:
         "Sized subs by role cohort, phased reclamation, dashboards finance could defend in budget cycles.",
       howWeHelped:
@@ -375,7 +375,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
     {
       id: "fractional-office",
       title: "A network refresh overlapped classroom go-live.",
-      problem: "Two initiatives shared the same change windows — outage risk during term.",
+      problem: "Two initiatives shared the same change windows, outage risk during term.",
       who: "CIO program office and facilities.",
       provided: "Single PM-led schedule with executive readouts and cutover rehearsals.",
       approach:
@@ -391,7 +391,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "ops-ai-sequencing",
       title: "Network automation pilots with outage-hour budgets",
       teaser:
-        "VP Engineering layering closed-loop remediation on OSS cautiously — illustrative example respecting change freezes.",
+        "VP Engineering layering closed-loop remediation on OSS cautiously.",
       approach:
         "Defined blast-radius caps per pilot region; rollback automation tested before AI-suggested remediations touched production routers.",
       solution:
@@ -403,9 +403,9 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "governance-sprint",
       title: "Supply-chain and submarine cable concentration narrative",
       teaser:
-        "Board-level vendor risk story before infrastructure renewal financings — illustrative composite.",
+        "Board-level vendor risk story before infrastructure renewal financings.",
       approach:
-        "Quantified choke points—not slide buzzwords—and tied compensating detective controls audit could trace.",
+        "Quantified choke points, not slide buzzwords, and tied compensating detective controls audit could trace.",
       solution:
         "90-day roadmap balancing diversity of paths vs capital; quarterly Board digest in non-engineering English.",
       howWeHelped:
@@ -415,7 +415,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "fractional-office",
       title: "Portfolio office for 5G edge + enterprise product bets",
       teaser:
-        "CIO juggling consumer edge rollout with B2B private-network promises — illustrative example.",
+        "CIO juggling consumer edge rollout with B2B private-network promises.",
       approach:
         "Outcome lanes separating regulated telco stacks from experimental enterprise SKUs; explicit deferrals documented.",
       solution:
@@ -429,7 +429,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "ops-ai-sequencing",
       title: "Dispatch and predictive maintenance AI with safety thresholds",
       teaser:
-        "COO piloting predictive parts and routing assist without bypassing conductor or driver authority — illustrative composite.",
+        "COO piloting predictive parts and routing assist without bypassing conductor or driver authority.",
       approach:
         "Separated advisory vs automated actuation lanes; fatigue-sensitive workflows flagged for mandatory human checkpoints.",
       solution:
@@ -441,9 +441,9 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "governance-sprint",
       title: "Cyber tabletop tied to kinetic service disruption financing",
       teaser:
-        "CFO + CISO asked to brief insurers after sector ransomware headlines — illustrative example.",
+        "CFO + CISO asked to brief insurers after sector ransomware headlines.",
       approach:
-        "Incident simulations priced in outage hours lost revenue and SLA penalties—not generic likelihood heat maps.",
+        "Incident simulations priced in outage hours lost revenue and SLA penalties, not generic likelihood heat maps.",
       solution:
         "Program roadmap with prioritized controls aligned to underwriting questionnaires and capital overlays.",
       howWeHelped:
@@ -453,7 +453,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "fractional-office",
       title: "Fleet systems governance across hubs and outsourced maintenance",
       teaser:
-        "VP Ops harmonizing TMS, maintenance SaaS, and ERP without duplicate PM spikes — illustrative composite.",
+        "VP Ops harmonizing TMS, maintenance SaaS, and ERP without duplicate PM spikes.",
       approach:
         "Single initiative intake with modality-specific swim lanes and explicit capacity model for integrators.",
       solution:
@@ -467,7 +467,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "ops-ai-sequencing",
       title: "Production and distribution AI respecting rights metadata",
       teaser:
-        "CTO piloting generative tooling in marketing and localization without drifting rights lineage — illustrative example.",
+        "CTO piloting generative tooling in marketing and localization without drifting rights lineage.",
       approach:
         "Rights and talent constraints encoded before model scope expanded; watermarking/parentage surfaced to legal early.",
       solution:
@@ -479,7 +479,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "governance-sprint",
       title: "Ransomware and piracy tabletop before tentpole release",
       teaser:
-        "Studio CISO prepping incident comms aligning cyber with PR and financier covenants — illustrative composite.",
+        "Studio CISO prepping incident comms aligning cyber with PR and financier covenants.",
       approach:
         "Scenarios anchored on blackout windows impacting opening-weekend SLA assumptions.",
       solution:
@@ -491,7 +491,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "fractional-office",
       title: "Portfolio office across streaming stacks and theatrical systems",
       teaser:
-        "CIO harmonizing personalization roadmaps with DRM and billing migrations — illustrative example.",
+        "CIO harmonizing personalization roadmaps with DRM and billing migrations.",
       approach:
         "Explicit deferral log so marketing experiments didn’t starve foundational identity work.",
       solution:
@@ -505,7 +505,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "ops-ai-sequencing",
       title: "Leasing analytics and concierge AI bounded by tenant privacy",
       teaser:
-        "COO layering AI-guided tours and underwriting assist without violating fair-housing workflows — illustrative composite.",
+        "COO layering AI-guided tours and underwriting assist without violating fair-housing workflows.",
       approach:
         "Human review checkpoints for pricing or screening suggestions; minimized cross-property data bleed.",
       solution:
@@ -517,9 +517,9 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "governance-sprint",
       title: "CRE cyber narrative tying building systems to ransomware recovery",
       teaser:
-        "CISO briefing investors on smart-building exposure and ransomware playbooks — illustrative example.",
+        "CISO briefing investors on smart-building exposure and ransomware playbooks.",
       approach:
-        "BMS segmentation stories tied to hours of outage per asset class—not generic ICS slides.",
+        "BMS segmentation stories tied to hours of outage per asset class, not generic ICS slides.",
       solution:
         "Phased MFA, network segmentation roadmap with capex aligned to refinancing milestones.",
       howWeHelped:
@@ -529,7 +529,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "fractional-office",
       title: "Digital programs across development, ops, and property managers",
       teaser:
-        "CIO juggling CMMS modernization with tenant experience launches — illustrative composite.",
+        "CIO juggling CMMS modernization with tenant experience launches.",
       approach:
         "Outcome lanes distinguishing revenue-facing vs resilience foundations; RACI bridging PM firms.",
       solution:
@@ -543,7 +543,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "ops-ai-sequencing",
       title: "Edge sensing and agronomy AI with harvest-season constraints",
       teaser:
-        "COO sequencing computer vision labs and predictive irrigation without disrupting cooperatives — illustrative example.",
+        "COO sequencing computer vision labs and predictive irrigation without disrupting cooperatives.",
       approach:
         "Data governance for grower anonymity; rollout windows synced with agronomy calendars not vendor quarters.",
       solution:
@@ -555,9 +555,9 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "governance-sprint",
       title: "Climate and ransomware narrative ahead of coop financing",
       teaser:
-        "CFO + CTO needing coherent story linking OT exposure and ERP continuity — illustrative composite.",
+        "CFO + CTO needing coherent story linking OT exposure and ERP continuity.",
       approach:
-        "Tabletops priced revenue-at-risk tied to elevators, dryers, irrigation controllers—not abstract heat maps.",
+        "Tabletops priced revenue-at-risk tied to elevators, dryers, irrigation controllers, not abstract heat maps.",
       solution:
         "Remediation pacing with overlays on crop insurance narratives leadership could defend.",
       howWeHelped:
@@ -567,13 +567,13 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "fractional-office",
       title: "Portfolio office aligning precision programs and ERP",
       teaser:
-        "CIO juggling seed/product traceability mandates with modernization debt — illustrative example.",
+        "CIO juggling seed/product traceability mandates with modernization debt.",
       approach:
         "Executive intake prioritized food-safety interoperability over experimental analytics.",
       solution:
         "Quarterly horizons with vendor scorecards on integration tax; RACI bridging field ops and corp IT.",
       howWeHelped:
-        "Tightened business cases grounded in throughput and spoilage KPIs—not slide velocity.",
+        "Tightened business cases grounded in throughput and spoilage KPIs, not slide velocity.",
     },
   ],
   "Pharma & Biotech": [
@@ -581,7 +581,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "ops-ai-sequencing",
       title: "GMP-aligned AI pilots for lab ops and QA assist",
       teaser:
-        "Head of Operations exploring vision or NLP assist without weakening batch-record integrity — illustrative example.",
+        "Head of Operations exploring vision or NLP assist without weakening batch-record integrity.",
       approach:
         "Validation mindset early: attestable lineage for model inputs and outputs mapped to CFR-style discipline.",
       solution:
@@ -593,9 +593,9 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "governance-sprint",
       title: "Ransomware tabletop tied to sterile batch continuity and filings",
       teaser:
-        "CISO and CFO aligning cyber recovery narratives with payer and auditor expectations — illustrative composite.",
+        "CISO and CFO aligning cyber recovery narratives with payer and auditor expectations.",
       approach:
-        "Scenarios centered on sterile batch interruption and clinical-trial downtime—not generic ransomware slides.",
+        "Scenarios centered on sterile batch interruption and clinical-trial downtime, not generic ransomware slides.",
       solution:
         "90-day uplift on segmentation, MFA, and immutable backups with capex tied to valued continuity hours.",
       howWeHelped:
@@ -605,7 +605,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "fractional-office",
       title: "Governance seams across R&D, manufacturing scale-up, and corporate IT",
       teaser:
-        "CIO reconciling lab informatics programs with corp ERP modernization — illustrative example.",
+        "CIO reconciling lab informatics programs with corp ERP modernization.",
       approach:
         "Explicit decision rights separating research agility from validated production baselines.",
       solution:
@@ -619,7 +619,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "ops-ai-sequencing",
       title: "Responsible practice AI with privilege and citation discipline",
       teaser:
-        "Managing partner piloting drafting and discovery assist without blurring privilege boundaries — illustrative composite.",
+        "Managing partner piloting drafting and discovery assist without blurring privilege boundaries.",
       approach:
         "Data isolation by matter; citations and mandatory human review on filings and client-visible outputs.",
       solution:
@@ -631,9 +631,9 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "governance-sprint",
       title: "Breach readiness before malpractice renewals and lateral hiring pushes",
       teaser:
-        "CISO and finance lead insurer-facing MFA and escrowed-backup truth ahead of questionnaires — illustrative example.",
+        "CISO and finance lead insurer-facing MFA and escrowed-backup truth ahead of questionnaires.",
       approach:
-        "Endpoint and logging realities mapped—not aspirational policy binders.",
+        "Endpoint and logging realities mapped, not aspirational policy binders.",
       solution:
         "90-day remediation pacing overlays leadership could sign; RACI aligning offices and outsourced SOC.",
       howWeHelped:
@@ -643,7 +643,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "fractional-office",
       title: "Technology runway across PMS, client portals, and shared services",
       teaser:
-        "COO juggling practice systems with modernization debt—without starving identity foundations — illustrative composite.",
+        "COO juggling practice systems with modernization debt, without starving identity foundations.",
       approach:
         "Capacity models for integrations; explicit deferrals when flashy projects threatened SSO stability.",
       solution:
@@ -661,7 +661,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       provided:
         "Phased pilots that balance revenue lift and fraud signals, with a repeatable playbook for franchise groups",
       teaser:
-        "Operations leaders scaling agent-assisted guest service while keeping payment systems tightly scoped — illustrative example.",
+        "Operations leaders scaling agent-assisted guest service while keeping payment systems tightly scoped.",
       approach:
         "We would keep guest-facing trials separate from card-data paths and define when to pause or roll back before expanding scope.",
       solution:
@@ -677,7 +677,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       provided:
         "Staged network separation and stronger sign-in roadmaps tied to outage targets leadership already funds",
       teaser:
-        "Security and finance leaders preparing a credible outage and ransomware story before refinancing — illustrative composite.",
+        "Security and finance leaders preparing a credible outage and ransomware story before refinancing.",
       approach:
         "We would tie outage hours to numbers finance already uses and verify backup and recovery with people who run the properties.",
       solution:
@@ -693,7 +693,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       provided:
         "Ongoing quarterly priorities that favor systems working together, with clear steps when sign-in or access rules drift",
       teaser:
-        "Technology leaders harmonizing property systems with corporate finance and reservations — illustrative example.",
+        "Technology leaders harmonizing property systems with corporate finance and reservations.",
       approach:
         "We would maintain one initiative calendar with milestones per property type and clear owners between sites and headquarters.",
       solution:
@@ -707,7 +707,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "ops-ai-sequencing",
       title: "Constituent-facing automation anchored in stewardship ethics",
       teaser:
-        "Executive exploring AI-guided intake without eroding donor trust — illustrative composite.",
+        "Executive exploring AI-guided intake without eroding donor trust.",
       approach:
         "Bias reviews and safeguarding volunteers before widening automated constituent outreach.",
       solution:
@@ -719,9 +719,9 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "governance-sprint",
       title: "Grant-aligned posture before attestations renew",
       teaser:
-        "Finance and tech leads unifying MFA and backup proofs with questionnaires funders scrutinize — illustrative example.",
+        "Finance and tech leads unifying MFA and backup proofs with questionnaires funders scrutinize.",
       approach:
-        "Stories mapped to MSSP truths and MSP reach—not slide ambition.",
+        "Stories mapped to MSSP truths and MSP reach, not slide ambition.",
       solution:
         "90-day uplift with volunteer-friendly change windows plus RACI aligning program sponsors.",
       howWeHelped:
@@ -731,7 +731,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "fractional-office",
       title: "Portfolio office across federated chapters and corp systems",
       teaser:
-        "CIO balancing CRM waves against workplace modernization spanning affiliates — illustrative composite.",
+        "CIO balancing CRM waves against workplace modernization spanning affiliates.",
       approach:
         "Outcome lanes distinguishing mission-critical continuity versus speculative analytics bets.",
       solution:
@@ -745,7 +745,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "ops-ai-sequencing",
       title: "Manufacturing telemetry AI within CMMC/export discipline",
       teaser:
-        "Plant leader sequencing anomaly pilots beside export-sensitive workloads — illustrative example.",
+        "Plant leader sequencing anomaly pilots beside export-sensitive workloads.",
       approach:
         "Lab segregation first; handling paths for controlled data surfaced before attaching plant-wide tooling.",
       solution:
@@ -757,7 +757,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "governance-sprint",
       title: "Insider-threat and ransomware narrative for primes and subcontractors",
       teaser:
-        "Program-security and finance leads briefing gates before milestones — illustrative composite.",
+        "Program-security and finance leads briefing gates before milestones.",
       approach:
         "Scenarios anchored on slipped program dollars with named detective controls auditors could cite.",
       solution:
@@ -769,7 +769,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "fractional-office",
       title: "Integrated portfolio across ERP, PLM, and enclave modernization",
       teaser:
-        "CIO juggling modernization waves without starving identity segregation work — illustrative example.",
+        "CIO juggling modernization waves without starving identity segregation work.",
       approach:
         "Deferral ledger so engineering experiments couldn’t silently cannibalize foundation programs.",
       solution:
@@ -783,7 +783,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "ops-ai-sequencing",
       title: "Underwriting copilots with model risk and fairness checkpoints",
       teaser:
-        "Chief actuarial pairing assistive workflows with examiner sensitivity on drift and disparate impact — illustrative composite.",
+        "Chief actuarial pairing assistive workflows with examiner sensitivity on drift and disparate impact.",
       approach:
         "Mandatory human escalation on materially adverse classifications; lineage for pricing attributes spelled before widening scope.",
       solution:
@@ -795,9 +795,9 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "governance-sprint",
       title: "Cloud resilience narrative before reinsurance and ratings cycles",
       teaser:
-        "CRO and CTO aligning failover drills with reinsurance questionnaires — illustrative example.",
+        "CRO and CTO aligning failover drills with reinsurance questionnaires.",
       approach:
-        "Truth on failover evidence and egress controls—not aspiration binders—priced to outage durations finance blessed.",
+        "Truth on failover evidence and egress controls, not aspiration binders, priced to outage durations finance blessed.",
       solution:
         "Phased uplift map with overlays leadership could cite uniformly across ratings and board.",
       howWeHelped:
@@ -807,11 +807,11 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "fractional-office",
       title: "Core-system modernization portfolio across PAS, claims, and CX",
       teaser:
-        "COO sequencing policy-admin migration beside omnichannel experience commitments — illustrative composite.",
+        "COO sequencing policy-admin migration beside omnichannel experience commitments.",
       approach:
         "Capacity-aware intake distinguishing revenue-critical waves from resilience foundations starving quietly.",
       solution:
-        "Quarterly SLA bridges tying brokers, TPAs, CX teams—escalations for brittle integrations.",
+        "Quarterly SLA bridges tying brokers, TPAs, CX teams, escalations for brittle integrations.",
       howWeHelped:
         "Consolidated duplicate modernization tracks through transparent steering rhythms.",
     },
@@ -821,7 +821,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "ops-ai-sequencing",
       title: "Delivery copilots with strict client-boundary partitioning",
       teaser:
-        "Managing partner layering drafting and benchmarking assist without cross-client data bleed — illustrative example.",
+        "Managing partner layering drafting and benchmarking assist without cross-client data bleed.",
       approach:
         "Tenancy partitioned by mandate; escalation when benchmarks touched ethically sensitive comps.",
       solution:
@@ -833,9 +833,9 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "governance-sprint",
       title: "Breach readiness before malpractice or PE diligence",
       teaser:
-        "CISO marrying MFA proofs and escrowed backups to narratives partners will indemnify — illustrative composite.",
+        "CISO marrying MFA proofs and escrowed backups to narratives partners will indemnify.",
       approach:
-        "Compensating controls mapped to outage hours underwriters—not vanity scan KPIs.",
+        "Compensating controls mapped to outage hours underwriters, not vanity scan KPIs.",
       solution:
         "90-day prioritized program with RACI aligning offices and outsourced SOC overlays.",
       howWeHelped:
@@ -845,7 +845,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       id: "fractional-office",
       title: "Firm runway across practices and corp platforms",
       teaser:
-        "COO juggling practice-specific platforms versus corp ERP stacks — illustrative example.",
+        "COO juggling practice-specific platforms versus corp ERP stacks.",
       approach:
         "Outcome-first lanes distinguishing client-facing modernization from identity foundations quietly underfunded.",
       solution:
@@ -960,15 +960,15 @@ export function recommendedCaseStudiesIntro(intake?: RecommendedPathCaseStudyInt
   if (sectorLabel && stage) {
     const short =
       stage.length > 140 ? `${stage.slice(0, 137).trimEnd()}…` : stage;
-    return `How we would approach this kind of work in ${sectorLabel}—illustrative examples for situations like yours: “${short}”`;
+    return `How we would approach this kind of work in ${sectorLabel}, for situations like yours: “${short}”`;
   }
   if (sectorLabel) {
-    return `How we would approach this kind of work in ${sectorLabel}—illustrative examples, not past client stories.`;
+    return `How we would approach this kind of work in ${sectorLabel}. These are illustrative examples, not past client stories.`;
   }
   if (stage) {
     const short =
       stage.length > 160 ? `${stage.slice(0, 157).trimEnd()}…` : stage;
-    return `Illustrative examples of how we would help—grounded in what you shared: “${short}”`;
+    return `Illustrative examples of how we would help, grounded in what you shared: “${short}”`;
   }
   if (issue) {
     return `Illustrative examples of how we would help, aligned with your focus on ${issue}.`;

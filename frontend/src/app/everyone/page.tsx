@@ -114,7 +114,7 @@ export default async function EveryonePage() {
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-pulse-teal/30 bg-pulse-teal/10 px-4 py-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-pulse-teal" aria-hidden />
               <span className="font-sans text-[13px] font-semibold tracking-[2px] text-pulse-teal uppercase">
-                The Pulse of Technology — {today}
+                The Pulse of Technology · {today}
               </span>
             </div>
             <h1 className="mb-4 max-w-[820px] font-sans text-[clamp(1.875rem,4vw,2.75rem)] leading-[1.12] font-extrabold tracking-tight text-white">
@@ -122,7 +122,7 @@ export default async function EveryonePage() {
             </h1>
             <p className="mb-8 max-w-[680px] font-sans text-lg leading-relaxed text-white/60">
               A broad, vendor-neutral overview of what every executive should be tracking this
-              week. Generated from the Pulse of Technology Radar — PulseOne&rsquo;s live view of
+              week. Generated from the Pulse of Technology Radar, PulseOne&rsquo;s live view of
               the technology landscape. No profile required.
             </p>
             <div className="flex flex-wrap gap-2.5">

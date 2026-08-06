@@ -184,10 +184,10 @@ export default function ContactPage() {
                 <ContactDetail label="Mountain region (Bozeman)">
                   <PhoneLink display="406-898-2300" tel="+14068982300" />
                 </ContactDetail>
-                <ContactDetail label="West region — Los Angeles">
+                <ContactDetail label="West region: Los Angeles">
                   <PhoneLink display="213.802.0388" tel="+12138020388" />
                 </ContactDetail>
-                <ContactDetail label="West region — Santa Barbara / Ventura">
+                <ContactDetail label="West region: Santa Barbara / Ventura">
                   <PhoneLink display="805.901.8511" tel="+18059018511" />
                 </ContactDetail>
               </ContactInfoCard>

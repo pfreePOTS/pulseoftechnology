@@ -148,7 +148,7 @@ export default function ExecutiveIntakeForm({
         </span>
         <h2 className="mb-2.5 font-sans text-[38px] leading-tight font-bold tracking-tight text-white">
           {hasPrefill
-            ? `Building your ${prefilledIndustry} path — let's start with where you are.`
+            ? `Building your ${prefilledIndustry} path. Let's start with where you are.`
             : "It starts with where you are."}
         </h2>
         <p className="mx-auto font-sans text-lg leading-relaxed text-white/55">
@@ -195,7 +195,7 @@ export default function ExecutiveIntakeForm({
       {!isModal && (
         <p className="mt-5 text-center font-sans text-[13px]">
           <Link href="/everyone" className="text-white/35 hover:text-white/55">
-            Skip — just show me everything
+            Skip: just show me everything
           </Link>
         </p>
       )}
@@ -211,7 +211,7 @@ export default function ExecutiveIntakeForm({
         <h2 className="mt-3 mb-4 font-sans text-[34px] leading-tight font-bold tracking-tight text-white">
           {hasPrefill
             ? `We're tailoring this for ${prefilledIndustry}.`
-            : "Good news — we have you covered."}
+            : "Good news: we have you covered."}
         </h2>
         <p className="mb-6 font-sans text-[15px] leading-relaxed text-white/65">
           Answer these quick questions and we&rsquo;ll tailor what you see to your situation.
@@ -452,7 +452,7 @@ export default function ExecutiveIntakeForm({
         {!isModal && (
           <p className="mt-5 text-center font-sans text-[13px]">
             <Link href="/everyone" className="text-white/35 hover:text-white/55">
-              Skip — just show me everything
+              Skip: just show me everything
             </Link>
           </p>
         )}

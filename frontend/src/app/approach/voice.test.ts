@@ -22,7 +22,7 @@ const BANNED_PHRASES = [
 /**
  * Internal/developer vocabulary that must never render on a public page
  * (loading states, error states, empty states). Ops notes belong in code
- * comments or docs, not in copy a visitor can see — a radar loading screen
+ * comments or docs, not in copy a visitor can see. A radar loading screen
  * once told visitors to run `docker compose up`.
  */
 const BANNED_DEV_NOTES = [
@@ -32,8 +32,23 @@ const BANNED_DEV_NOTES = [
   "verify the Pulse API",
 ];
 
+/** Soft ceiling for spaced em dashes (` — `) in public source. Identity doc
+ * asks for light use; placeholders that are only `—` and brand wordmarks
+ * are fine, but prose should not lean on the em dash as default punctuation. */
+const MAX_SPACED_EM_DASHES = 12;
+
 const APP_DIR = fileURLToPath(new URL("../", import.meta.url));
 const COMPONENTS_DIR = fileURLToPath(new URL("../../components", import.meta.url));
+const LIB_DIR = fileURLToPath(new URL("../../lib", import.meta.url));
+
+/** Lib modules that hold visitor-facing copy (not every util). */
+const LIB_COPY_FILES = new Set([
+  "services.ts",
+  "industryGrid.ts",
+  "recommendedPathCaseStudies.ts",
+  "recommendedPathIntakeCopy.ts",
+  "site.ts",
+]);
 
 function collectSourceFiles(dir: string): string[] {
   const out: string[] = [];
@@ -50,8 +65,18 @@ function collectSourceFiles(dir: string): string[] {
   return out;
 }
 
+function collectLibCopyFiles(dir: string): string[] {
+  return readdirSync(dir)
+    .filter((entry) => LIB_COPY_FILES.has(entry))
+    .map((entry) => join(dir, entry));
+}
+
 describe("public site voice (PULSE-022)", () => {
-  const files = [...collectSourceFiles(APP_DIR), ...collectSourceFiles(COMPONENTS_DIR)];
+  const files = [
+    ...collectSourceFiles(APP_DIR),
+    ...collectSourceFiles(COMPONENTS_DIR),
+    ...collectLibCopyFiles(LIB_DIR),
+  ];
 
   it("finds files to scan", () => {
     expect(files.length).toBeGreaterThan(10);
@@ -65,5 +90,17 @@ describe("public site voice (PULSE-022)", () => {
   it.each(BANNED_DEV_NOTES)("never exposes internal dev note %s", (phrase) => {
     const offenders = files.filter((file) => readFileSync(file, "utf8").includes(phrase));
     expect(offenders).toEqual([]);
+  });
+
+  it("keeps spaced em dashes light in public prose", () => {
+    // Strip block and line comments so JSDoc/section markers do not count.
+    const stripComments = (src: string) =>
+      src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    let count = 0;
+    for (const file of files) {
+      const body = stripComments(readFileSync(file, "utf8"));
+      count += (body.match(/ — /g) ?? []).length;
+    }
+    expect(count).toBeLessThanOrEqual(MAX_SPACED_EM_DASHES);
   });
 });

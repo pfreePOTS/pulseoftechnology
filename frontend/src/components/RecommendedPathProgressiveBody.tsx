@@ -248,7 +248,7 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
   } else if ((fetchFailed || !data) && !buildingOverlay) {
     heroSubtext = (
       <>
-        We couldn&rsquo;t finish loading your briefing. Your answers are still in the URL—try{" "}
+        We couldn&rsquo;t finish loading your briefing. Your answers are still in the URL. Try{" "}
         <button
           type="button"
           onClick={() => globalThis.location.reload()}
@@ -396,7 +396,7 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
             <p className="font-sans text-[15px] leading-relaxed text-[#333]">
               <span className="font-bold text-[#111]">Prefer to skip the read?</span>{" "}
               <span className="text-[#555]">
-                Talk with one of our advisors directly — no pitch, just a conversation about where you are.
+                Talk with one of our advisors directly. No pitch, just a conversation about where you are.
               </span>
             </p>
           </div>
@@ -493,7 +493,7 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
             </span>
             <h2 className="font-sans text-[38px] font-bold tracking-tight text-white">Radar signal tuned to what you shared</h2>
             <p className="mt-3 max-w-[720px] font-sans text-[15px] leading-relaxed text-white/55">
-              Stories and themes from the live Pulse — the same ingested briefing pool as the radar — matched to your
+              Stories and themes from the live Pulse, matched to your
               profile.
             </p>
           </div>
@@ -504,7 +504,7 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
                 <p className="font-sans text-[15px] leading-relaxed text-white/82">{watchBrief}</p>
               ) : (
                 <p className="rounded-[10px] border border-white/[0.08] bg-white/[0.03] px-5 py-4 font-sans text-sm text-white/45">
-                  We don&rsquo;t have enough personalised narrative yet — widen your intake answers or revisit in a moment
+                  We don&rsquo;t have enough personalised narrative yet. Widen your intake answers or revisit in a moment
                   while the radar refreshes.
                 </p>
               )}
@@ -569,7 +569,7 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
                   </div>
                 ) : (
                   <p className="rounded-[10px] border border-white/[0.08] bg-white/[0.03] px-4 py-3 font-sans text-sm text-white/45">
-                    No recent Pulse stories matched these themes yet — try the live radar for the full feed.
+                    No recent Pulse stories matched these themes yet. Try the live radar for the full feed.
                   </p>
                 )}
               </div>

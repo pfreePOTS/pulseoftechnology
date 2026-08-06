@@ -5,8 +5,8 @@
 
 PulseOne provides managed business technology, cybersecurity, compliance-oriented
 reviews, emerging technology adoption, and strategic technology advisory.
-Remote support for multi-site operations — restaurants, franchises, retail
-stores, branch and field offices, and warehouses — is core work. Tagline:
+Remote support for multi-site operations (restaurants, franchises, retail
+stores, branch and field offices, and warehouses) is core work. Tagline:
 People | Technology | Progress.
 
 ## Services
@@ -25,7 +25,7 @@ People | Technology | Progress.
 
 ## Free assessments
 
-- [IT Readiness Assessments](/assessments): Three free online self-assessments — cyber insurance readiness, Microsoft Copilot readiness, and disaster recovery readiness. Scored by section, no client relationship required.
+- [IT Readiness Assessments](/assessments): Three free online self-assessments: cyber insurance readiness, Microsoft Copilot readiness, and disaster recovery readiness. Scored by section, no client relationship required.
 
 ## Technology intelligence
 

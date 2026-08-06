@@ -73,7 +73,7 @@ export default function TrackedStoriesSection({
           ) : null}
         </div>
         <p className="mb-5 max-w-3xl text-sm text-gray-600">
-          Recent articles ingested for published radar topics — the same source material we use when assembling the daily
+          Recent articles ingested for published radar topics. The same source material we use when assembling the daily
           email digest.
         </p>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

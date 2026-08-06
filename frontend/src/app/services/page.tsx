@@ -8,7 +8,7 @@ import { breadcrumbSchema } from "@/lib/schema";
 import { SERVICES, servicePath } from "@/lib/services";
 
 const DESCRIPTION =
-  "Managed and co-managed IT, cybersecurity, compliance reviews, emerging technology adoption, and strategic advisory for small and mid-market organizations.";
+  "Managed business technology, cybersecurity, compliance reviews, emerging technology adoption, and strategic advisory for small and mid-market organizations.";
 
 export const metadata: Metadata = {
   title: "IT Services and Technology Advisory",

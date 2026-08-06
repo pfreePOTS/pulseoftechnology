@@ -14,6 +14,13 @@ export type ServiceFaq = { question: string; answer: string };
 
 export type ServiceCapability = { title: string; body: string };
 
+/** Optional per-service section describing how the work changes by industry. */
+export type ServiceIndustryFocus = {
+  heading: string;
+  intro: string;
+  items: { industry: string; body: string }[];
+};
+
 export type ServiceContent = {
   slug: string;
   /** Label used in the global footer and service hub. */
@@ -30,6 +37,8 @@ export type ServiceContent = {
   /** Answer-first opening. First sentence is the definition. */
   intro: string[];
   capabilities: ServiceCapability[];
+  /** Rendered only when the service defines it. */
+  industryFocus?: ServiceIndustryFocus;
   /** Stated scope limit. Renders visibly and feeds `llms.txt`. */
   boundary: string;
   faq: ServiceFaq[];
@@ -37,71 +46,98 @@ export type ServiceContent = {
 
 export const SERVICES: ServiceContent[] = [
   {
-    slug: "managed-it-services",
-    navLabel: "Managed IT Services",
-    name: "Managed and Co-Managed IT Services",
-    serviceType: "Managed IT services",
-    metaTitle: "Managed and Co-Managed IT Services",
+    slug: "managed-business-technology",
+    navLabel: "Managed Business Technology",
+    name: "Managed Business Technology Services",
+    serviceType: "Managed business technology services",
+    metaTitle: "Managed Business Technology Services",
     metaDescription:
-      "Help desk, monitoring, patching, and backups for every site you run. PulseOne acts as your IT department or works alongside the team you already have.",
+      "Ongoing management of the technology your business runs on: adoption, performance, integration, data, and the agentic tools and policies now moving into everyday work.",
     eyebrow: "Managed Services",
-    headline: "One help desk.",
-    headlineAccent: "Every location.",
-    lede: "Support that reaches the branch, the store, and the warehouse the same way it reaches headquarters.",
+    headline: "Not just kept running.",
+    headlineAccent: "Kept improving.",
+    lede: "Uptime is the starting condition. The value is in what your systems do next.",
     audience:
-      "Small and mid-market organizations, including multi-location restaurants, retail, franchises, and field operations",
+      "Small and mid-market organizations modernizing the platforms, data, and automation their operations depend on",
     intro: [
-      "Managed IT services means PulseOne runs the day-to-day technology work for your organization: the help desk your staff call, the monitoring that catches problems first, the patching that keeps systems current, and the backups you hope never to need. Co-managed means we do that work alongside an in-house IT person or team rather than replacing them.",
-      "Multi-site operations are the common case. A restaurant group, a retail chain, or a company with branch and field offices has the same technology needs at every location but rarely has staff at each one. PulseOne supports those sites remotely, with consistent standards rather than whatever each location assembled on its own.",
+      "Managed business technology means PulseOne takes ongoing ownership of the systems your organization runs on and the work of making them better: adopting new tools properly, tuning what is already in place, connecting platforms that do not talk to each other, and governing the data and agentic tools now moving into everyday work. Keeping the environment stable is included. It is the starting condition rather than the deliverable.",
+      "Most organizations cannot name a performance problem. What they have is a dozen platforms bought at different times, staff quietly working around the gaps, and agentic tools arriving before anyone decided what those tools may touch. This service exists to own that picture continuously, across security, data, automation, and the written policy behind all three, instead of revisiting it once a year.",
     ],
     capabilities: [
       {
-        title: "Help desk and escalation",
-        body: "End-user support your staff can reach directly, with a clear path from a first question to a resolved problem.",
+        title: "Technology adoption, managed",
+        body: "Rollout of platforms and features you already pay for, sequenced so the way people work actually changes.",
       },
       {
-        title: "Monitoring and platform health",
-        body: "Systems watched continuously so failures surface as alerts rather than as calls from frustrated staff.",
+        title: "Performance and optimization",
+        body: "Continuous tuning of what is in place: what is slow, what is duplicated, and what is licensed but unused.",
       },
       {
-        title: "Backups and patching",
-        body: "Current systems and tested recovery. Backups that have never been restored are not backups.",
+        title: "Integration between systems",
+        body: "Connecting the platforms your operations depend on so information moves without anyone retyping it.",
       },
       {
-        title: "Cloud and workplace platforms",
-        body: "Administration of cloud services, file storage, email, and Microsoft-style workplace platforms.",
+        title: "Data management",
+        body: "Where business information lives, who may reach it, how long it is kept, and whether it is fit for the tools now reading it.",
       },
       {
-        title: "Phone, voice, and connectivity",
-        body: "Business phone systems, unified communications, and the network connections each site depends on.",
+        title: "Agentic tool management",
+        body: "Ongoing management of the agents and intelligent automation already in production: access boundaries, review steps, monitoring, and change control as platforms shift underneath them.",
       },
       {
-        title: "New location technology standards",
-        body: "A repeatable technology package for openings and expansion: networks, endpoints, software, and technology vendors.",
+        title: "Policy management",
+        body: "The written rules behind all of it — acceptable use, data handling, access, review — kept current and enforced in the systems rather than filed in a folder.",
+      },
+      {
+        title: "Day-to-day operations, included",
+        body: "Help desk, monitoring, patching, and backups run underneath this work. Necessary, unremarkable, and not where the value is.",
       },
     ],
+    industryFocus: {
+      heading: "What changes by industry",
+      intro:
+        "The four managed pillars are the same everywhere. What they mean in practice is not, because the data, the rules, and the tolerance for a wrong answer differ by industry.",
+      items: [
+        {
+          industry: "Healthcare",
+          body: "Patient information sets the boundary. Data management focuses on where records travel between systems, and agentic tools are held to review steps before anything reaches a clinical or billing decision.",
+        },
+        {
+          industry: "Financial services",
+          body: "Access and evidence dominate. Permissions are reviewed on a schedule, automation is logged so a decision can be reconstructed later, and policy is written to survive an examiner reading it.",
+        },
+        {
+          industry: "Manufacturing",
+          body: "Production data is the asset worth connecting. Work concentrates on segmenting operational equipment from business systems and moving its output into planning and reporting without opening a path back in.",
+        },
+        {
+          industry: "Legal and professional services",
+          body: "Client confidentiality governs tool selection. Data boundaries are drawn per client rather than per company, and staff get explicit rules about which matter information may enter which tool.",
+        },
+      ],
+    },
     boundary:
-      "PulseOne covers the technology layer. We network, segment, monitor, and secure operational and production equipment, and integrate its data into your business systems, but we do not install, commission, or specify that equipment.",
+      "PulseOne manages the technology layer: platforms, data, integrations, agentic tools, and the policies governing them. We do not train foundation models, we do not run HR, finance, marketing, or general business operations, and we do not install or commission production equipment.",
     faq: [
       {
-        question: "What is co-managed IT?",
+        question: "What is managed business technology?",
         answer:
-          "Co-managed IT is a model where an outside provider works alongside your in-house IT staff rather than replacing them. PulseOne typically takes on after-hours coverage, monitoring, patching, and specialist work, while your internal team keeps ownership of day-to-day priorities and the relationships inside the business.",
+          "Managed business technology is ongoing ownership of the systems an organization runs on and the work of improving them: adoption of new platforms, performance tuning, integration between systems, data management, management of agentic tools in production, and the policies governing all of it. Help desk, monitoring, patching, and backups are included underneath.",
       },
       {
-        question: "Can you support locations that have no IT staff on site?",
+        question: "How is this different from managed IT?",
         answer:
-          "Yes. Remote support for sites without local technical staff is core work for PulseOne. Restaurants, retail stores, franchise locations, branch and field offices, and warehouses are supported remotely, with on-site help arranged when a problem genuinely requires hands on the equipment.",
+          "Managed IT is usually scoped to keeping things working: tickets answered, systems patched, backups running. That work is included here, but it is the floor. This service is measured on whether the technology got better over the year, which means adoption, integration, and optimization are part of the engagement rather than separate projects.",
       },
       {
-        question: "Can you handle the technology side of opening a new location?",
+        question: "What does managing agentic tools day to day involve?",
         answer:
-          "Yes. PulseOne sets a repeatable technology standard for openings: network, internet connectivity, endpoints, software, sign-in access, phones, and the technology vendors involved. That standard is then applied to each new site so the tenth opening runs like the first. Physical build-out of the facility is not part of this work.",
+          "It involves the work that starts after a rollout ends: keeping access boundaries accurate as staff and data change, confirming human review steps are still in place, monitoring what the automation is doing, and handling change control when a vendor updates the underlying platform. Selecting and rolling those tools out is covered under AI and Emerging Technology Adoption.",
       },
       {
-        question: "Do you buy equipment for us?",
+        question: "Does this replace the systems we already run?",
         answer:
-          "PulseOne handles technology procurement and vendor selection: computers, networking hardware, software licensing, and connectivity. We do not buy or specify non-technology equipment such as production machinery, kitchen line equipment, or facilities supplies, and we do not negotiate non-technology supplier deals.",
+          "Usually not. Most of the value comes from using what you already own more fully and connecting systems that currently pass information by hand. PulseOne is vendor-neutral and gains nothing from a replacement, so a change of platform is recommended only when the current one cannot meet a requirement you actually have.",
       },
     ],
   },
@@ -286,7 +322,7 @@ export const SERVICES: ServiceContent[] = [
       },
     ],
     boundary:
-      "PulseOne rolls out and integrates commercially available tools and automation. We do not train foundation models, and we do not advise on marketing, HR, or general business strategy.",
+      "PulseOne rolls out and integrates commercially available tools and automation. Ongoing management of what a rollout leaves behind is covered under Managed Business Technology. We do not train foundation models, and we do not advise on marketing, HR, or general business strategy.",
     faq: [
       {
         question: "What does an agentic tool rollout actually involve?",

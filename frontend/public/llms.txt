@@ -3,7 +3,7 @@
 > A strategic technology advisory firm and managed service provider serving small
 > and mid-market organizations in the United States. Founded 2002.
 
-PulseOne provides managed and co-managed IT, cybersecurity, compliance-oriented
+PulseOne provides managed business technology, cybersecurity, compliance-oriented
 reviews, emerging technology adoption, and strategic technology advisory.
 Remote support for multi-site operations — restaurants, franchises, retail
 stores, branch and field offices, and warehouses — is core work. Tagline:
@@ -11,10 +11,10 @@ People | Technology | Progress.
 
 ## Services
 
-- [Managed and Co-Managed IT Services](/services/managed-it-services): Help desk, monitoring, patching, backups, cloud and workplace platform administration, phone and voice systems, and technology standards for new locations. Delivered as a full IT department or alongside existing in-house staff.
+- [Managed Business Technology Services](/services/managed-business-technology): Ongoing ownership of the systems a business runs on: technology adoption, performance and optimization, integration between platforms, data management, management of agentic tools already in production, and the policies governing them. Help desk, monitoring, patching, and backups are included underneath.
 - [Cybersecurity Services](/services/cybersecurity): Security and posture reviews, sign-in and access control, monitoring, patching and vulnerability remediation, protected backups with tested recovery, and network segmentation across every site.
 - [Compliance and Risk Reviews](/services/compliance-and-risk): Technology reviews mapped to cyber insurance questionnaires, customer security reviews, payment card rules, and health information rules, with evidence and a prioritized remediation plan.
-- [AI and Emerging Technology Adoption](/services/ai-and-emerging-tech): Rollout of agentic tools and intelligent automation with defined data boundaries, access controls, human review steps, and integration into existing business systems.
+- [AI and Emerging Technology Adoption](/services/ai-and-emerging-tech): Rollout of agentic tools and intelligent automation with defined data boundaries, access controls, human review steps, and integration into existing business systems. Ongoing management after rollout is covered under Managed Business Technology.
 - [Strategic Technology Advisory](/services/strategic-advisory): Technology assessments, roadmaps, budget planning, vendor-neutral platform selection, expansion planning, and a recurring governance cadence.
 
 ## Company
@@ -43,8 +43,9 @@ line-of-business integration, point-of-sale and ordering system integration at
 the technology layer, phone and unified communications, website management and
 related hosting and domain administration, identity and access management,
 technology standards for store openings and expansion, technology assessments
-and advisory, agentic tool and automation rollouts with guardrails, and
-technology-only procurement and vendor selection.
+and advisory, agentic tool and automation rollouts with guardrails, ongoing
+management of agentic tools in production, data management, technology policy
+management, and technology-only procurement and vendor selection.
 
 Sites may contain operational or production equipment such as robotics,
 packaging lines, industrial machinery, production ovens, warehouse automation,

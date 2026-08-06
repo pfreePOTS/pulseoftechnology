@@ -176,6 +176,42 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
           </div>
         </section>
 
+        {service.industryFocus ? (
+          <section className="px-6 py-[90px]">
+            <div className="mx-auto max-w-[1100px]">
+              <div className="mb-10 max-w-[720px]">
+                <span className="mb-3 block font-sans text-[11px] font-semibold tracking-[3px] text-pulse-teal uppercase">
+                  By Industry
+                </span>
+                <h2 className="mb-4 font-sans text-4xl font-bold text-[#1a1a1a]">
+                  {service.industryFocus.heading}
+                </h2>
+                <p className="font-sans text-[16px] leading-[1.8] text-[#4a4a4a]">
+                  {service.industryFocus.intro}
+                </p>
+              </div>
+              <dl className="grid gap-x-10 gap-y-8 sm:grid-cols-2">
+                {service.industryFocus.items.map((item) => (
+                  <div key={item.industry} className="border-l-[3px] border-pulse-red pl-5">
+                    <dt className="mb-2 font-sans text-lg font-bold text-[#1a1a1a]">
+                      {item.industry}
+                    </dt>
+                    <dd className="font-sans text-[15px] leading-[1.75] text-[#646464]">
+                      {item.body}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+              <Link
+                href="/industries"
+                className="mt-10 inline-flex items-center gap-1 font-sans text-[13px] font-semibold text-pulse-red transition-[gap] duration-200 hover:gap-1.5"
+              >
+                See all industries we serve →
+              </Link>
+            </div>
+          </section>
+        ) : null}
+
         <FaqSection
           items={service.faq}
           heading={`${service.navLabel}: common questions`}

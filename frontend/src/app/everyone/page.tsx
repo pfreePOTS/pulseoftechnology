@@ -110,7 +110,7 @@ export default async function EveryonePage() {
             className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[rgba(10,10,15,0.82)] via-[rgba(10,10,15,0.65)] to-[rgba(10,10,15,0.45)]"
             aria-hidden
           />
-          <div className="relative z-[1] mx-auto w-full max-w-[1100px] px-6 py-16">
+          <div className="relative z-[1] mx-auto w-full max-w-[1200px] px-6 py-16">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-pulse-teal/30 bg-pulse-teal/10 px-4 py-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-pulse-teal" aria-hidden />
               <span className="font-sans text-[13px] font-semibold tracking-[2px] text-pulse-teal uppercase">
@@ -136,7 +136,7 @@ export default async function EveryonePage() {
 
         {/* CONTEXT — AI synthesis (broad, no profile). */}
         <section className="border-b border-[#e0e0e0] bg-light-bg px-8 py-16">
-          <div className="mx-auto max-w-[1100px]">
+          <div className="mx-auto max-w-[1200px]">
             <div className="mb-8 text-center">
               <span className="mb-3 block font-sans text-[13px] font-semibold tracking-[3px] text-pulse-teal uppercase">
                 What Most Boards Are Re-Checking
@@ -176,7 +176,7 @@ export default async function EveryonePage() {
 
         {/* RADAR SNAPSHOT — top topics across ALL domains (6, not 3). */}
         <section className="border-b border-[#e8e8e8] bg-dark-bg px-8 py-16 md:py-20">
-          <div className="mx-auto max-w-[1100px]">
+          <div className="mx-auto max-w-[1200px]">
             <span className="mb-2 block font-sans text-[13px] font-semibold tracking-[3px] text-white/45 uppercase">
               Radar Snapshot
             </span>
@@ -263,7 +263,7 @@ export default async function EveryonePage() {
 
         {/* HOW WE WORK — same 4-step content as /recommended-path. */}
         <section className="border-t border-[#e0e0e0] bg-light-bg px-8 py-20">
-          <div className="mx-auto max-w-[1100px]">
+          <div className="mx-auto max-w-[1200px]">
             <div className="mb-12 text-center">
               <span className="mb-3 block font-sans text-[13px] font-semibold tracking-[3px] text-pulse-teal uppercase">
                 How We Work

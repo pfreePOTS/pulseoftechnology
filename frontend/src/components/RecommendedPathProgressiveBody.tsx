@@ -299,7 +299,7 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
           className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-t from-black/45 via-transparent to-black/55"
           aria-hidden
         />
-        <div className="relative z-[2] mx-auto max-w-[1100px]">
+        <div className="relative z-[2] mx-auto max-w-[1200px]">
           <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-pulse-teal/30 bg-pulse-teal/10 px-4 py-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-pulse-teal" aria-hidden />
             <span className="font-sans text-[13px] font-semibold tracking-[2px] text-pulse-teal uppercase">
@@ -337,7 +337,7 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
       </section>
 
       <section className="border-b border-[#e0e0e0] bg-light-bg px-8 py-16 md:py-20">
-        <div className="mx-auto max-w-[1100px]">
+        <div className="mx-auto max-w-[1200px]">
           <div className="mb-10 text-center">
             <span className="mb-3 block font-sans text-[13px] font-semibold tracking-[3px] text-pulse-teal uppercase">
               Our Solutions
@@ -379,7 +379,7 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
       </section>
 
       <section className="border-b border-[#e0e0e0] bg-white px-8 py-7">
-        <div className="mx-auto flex max-w-[1100px] flex-col items-start justify-between gap-3 md:flex-row md:items-center">
+        <div className="mx-auto flex max-w-[1200px] flex-col items-start justify-between gap-3 md:flex-row md:items-center">
           <div className="flex items-start gap-3 md:items-center">
             <span
               className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full bg-pulse-red md:mt-0"
@@ -402,7 +402,7 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
       </section>
 
       <section className="border-b border-[#e0e0e0] bg-white px-8 py-16">
-        <div className="mx-auto max-w-[1100px]">
+        <div className="mx-auto max-w-[1200px]">
           <div className="mb-8 text-center">
             <span className="mb-3 block font-sans text-[13px] font-semibold tracking-[3px] text-pulse-teal uppercase">
               Our Process
@@ -478,7 +478,7 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
       />
 
       <section className="border-b border-[#e8e8e8] bg-dark-bg px-8 py-16 md:py-20">
-        <div className="mx-auto max-w-[1100px]">
+        <div className="mx-auto max-w-[1200px]">
           <div className="mb-10">
             <span className="mb-2 block font-sans text-[13px] font-semibold tracking-[3px] text-pulse-teal uppercase">
               What We&rsquo;re Watching

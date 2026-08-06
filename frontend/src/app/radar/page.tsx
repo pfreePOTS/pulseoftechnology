@@ -174,7 +174,7 @@ export default async function RadarPage() {
             says the same people also do the work. Sends warm readers to the
             services hub without interrupting the subscribe flow below. */}
         <section className="border-t-[3px] border-pulse-teal bg-dark-bg px-6 py-12">
-          <div className="mx-auto flex max-w-[980px] flex-col items-center gap-5 text-center sm:flex-row sm:justify-between sm:gap-8 sm:text-left">
+          <div className="mx-auto flex max-w-[1200px] flex-col items-center gap-5 text-center sm:flex-row sm:justify-between sm:gap-8 sm:text-left">
             <div>
               <h2 className="mb-1.5 font-sans text-[22px] font-bold leading-snug text-white">
                 When a signal turns into work, the same team does the work.

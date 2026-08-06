@@ -88,7 +88,7 @@ export default async function RecommendedPathPage({
         <RecommendedPathProgressiveBody intake={intake} hasIntake={hasIntake} heroBg={heroBg} />
 
         <section className="border-t border-[#e0e0e0] bg-light-bg px-8 py-20">
-          <div className="mx-auto max-w-[1100px]">
+          <div className="mx-auto max-w-[1200px]">
             <div className="mb-12 text-center">
               <span className="mb-3 block font-sans text-[13px] font-semibold tracking-[3px] text-pulse-teal uppercase">
                 How to Engage

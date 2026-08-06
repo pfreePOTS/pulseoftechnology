@@ -186,7 +186,7 @@ export default function AssessmentsPage() {
             className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[rgba(10,10,15,0.82)] via-[rgba(10,10,15,0.55)] to-[rgba(10,10,15,0.45)]"
             aria-hidden
           />
-          <div className="relative z-[1] mx-auto w-full max-w-[1100px] px-6 py-16">
+          <div className="relative z-[1] mx-auto w-full max-w-[1320px] px-6 py-16">
             <div className="mx-auto max-w-[760px]">
               <span className="mx-auto mb-4 inline-block rounded-full border border-pulse-teal/35 bg-pulse-teal/12 px-3.5 py-1.5 font-sans text-[13px] font-semibold tracking-[4px] text-pulse-teal uppercase">
                 IT Assessments

@@ -244,7 +244,7 @@ export default function ApproachPage() {
             className="pointer-events-none absolute -top-20 -right-20 size-[400px] rounded-full bg-[radial-gradient(circle,rgba(213,23,30,0.1)_0%,transparent_70%)]"
             aria-hidden
           />
-          <div className="relative z-[1] mx-auto max-w-[1100px]">
+          <div className="relative z-[1] mx-auto max-w-[1200px]">
             <div className="mb-14 text-center">
               <span className="mb-3 block font-sans text-[11px] font-semibold tracking-[3px] text-pulse-teal uppercase">
                 Our History
@@ -392,7 +392,7 @@ export default function ApproachPage() {
         <ExecutiveIntakeForm />
 
         <section className="border-x-0 border-b border-t border-[#e8e8e8] border-t-[3px] border-t-pulse-teal bg-white px-6 py-12">
-          <div className="mx-auto grid max-w-[1100px] md:grid-cols-4">
+          <div className="mx-auto grid max-w-[1200px] md:grid-cols-4">
             <div className="border-[#e0e0e0] px-6 py-2 text-center md:border-r md:last:border-r-0">
               <p className="font-sans text-[38px] font-bold leading-none text-[#1a1a1a]">
                 20<span className="text-pulse-teal">+</span>
@@ -425,7 +425,7 @@ export default function ApproachPage() {
             className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_60%_50%,rgba(213,23,30,0.12)_0%,transparent_70%)]"
             aria-hidden
           />
-          <div className="relative mx-auto grid max-w-[1100px] gap-14 lg:grid-cols-2 lg:items-start lg:gap-20">
+          <div className="relative mx-auto grid max-w-[1200px] gap-14 lg:grid-cols-2 lg:items-start lg:gap-20">
             <div>
               <span className="mb-3 block font-sans text-[11px] font-semibold tracking-[3px] text-pulse-teal uppercase">
                 How to Engage Us

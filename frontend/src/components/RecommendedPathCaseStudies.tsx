@@ -74,7 +74,7 @@ export default function RecommendedPathCaseStudies({
 
   return (
     <section className="border-b border-[#e0e0e0] bg-[#f4f8fa] px-8 py-16 md:py-20">
-      <div className="mx-auto max-w-[1100px]">
+      <div className="mx-auto max-w-[1200px]">
         <div className="mb-10 text-center">
           <span className="mb-3 block font-sans text-[13px] font-semibold tracking-[3px] text-pulse-teal uppercase">
             Engagements

@@ -43,7 +43,7 @@ export default function ServicesPage() {
             className="pointer-events-none absolute -bottom-24 -left-24 size-[400px] rounded-full bg-[radial-gradient(circle,rgba(1,158,124,0.12)_0%,transparent_70%)]"
             aria-hidden
           />
-          <div className="relative z-[1] mx-auto max-w-[1100px]">
+          <div className="relative z-[1] mx-auto max-w-[1200px]">
             <span className="mb-3 block font-sans text-[11px] font-semibold tracking-[3px] text-pulse-teal uppercase">
               Our Services
             </span>
@@ -96,7 +96,7 @@ export default function ServicesPage() {
         </section>
 
         <section className="border-t-4 border-pulse-teal bg-[#f4f4f4] px-6 py-[80px]">
-          <div className="mx-auto grid max-w-[1100px] items-center gap-10 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+          <div className="mx-auto grid max-w-[1200px] items-center gap-10 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
             <div>
               <h2 className="mb-4 border-l-[5px] border-pulse-red py-0 pl-[18px] font-sans text-[28px] font-bold leading-tight text-[#1a1a1a]">
                 Not sure which one you need?

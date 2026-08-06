@@ -79,7 +79,7 @@ export default function RadarSection({
         <div
           className={
             "mx-auto flex flex-wrap items-center justify-between gap-3 " +
-            (compact ? "max-w-none gap-x-4 gap-y-2" : "max-w-7xl gap-4")
+            (compact ? "max-w-none gap-x-4 gap-y-2" : "max-w-[1200px] gap-4")
           }
         >
           {/* Title — adoption-stage explanations live in the hover tooltip on each radar pill */}

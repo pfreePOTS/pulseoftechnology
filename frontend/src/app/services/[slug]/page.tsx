@@ -79,7 +79,7 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
             className="pointer-events-none absolute -top-24 -right-24 size-[420px] rounded-full bg-[radial-gradient(circle,rgba(213,23,30,0.12)_0%,transparent_70%)]"
             aria-hidden
           />
-          <div className="relative z-[1] mx-auto max-w-[1100px]">
+          <div className="relative z-[1] mx-auto max-w-[1200px]">
             <nav aria-label="Breadcrumb" className="mb-6">
               <ol className="flex flex-wrap items-center gap-2 font-sans text-[13px] text-white/45">
                 <li>
@@ -114,7 +114,7 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
         </section>
 
         <section className="px-6 py-[90px]">
-          <div className="mx-auto grid max-w-[1100px] gap-14 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:gap-20">
+          <div className="mx-auto grid max-w-[1200px] gap-14 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:gap-20">
             <div>
               <h2 className="mb-6 border-l-[5px] border-pulse-red py-0 pl-[18px] font-sans text-[30px] font-bold leading-tight text-[#1a1a1a]">
                 What {service.navLabel} means at PulseOne
@@ -186,7 +186,7 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
 
         {service.pathForward ? (
           <section className="px-6 py-[90px]">
-            <div className="mx-auto max-w-[1100px]">
+            <div className="mx-auto max-w-[1200px]">
               <div className="mb-12 max-w-[720px]">
                 <span className="mb-3 block font-sans text-[11px] font-semibold tracking-[3px] text-pulse-teal uppercase">
                   Where to Start
@@ -226,7 +226,7 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
 
         {service.industryFocus ? (
           <section className="px-6 py-[90px]">
-            <div className="mx-auto max-w-[1100px]">
+            <div className="mx-auto max-w-[1200px]">
               <div className="mb-10 max-w-[720px]">
                 <span className="mb-3 block font-sans text-[11px] font-semibold tracking-[3px] text-pulse-teal uppercase">
                   By Industry
@@ -267,7 +267,7 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
         />
 
         <section className="border-t border-[#e8e8e8] bg-[#f4f4f4] px-6 py-[70px]">
-          <div className="mx-auto max-w-[1100px]">
+          <div className="mx-auto max-w-[1200px]">
             <h2 className="mb-8 font-sans text-[22px] font-bold text-[#1a1a1a]">
               Other services
             </h2>

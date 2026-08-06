@@ -70,7 +70,7 @@ export default function ContactPage() {
             className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[rgba(10,10,15,0.82)] via-[rgba(10,10,15,0.65)] to-[rgba(10,10,15,0.45)]"
             aria-hidden
           />
-          <div className="relative z-[1] mx-auto max-w-[1100px]">
+          <div className="relative z-[1] mx-auto max-w-[1200px]">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-pulse-teal/30 bg-pulse-teal/10 px-4 py-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-pulse-teal" aria-hidden />
               <span className="font-sans text-[13px] font-semibold tracking-[2px] text-pulse-teal uppercase">
@@ -106,7 +106,7 @@ export default function ContactPage() {
         </section>
 
         <section className="border-t border-[#e0e0e0] bg-white px-8 py-14">
-          <div className="mx-auto max-w-[1100px]">
+          <div className="mx-auto max-w-[1200px]">
             <div className="mb-10 text-center">
               <span className="mb-2 block font-sans text-[13px] font-semibold tracking-[3px] text-pulse-teal uppercase">
                 Other Ways to Reach Us

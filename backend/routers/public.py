@@ -15,7 +15,6 @@ from ..database import get_db
 from ..log_events import client_ip, kv
 from ..models.article import Article, ArticleStatus
 from ..models.content import ContentItem
-from ..models.domain import Domain
 from ..models.newsletter_issue import NewsletterIssue
 from ..models.role import Role
 from ..models.subscriber import Subscriber, validate_industries_and_role_ids
@@ -33,6 +32,9 @@ from ..services.email_service import send_contact_form_notification
 from ..services.hubspot_sync import sync_subscriber_to_hubspot
 from ..services.newsletter_selection import (
     RECOMMENDED_PATH_ARTICLE_LOOKBACK,
+    article_has_persona_for_roles,
+    article_industry_bonus,
+    industry_radar_bonus,
     recommended_path_topic_total_rank,
     resolve_role_names_from_intake,
 )
@@ -42,7 +44,11 @@ from ..services.recommended_path_process_card_library import (
     lookup_library_row,
 )
 from ..services.subscriber_tokens import decode_subscriber_preferences_token
-from ..services.topic_serializers import domain_public_payload, topic_domain_short
+from ..services.topic_serializers import (
+    domain_public_payload,
+    topic_domain_short,
+    topic_domain_slug,
+)
 from ..services.tracked_article_filter import article_qualifies_pulse_tracked_surface
 
 logger = logging.getLogger(__name__)
@@ -709,7 +715,8 @@ ISSUE_DOMAINS: dict[str, list[str]] = {
     "Compliance": ["compliance", "security"],
     "Cloud": ["cloud"],
     "IT Management": ["cloud", "infrastructure"],
-    "Strategy": ["ai", "compliance"],
+    # Soft strategic focuses — do not collapse to AI; industry/role ranking drives themes.
+    "Strategy": [],
     "Storage": ["storage"],
     "Infrastructure": ["infrastructure"],
     "Other": [],
@@ -721,6 +728,8 @@ def _domains_for_intake_issue(issue: str) -> list[str]:
     Map intake issue (wizard enums or loose text) onto radar ``Topic.domain`` values.
 
     Exact wizard labels use ``ISSUE_DOMAINS``. Free-text (e.g. 'interested in AI') hints domains.
+    Soft labels such as Strategy / Leadership do not map to AI — they leave domain preference empty
+    so industry + role ranking can personalise themes.
     """
     s = (issue or "").strip()
     if not s:
@@ -774,8 +783,7 @@ def _domains_for_intake_issue(issue: str) -> list[str]:
         )
     ):
         guessed.append("cloud")
-    if any(k in lo for k in ("leadership", "board", "strategy", "culture")):
-        guessed.append("ai")
+    # Strategy / leadership / culture are organisational focuses, not an AI-domain hard map.
     seen: set[str] = set()
     out: list[str] = []
     for d in guessed:
@@ -829,6 +837,11 @@ def _article_has_thumbnail(a: Article) -> bool:
     return bool((a.image_url or "").strip())
 
 
+# Soft preference when intake names an explicit tech domain (AI, Cybersecurity, …).
+# Must not overpower industry/role alignment — used only as a ranking nudge / fill order.
+_RECOMMENDED_PATH_DOMAIN_SOFT_BOOST = 8.0
+
+
 # Live radar ingest uses ``processed`` on ``is_published`` topics; ``published`` status is often on
 # selected-but-not-live topics. Match ``GET /api/articles/tracked`` eligibility, not status alone.
 _RECOMMENDED_PATH_WATCH_ARTICLE_STATUSES = (
@@ -845,22 +858,79 @@ def _article_eligible_for_watch_story(article: Article) -> bool:
     return article_qualifies_pulse_tracked_surface(article)
 
 
-def _newest_article_for_topic(db: Session, topic_id: int, used_ids: set[int]) -> Article | None:
-    """Newest ingested article on a topic (thumbnail preferred), same pool as tracked stories."""
-    base = db.query(Article).filter(
-        Article.topic_id == topic_id,
-        Article.status.in_(_RECOMMENDED_PATH_WATCH_ARTICLE_STATUSES),
-        Article.archived_at.is_(None),
+def _topic_industry_aligned(
+    db: Session,
+    topic: Topic,
+    industry: str,
+    *,
+    since: datetime,
+) -> bool:
+    """True when industry appears on the topic grid, topic blurb, or a recent article."""
+    needle = (industry or "").strip()
+    if len(needle) < 2:
+        return False
+    if industry_radar_bonus(topic, needle) > 0:
+        return True
+    ip = topic.industry_positions
+    if isinstance(ip, dict):
+        il = needle.lower()
+        for key in ip.keys():
+            if il in str(key).lower():
+                return True
+    rows = (
+        db.query(Article)
+        .filter(
+            Article.topic_id == topic.id,
+            Article.archived_at.is_(None),
+            Article.ingested_at >= since,
+        )
+        .order_by(Article.ingested_at.desc())
+        .limit(40)
+        .all()
     )
-    if used_ids:
-        base = base.filter(Article.id.notin_(used_ids))
-    order = (Article.published_at.desc().nullslast(), Article.ingested_at.desc())
-    rows = base.order_by(*order).limit(32).all()
-    rows.sort(key=_thumb_sort_key_for_watch_pool)
-    for hit in rows:
-        if _article_eligible_for_watch_story(hit):
-            return hit
-    return None
+    return any(article_industry_bonus(a, needle) > 0 for a in rows)
+
+
+def _watch_article_industry_hit(topic: Topic, article: Article, industry: str) -> bool:
+    needle = (industry or "").strip()
+    if len(needle) < 2:
+        return False
+    if article_industry_bonus(article, needle) > 0:
+        return True
+    ip = topic.industry_positions
+    if isinstance(ip, dict):
+        il = needle.lower()
+        for key in ip.keys():
+            if il in str(key).lower():
+                return True
+    return False
+
+
+def _watch_story_fit_tier(
+    topic: Topic,
+    article: Article,
+    *,
+    industry: str,
+    role_names: list[str] | None,
+) -> int:
+    """Lower = better. 0 industry+persona, 1 industry, 2 persona, 3 generic on-theme."""
+    has_industry = bool((industry or "").strip())
+    has_roles = bool(role_names)
+    ind = _watch_article_industry_hit(topic, article, industry) if has_industry else False
+    persona = article_has_persona_for_roles(article, role_names) if has_roles else False
+    if has_industry and has_roles:
+        if ind and persona:
+            return 0
+        if ind:
+            return 1
+        if persona:
+            return 2
+        return 3
+    if has_industry:
+        return 1 if ind else 3
+    if has_roles:
+        return 2 if persona else 3
+    return 3
 
 
 def _thumb_sort_key_for_watch_pool(a: Article) -> tuple[int, float]:
@@ -875,12 +945,18 @@ def _normalize_watch_story_url(url: str) -> str:
 
 
 def _articles_for_watch_stories(
-    db: Session, topics: list[Topic], *, limit: int = _RECOMMENDED_PATH_WATCH_STORIES_LIMIT
+    db: Session,
+    topics: list[Topic],
+    *,
+    industry: str = "",
+    role_names: list[str] | None = None,
+    limit: int = _RECOMMENDED_PATH_WATCH_STORIES_LIMIT,
 ) -> list[tuple[Topic, Article]]:
-    """Recent ingested Pulse articles on live radar topics, aligned to intake themes.
+    """Recent ingested Pulse articles on live radar topics, industry/role first.
 
+    Ladder: industry+persona → industry → persona → on-theme generic → Pulse-wide fill.
     Uses the same article pool as ``GET /api/articles/tracked`` (processed + published on
-    ``is_published`` topics). Thumbnails are preferred when present.
+    ``is_published`` topics). Thumbnails are preferred within each tier.
     """
     if limit < 1 or not topics:
         return []
@@ -911,46 +987,56 @@ def _articles_for_watch_stories(
         pairs.append((topic, hit))
         return True
 
-    # 1) One newest article per intake-aligned topic (thumbnail first when both exist)
-    for t in topics:
+    q = db.query(Article).filter(
+        Article.topic_id.in_(topic_ids),
+        Article.status.in_(_RECOMMENDED_PATH_WATCH_ARTICLE_STATUSES),
+        Article.archived_at.is_(None),
+    )
+    candidates = (
+        q.order_by(Article.published_at.desc().nullslast(), Article.ingested_at.desc())
+        .limit(max(limit * 24, 72))
+        .all()
+    )
+    eligible: list[tuple[Topic, Article]] = []
+    for hit in candidates:
+        top = topics_by_id.get(hit.topic_id or 0)
+        if top is None:
+            continue
+        if not _article_eligible_for_watch_story(hit):
+            continue
+        eligible.append((top, hit))
+
+    def _sort_key(item: tuple[Topic, Article]) -> tuple[int, int, int, float]:
+        topic, hit = item
+        tier = _watch_story_fit_tier(topic, hit, industry=industry, role_names=role_names)
+        thumb, neg_ts = _thumb_sort_key_for_watch_pool(hit)
+        return (tier, thumb, 0, neg_ts)
+
+    eligible.sort(key=_sort_key)
+
+    # Prefer one story per theme within the ranked list, then fill remaining slots.
+    seen_topics: set[int] = set()
+    second_pass: list[tuple[Topic, Article]] = []
+    for topic, hit in eligible:
         if len(pairs) >= limit:
             break
-        hit = _newest_article_for_topic(db, t.id, used_ids)
-        if hit is None:
+        if topic.id in seen_topics:
+            second_pass.append((topic, hit))
             continue
-        _try_append_pair(t, hit)
+        if _try_append_pair(topic, hit):
+            seen_topics.add(topic.id)
+    for topic, hit in second_pass:
+        if len(pairs) >= limit:
+            break
+        _try_append_pair(topic, hit)
 
-    # 2) Fill from remaining stories on those topics (prefer thumbnails, then recency)
+    # Last resort: newest on-radar stories (Pulse-wide), still industry/role ranked when possible
     if len(pairs) < limit:
         need = limit - len(pairs)
-        q = db.query(Article).filter(
-            Article.topic_id.in_(topic_ids),
-            Article.status.in_(_RECOMMENDED_PATH_WATCH_ARTICLE_STATUSES),
-            Article.archived_at.is_(None),
-        )
-        if used_ids:
-            q = q.filter(Article.id.notin_(used_ids))
-        candidates = (
-            q.order_by(Article.published_at.desc().nullslast(), Article.ingested_at.desc())
-            .limit(max(need * 8, 24))
-            .all()
-        )
-        candidates.sort(key=_thumb_sort_key_for_watch_pool)
-        for hit in candidates:
-            if len(pairs) >= limit:
-                break
-            top = topics_by_id.get(hit.topic_id or 0)
-            if top is None:
-                continue
-            _try_append_pair(top, hit)
-
-    # 3) Last resort: newest on-radar stories (Pulse-wide), thumbnails first
-    if len(pairs) < limit:
-        need = limit - len(pairs)
-        q = (
+        q2 = (
             db.query(Article)
             .join(Topic, Article.topic_id == Topic.id)
-            .options(joinedload(Article.topic))
+            .options(joinedload(Article.topic).joinedload(Topic.domain))
             .filter(
                 Topic.is_published == True,  # noqa: E712
                 Article.status.in_(_RECOMMENDED_PATH_WATCH_ARTICLE_STATUSES),
@@ -958,20 +1044,25 @@ def _articles_for_watch_stories(
             )
         )
         if used_ids:
-            q = q.filter(Article.id.notin_(used_ids))
-        candidates = (
-            q.order_by(Article.published_at.desc().nullslast(), Article.ingested_at.desc())
-            .limit(max(need * 12, 36))
+            q2 = q2.filter(Article.id.notin_(used_ids))
+        wide = (
+            q2.order_by(Article.published_at.desc().nullslast(), Article.ingested_at.desc())
+            .limit(max(need * 16, 48))
             .all()
         )
-        candidates.sort(key=_thumb_sort_key_for_watch_pool)
-        for hit in candidates:
-            if len(pairs) >= limit:
-                break
+        wide_pairs: list[tuple[Topic, Article]] = []
+        for hit in wide:
             top = hit.topic
             if top is None or not top.is_published:
                 continue
-            _try_append_pair(top, hit)
+            if not _article_eligible_for_watch_story(hit):
+                continue
+            wide_pairs.append((top, hit))
+        wide_pairs.sort(key=_sort_key)
+        for topic, hit in wide_pairs:
+            if len(pairs) >= limit:
+                break
+            _try_append_pair(topic, hit)
 
     return pairs[:limit]
 
@@ -1047,8 +1138,15 @@ def _watch_stories_payload_for_intake(
     *,
     hooks_list: list[object] | None,
 ) -> list[RecommendedWatchStoryOut]:
+    role_names = resolve_role_names_from_intake(role, db)
     topics = _topics_for_recommended(db, issue, industry, role, stg, limit=6)
-    pairs = _articles_for_watch_stories(db, topics, limit=_RECOMMENDED_PATH_WATCH_STORIES_LIMIT)
+    pairs = _articles_for_watch_stories(
+        db,
+        topics,
+        industry=industry,
+        role_names=role_names,
+        limit=_RECOMMENDED_PATH_WATCH_STORIES_LIMIT,
+    )
     return _recommended_watch_story_rows(pairs, hooks_list)
 
 
@@ -1056,50 +1154,58 @@ def _topics_for_recommended(
     db: Session, issue: str, industry: str, role: str, stage: str, limit: int = 4
 ) -> list[Topic]:
     """
-    Published radar themes aligned to intake **issue domains** + **stage**.
-    We avoid cross-domain back-fill (reads as generic). If filtering is sparse,
-    widen once to global urgency order so the personalised page still resolves.
+    Published radar themes ranked for intake industry + role, with a soft technology-domain nudge.
+
+    Ladder: industry-aligned topics first, then preferred issue/stage domains, then global fill.
+    Strategy / Leadership-style focuses no longer hard-filter the pool to AI.
     """
     role_names = resolve_role_names_from_intake(role, db)
     now = datetime.now(UTC)
     since = now - RECOMMENDED_PATH_ARTICLE_LOOKBACK
 
-    domains = _domains_for_intake(issue, stage)
-    base_q = db.query(Topic).filter(Topic.is_published == True)  # noqa: E712
-
-    scoped_q = base_q
-    if domains:
-        scoped_q = scoped_q.join(Domain, Topic.domain_id == Domain.id).filter(
-            Domain.slug.in_(domains)
-        )
+    preferred_domains = _domains_for_intake(issue, stage)
+    base_q = (
+        db.query(Topic).options(joinedload(Topic.domain)).filter(Topic.is_published == True)  # noqa: E712
+    )
 
     rank_pool = min(max(limit * 28, 36), _RECOMMENDED_PATH_TOPIC_RANK_POOL_CAP)
-    candidates = scoped_q.order_by(Topic.urgency_score.desc()).limit(rank_pool).all()
-
-    fallback_pool: list[Topic] = []
-    if domains and len(candidates) < limit:
-        fallback_pool = base_q.order_by(Topic.urgency_score.desc()).limit(max(limit + 24, 32)).all()
-
-    cand_ids = {c.id for c in candidates}
-    pool = candidates + [t for t in fallback_pool if t.id not in cand_ids]
+    pool = base_q.order_by(Topic.urgency_score.desc()).limit(rank_pool).all()
 
     scored: list[tuple[float, Topic]] = []
     for t in pool:
         score = recommended_path_topic_total_rank(
             db, t, industry=industry, role_names=role_names, since=since, now=now
         )
+        slug = topic_domain_slug(t)
+        if preferred_domains and slug in preferred_domains:
+            score += _RECOMMENDED_PATH_DOMAIN_SOFT_BOOST
         scored.append((score, t))
 
-    scored.sort(key=lambda x: -x[0])
+    industry_first: list[tuple[float, Topic]] = []
+    domain_next: list[tuple[float, Topic]] = []
+    remainder: list[tuple[float, Topic]] = []
+    for score, t in scored:
+        if (industry or "").strip() and _topic_industry_aligned(db, t, industry, since=since):
+            industry_first.append((score, t))
+        elif preferred_domains and topic_domain_slug(t) in preferred_domains:
+            domain_next.append((score, t))
+        else:
+            remainder.append((score, t))
+
+    industry_first.sort(key=lambda x: -x[0])
+    domain_next.sort(key=lambda x: -x[0])
+    remainder.sort(key=lambda x: -x[0])
+
     out: list[Topic] = []
     seen: set[int] = set()
-    for _, t in scored:
-        if t.id in seen:
-            continue
-        seen.add(t.id)
-        out.append(t)
-        if len(out) >= limit:
-            break
+    for group in (industry_first, domain_next, remainder):
+        for _, t in group:
+            if t.id in seen:
+                continue
+            seen.add(t.id)
+            out.append(t)
+            if len(out) >= limit:
+                return out[:limit]
     return out[:limit]
 
 
@@ -1169,8 +1275,13 @@ def recommended_path(
     topics = _topics_for_recommended(db, issue, industry, role, stg, limit=6)
     watch_pairs: list[tuple[Topic, Article]] = []
     if not defer_articles:
+        role_names = resolve_role_names_from_intake(role, db)
         watch_pairs = _articles_for_watch_stories(
-            db, topics, limit=_RECOMMENDED_PATH_WATCH_STORIES_LIMIT
+            db,
+            topics,
+            industry=industry,
+            role_names=role_names,
+            limit=_RECOMMENDED_PATH_WATCH_STORIES_LIMIT,
         )
     syn = generate_path_synthesis(
         db,

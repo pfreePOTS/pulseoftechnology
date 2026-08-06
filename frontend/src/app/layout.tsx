@@ -11,7 +11,7 @@ const ibmPlexSans = IBM_Plex_Sans({
 
 export const metadata: Metadata = {
   title: "PulseOne Industry Radar",
-  description: "AI-curated technology intelligence for C-suite leaders",
+  description: "Technology intelligence for C-suite leaders",
 };
 
 export default function RootLayout({

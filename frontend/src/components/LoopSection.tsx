@@ -9,7 +9,7 @@ import Link from "next/link";
 const BEATS = [
   {
     title: "See it coming",
-    body: "The Pulse of Technology Radar tracks what is moving and scores it for executive urgency, tuned to your industry. A daily briefing tells you what changed and whether it matters to you.",
+    body: "Our advisors track what is moving and what it means for your industry. The Pulse of Technology Radar and daily briefing keep you pointed in the right direction, without the noise.",
     cta: "Get the Daily Briefing",
     href: "#subscribe",
   },
@@ -39,9 +39,9 @@ export default function LoopSection() {
             See it coming. Know where you stand. Make the most of it.
           </h2>
           <p className="font-sans text-[16px] leading-[1.8] text-[#646464]">
-            The radar, the assessments, and the services are one loop: we watch the technology
-            landscape, tell you what it means for your industry, and then do the work — and
-            keep improving it.
+            We watch the technology landscape so you don&rsquo;t have to, tell you what it
+            means for your industry and where you stand, and then do the work — and keep
+            improving it.
           </p>
         </div>
         <ol className="grid gap-10 md:grid-cols-3 md:gap-8">

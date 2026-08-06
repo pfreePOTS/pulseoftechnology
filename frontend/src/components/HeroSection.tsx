@@ -63,8 +63,9 @@ export default function HeroSection() {
             <span className="text-white">.</span>
           </h1>
           <p className="mx-auto mb-7 max-w-[620px] font-sans text-lg leading-relaxed text-white/78">
-            PulseOne pairs a live technology radar with two decades of hands-on delivery,
-            so you are ready for what&rsquo;s next and get more from what you already run.
+            Two decades of hands-on delivery, guided by a live view of where technology is
+            heading — so you&rsquo;re ready for what&rsquo;s next and get more from what you
+            already run.
           </p>
           <div className="flex flex-wrap justify-center gap-3.5">
             {/* Primary CTA stays on-site: the intake is the site's main conversion

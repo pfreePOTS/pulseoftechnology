@@ -102,6 +102,14 @@ function scrollRecommendedPathViewportTop(): void {
 export default function RecommendedPathProgressiveBody({ intake, hasIntake, heroBg }: Props) {
   const { region, industry, role, issue, stage: stageForDisplay } = intake;
 
+  // Re-fetch only when the intake VALUES change. A re-render that passes a new
+  // object with identical values must not abort and restart the request cycle
+  // (each restart abandons a long-running backend build).
+  const stableIntake = useMemo<RecommendedPathIntake>(
+    () => ({ region, industry, role, issue, stage: stageForDisplay }),
+    [region, industry, role, issue, stageForDisplay],
+  );
+
   const [data, setData] = useState<RecommendedPathPayload | null>(null);
   const [buildingOverlay, setBuildingOverlay] = useState(hasIntake);
   const [watchStoriesLoading, setWatchStoriesLoading] = useState(false);
@@ -149,7 +157,7 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
       watchStoriesStarted = true;
       setWatchStoriesLoading(true);
       try {
-        const stories = await fetchRecommendedPathWatchStories(intake, ac.signal);
+        const stories = await fetchRecommendedPathWatchStories(stableIntake, ac.signal);
         if (cancelled || ac.signal.aborted) return;
         if (stories !== null) setData((prev) => (prev ? { ...prev, watch_stories: stories } : prev));
       } finally {
@@ -158,7 +166,7 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
     };
 
     const { promise } = fetchRecommendedPathTwoStage(
-      intake,
+      stableIntake,
       {
         onShell: (payload) => {
           if (cancelled || ac.signal.aborted) return;
@@ -193,7 +201,7 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
       cancelled = true;
       ac.abort();
     };
-  }, [hasIntake, intake]);
+  }, [hasIntake, stableIntake]);
 
   useEffect(() => {
     if (!(hasIntake && buildingOverlay)) return;

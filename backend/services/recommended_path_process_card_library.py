@@ -335,7 +335,9 @@ def build_library_prompt(industry_label: str, section_slug_value: str) -> str:
     scene = _INDUSTRY_SCENES.get(industry_label) or _INDUSTRY_SCENES[GENERIC_INDUSTRY_LABEL]
     if section_slug_value in _PEOPLE_SECTIONS:
         people = _people_brief(industry_label, section_slug_value)
-        return (f"Setting: {scene}. Action: {section_brief} People: {people} {_BASE_STYLE} {_PEOPLE_CLAUSE}")[:3950]
+        return (
+            f"Setting: {scene}. Action: {section_brief} People: {people} {_BASE_STYLE} {_PEOPLE_CLAUSE}"
+        )[:3950]
     return (f"Setting: {scene}. Action: {section_brief} {_BASE_STYLE} {_NO_PEOPLE_CLAUSE}")[:3950]
 
 

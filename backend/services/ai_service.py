@@ -8,6 +8,8 @@ Each node is a focused, independently-testable function.  If a non-critical node
 fails the pipeline continues with a safe default so articles are never lost.
 """
 
+import copy
+import hashlib
 import html as _htmllib
 import json
 import logging
@@ -92,6 +94,59 @@ _SONNET_DEFAULT_AGENTS = {
 def default_model_for_agent(agent_name: str) -> str:
     """Fallback runtime model for agents that do not yet have a DB model value."""
     return SONNET_MODEL if agent_name in _SONNET_DEFAULT_AGENTS else HAIKU_MODEL
+
+
+def _interactive_model() -> str:
+    """Model for latency-sensitive, user-facing page synthesis (recommended-path, /everyone).
+
+    A visitor is watching a spinner while this call runs, so it defaults to the
+    fast tier rather than the pipeline's pro tier.
+    """
+    return (settings.recommended_path_llm_model or "").strip() or SONNET_MODEL
+
+
+# ── Interactive synthesis cache ───────────────────────────────────────────────
+# Identical intakes within the TTL reuse one LLM result, and concurrent
+# identical requests share a single in-flight call instead of stampeding the
+# provider (and holding DB pool connections for the duration).
+_PATH_SYNTHESIS_CACHE_TTL_SEC = 3600.0
+_PATH_SYNTHESIS_CACHE_MAX_ENTRIES = 128
+_path_synthesis_cache: dict[str, tuple[float, dict[str, object]]] = {}
+_path_synthesis_inflight: dict[str, threading.Lock] = {}
+_path_synthesis_cache_lock = threading.Lock()
+
+
+def _path_synthesis_cache_get(key: str) -> dict[str, object] | None:
+    with _path_synthesis_cache_lock:
+        entry = _path_synthesis_cache.get(key)
+        if entry is None:
+            return None
+        expires_at, payload = entry
+        if time.monotonic() >= expires_at:
+            _path_synthesis_cache.pop(key, None)
+            return None
+        # Deep copy so callers can't mutate the cached payload in place.
+        return copy.deepcopy(payload)
+
+
+def _path_synthesis_cache_put(key: str, payload: dict[str, object]) -> None:
+    with _path_synthesis_cache_lock:
+        if key not in _path_synthesis_cache and (
+            len(_path_synthesis_cache) >= _PATH_SYNTHESIS_CACHE_MAX_ENTRIES
+        ):
+            oldest = min(_path_synthesis_cache.items(), key=lambda kv: kv[1][0])[0]
+            _path_synthesis_cache.pop(oldest, None)
+        _path_synthesis_cache[key] = (
+            time.monotonic() + _PATH_SYNTHESIS_CACHE_TTL_SEC,
+            copy.deepcopy(payload),
+        )
+
+
+def clear_path_synthesis_cache() -> None:
+    """Test hook: drop cached payloads and in-flight locks."""
+    with _path_synthesis_cache_lock:
+        _path_synthesis_cache.clear()
+        _path_synthesis_inflight.clear()
 
 
 # ── Node system prompts ───────────────────────────────────────────────────────
@@ -958,7 +1013,13 @@ def _loads_json_object_candidates(raw: str) -> tuple[dict | None, json.JSONDecod
 
 
 def _call_result(
-    model: str, system: str, user: str, max_tokens: int, *, json_response: bool = False
+    model: str,
+    system: str,
+    user: str,
+    max_tokens: int,
+    *,
+    json_response: bool = False,
+    disable_thinking: bool = False,
 ) -> llm_client.ChatCompletionResult:
     """DeepSeek-first chat completion with provider timing and usage when exposed."""
     return llm_client.chat_completion_result(
@@ -967,14 +1028,28 @@ def _call_result(
         user=user,
         max_tokens=max_tokens,
         json_response=json_response,
+        disable_thinking=disable_thinking,
     )
 
 
 def _call(
-    model: str, system: str, user: str, max_tokens: int, *, json_response: bool = False
+    model: str,
+    system: str,
+    user: str,
+    max_tokens: int,
+    *,
+    json_response: bool = False,
+    disable_thinking: bool = False,
 ) -> str:
     """Single chat completion; returns raw text content (fences stripped)."""
-    return _call_result(model, system, user, max_tokens, json_response=json_response).text
+    return _call_result(
+        model,
+        system,
+        user,
+        max_tokens,
+        json_response=json_response,
+        disable_thinking=disable_thinking,
+    ).text
 
 
 def _parse(
@@ -3035,7 +3110,9 @@ def offline_watch_slice_copy(
     brief_bullets: list[str] = []
     if ind or rl:
         subj = (
-            f"{_role_plural_headline(rl)} in {ind}" if rl and ind else (role_display_phrase(rl) or ind)
+            f"{_role_plural_headline(rl)} in {ind}"
+            if rl and ind
+            else (role_display_phrase(rl) or ind)
         )
         iss_note = f" focusing on {iss}" if iss else ""
         brief_bullets.append(
@@ -3129,7 +3206,6 @@ def generate_path_synthesis(
 
     Returns keys … plus ``synthesis_cards``, ``watch_brief``, ``watch_posture``, ``watch_story_hooks`` (hooks align to paired articles).
     """
-    _ = db
     radar_topics_list = radar_topics if radar_topics is not None else []
     radar_story_pairs_list = radar_story_pairs if radar_story_pairs is not None else []
 
@@ -3179,87 +3255,114 @@ def generate_path_synthesis(
     if skip_llm or not llm_client.is_llm_configured():
         return fallback
 
-    try:
-        # Large JSON (cards + watch_slice + radar context) can exceed ~2.3k tokens and truncate mid-string.
-        max_tokens = 5000 if radar_block else 2800
-        raw = _call(
-            SONNET_MODEL,
-            path_synthesis_system_prompt(),
-            reader_context,
-            max_tokens,
-            json_response=True,
-        )
-        stripped = _strip_fences(raw)
+    # Large JSON (cards + watch_slice + radar context) can exceed ~2.3k tokens and truncate mid-string.
+    max_tokens = 5000 if radar_block else 2800
+    model = _interactive_model()
+    cache_key = hashlib.sha256(f"{model}\x1f{max_tokens}\x1f{reader_context}".encode()).hexdigest()
+
+    cached = _path_synthesis_cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    # The LLM round-trip (or waiting behind an identical in-flight one) can take
+    # tens of seconds. Return this request's pooled DB connection first so slow
+    # generations can't exhaust the pool and 500 unrelated requests; ORM rows the
+    # caller still holds simply refresh on next attribute access.
+    db.rollback()
+
+    with _path_synthesis_cache_lock:
+        flight = _path_synthesis_inflight.setdefault(cache_key, threading.Lock())
+
+    with flight:
+        cached = _path_synthesis_cache_get(cache_key)
+        if cached is not None:
+            return cached
         try:
-            data = json.loads(stripped)
-        except json.JSONDecodeError:
-            parsed, json_err, _ = _loads_json_object_candidates(stripped)
-            if parsed is None:
-                logger.warning(
-                    "[recommended-path] synthesis JSON repair failed: %s",
-                    getattr(json_err, "msg", json_err),
-                )
-                return fallback
-            data = parsed
-        headline = str(data.get("headline", "")).strip()
-        synthesis = str(data.get("synthesis", "")).strip()
-        experience_items = _coerce_experience_items(data.get("experience_items"))
-        if not headline or not synthesis:
-            return fallback
-
-        wb = bf_brief
-        wp = bf_posture
-        hooks_raw: list[str] = []
-
-        ws = data.get("watch_slice")
-        if radar_block and isinstance(ws, dict):
-            wbt = str(ws.get("brief_analysis", "")).strip()
-            wpt = str(ws.get("posture", "")).strip()
-            if wbt:
-                wb = wbt
-            if wpt:
-                wp = wpt
-            sh = ws.get("story_hooks")
-            if isinstance(sh, list):
-                hooks_raw = [str(x).strip()[:540] for x in sh if str(x).strip()]
-
-        if radar_block:
-            bf2_brief, bf2_posture, _b2a, _b2b = offline_watch_slice_copy(
-                r, i, ro, issue_s, st, radar_topics_list
+            raw = _call(
+                model,
+                path_synthesis_system_prompt(),
+                reader_context,
+                max_tokens,
+                json_response=True,
+                # A visitor is watching a spinner; without this, reasoning
+                # tokens eat most of max_tokens and the JSON truncates.
+                disable_thinking=True,
             )
-            if not wb.strip():
-                wb = bf2_brief
-            if not wp.strip():
-                wp = bf2_posture
+            stripped = _strip_fences(raw)
+            try:
+                data = json.loads(stripped)
+            except json.JSONDecodeError:
+                parsed, json_err, _ = _loads_json_object_candidates(stripped)
+                if parsed is None:
+                    logger.warning(
+                        "[recommended-path] synthesis JSON repair failed: %s",
+                        getattr(json_err, "msg", json_err),
+                    )
+                    return fallback
+                data = parsed
+            headline = str(data.get("headline", "")).strip()
+            synthesis = str(data.get("synthesis", "")).strip()
+            experience_items = _coerce_experience_items(data.get("experience_items"))
+            if not headline or not synthesis:
+                return fallback
 
-        synthesis_cards = _coerce_synthesis_cards(
-            data.get("synthesis_cards"),
-            synthesis,
-            region=r,
-            industry=i,
-            role=ro,
-            issue=issue_s,
-            stage=st,
-        )
-        engagement_examples = _coerce_engagement_examples(data.get("engagement_examples"))
-        out: dict[str, object] = {
-            "headline": headline[:240],
-            "synthesis": synthesis,
-            "synthesis_html": _paragraphs_to_html(synthesis),
-            "synthesis_cards": synthesis_cards,
-            "experience_items": experience_items or _fallback_experience_items(i, issue_s, st, ro),
-            "engagement_examples": engagement_examples,
-            "watch_brief": wb.strip(),
-            "watch_posture": wp.strip(),
-            "watch_story_hooks": hooks_raw,
-        }
-        return out
-    except llm_client.LLMAPIError:
-        logger.exception("[recommended-path] synthesis generation failed — using fallback copy")
-        return fallback
-    except Exception:
-        logger.exception("[recommended-path] synthesis unexpected error — using fallback copy")
-        return fallback
+            wb = bf_brief
+            wp = bf_posture
+            hooks_raw: list[str] = []
+
+            ws = data.get("watch_slice")
+            if radar_block and isinstance(ws, dict):
+                wbt = str(ws.get("brief_analysis", "")).strip()
+                wpt = str(ws.get("posture", "")).strip()
+                if wbt:
+                    wb = wbt
+                if wpt:
+                    wp = wpt
+                sh = ws.get("story_hooks")
+                if isinstance(sh, list):
+                    hooks_raw = [str(x).strip()[:540] for x in sh if str(x).strip()]
+
+            if radar_block:
+                bf2_brief, bf2_posture, _b2a, _b2b = offline_watch_slice_copy(
+                    r, i, ro, issue_s, st, radar_topics_list
+                )
+                if not wb.strip():
+                    wb = bf2_brief
+                if not wp.strip():
+                    wp = bf2_posture
+
+            synthesis_cards = _coerce_synthesis_cards(
+                data.get("synthesis_cards"),
+                synthesis,
+                region=r,
+                industry=i,
+                role=ro,
+                issue=issue_s,
+                stage=st,
+            )
+            engagement_examples = _coerce_engagement_examples(data.get("engagement_examples"))
+            out: dict[str, object] = {
+                "headline": headline[:240],
+                "synthesis": synthesis,
+                "synthesis_html": _paragraphs_to_html(synthesis),
+                "synthesis_cards": synthesis_cards,
+                "experience_items": experience_items
+                or _fallback_experience_items(i, issue_s, st, ro),
+                "engagement_examples": engagement_examples,
+                "watch_brief": wb.strip(),
+                "watch_posture": wp.strip(),
+                "watch_story_hooks": hooks_raw,
+            }
+            # Only successful generations are cached; failures fall through to
+            # fallback copy and the next request retries the provider.
+            _path_synthesis_cache_put(cache_key, out)
+            return out
+        except llm_client.LLMAPIError:
+            logger.exception("[recommended-path] synthesis generation failed — using fallback copy")
+            return fallback
+        except Exception:
+            logger.exception("[recommended-path] synthesis unexpected error — using fallback copy")
+            return fallback
 
 
 def fallback_story_teaser(article: Article) -> str:
@@ -3319,18 +3422,48 @@ def generate_everyone_overview(db: Session) -> dict[str, str]:
     )
     user = f"Live published radar topics, ordered by urgency (most urgent first):\n{topic_lines}"
 
+    model = _interactive_model()
+    cache_key = hashlib.sha256(f"everyone\x1f{model}\x1f{user}".encode()).hexdigest()
+    cached = _path_synthesis_cache_get(cache_key)
+    if cached is not None:
+        return {str(k): str(v) for k, v in cached.items()}
+
+    # Same rationale as generate_path_synthesis: don't hold a pooled DB
+    # connection through the provider round-trip.
+    db.rollback()
+
     try:
-        raw = _call(SONNET_MODEL, everyone_overview_system_prompt(), user, max_tokens=900)
-        data = json.loads(_strip_fences(raw))
+        raw = _call(
+            model,
+            everyone_overview_system_prompt(),
+            user,
+            max_tokens=1400,
+            json_response=True,
+            disable_thinking=True,
+        )
+        stripped = _strip_fences(raw)
+        try:
+            data = json.loads(stripped)
+        except json.JSONDecodeError:
+            parsed, json_err, _ = _loads_json_object_candidates(stripped)
+            if parsed is None:
+                logger.warning(
+                    "[everyone-overview] synthesis JSON repair failed: %s",
+                    getattr(json_err, "msg", json_err),
+                )
+                return fallback
+            data = parsed
         headline = str(data.get("headline", "")).strip()
         synthesis = str(data.get("synthesis", "")).strip()
         if not headline or not synthesis:
             return fallback
-        return {
+        out = {
             "headline": headline[:240],
             "synthesis": synthesis,
             "synthesis_html": _paragraphs_to_html(synthesis),
         }
+        _path_synthesis_cache_put(cache_key, dict(out))
+        return out
     except llm_client.LLMAPIError:
         logger.exception("[everyone-overview] synthesis generation failed — using fallback copy")
         return fallback

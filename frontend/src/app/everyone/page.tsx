@@ -121,8 +121,9 @@ export default async function EveryonePage() {
               {data?.headline ?? "Where C-suite attention is concentrated on the radar right now"}
             </h1>
             <p className="mb-8 max-w-[680px] font-sans text-lg leading-relaxed text-white/60">
-              A broad, vendor-neutral overview of what every executive should be tracking this week.
-              Generated from the live PulseOne radar — no profile required.
+              A broad, vendor-neutral overview of what every executive should be tracking this
+              week. Generated from the Pulse of Technology Radar — PulseOne&rsquo;s live view of
+              the technology landscape. No profile required.
             </p>
             <div className="flex flex-wrap gap-2.5">
               <StatBadge label="Live Topics" value={stats?.published_topics ?? "—"} />

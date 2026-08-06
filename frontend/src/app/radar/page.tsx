@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Image from "next/image";
+import Link from "next/link";
 import RadarSection from "@/components/RadarSection";
 import TrackedStoriesSection, {
   type TrackedArticle,
@@ -125,9 +126,10 @@ export default async function RadarPage() {
                 C-Suite Leaders
               </span>
             </h1>
-            <p className="mx-auto mb-7 max-w-[640px] font-sans text-lg leading-relaxed text-white/78">
-              Cut through the noise. Know exactly which emerging technologies matter to your
-              industry, what your posture should be, and when to act.
+            <p className="mx-auto mb-7 max-w-[660px] font-sans text-lg leading-relaxed text-white/78">
+              The Pulse of Technology Radar is PulseOne&rsquo;s live view of the technology
+              landscape: which emerging technologies matter to your industry, what your
+              posture should be, and when to act.
             </p>
             <div className="flex flex-wrap justify-center gap-3.5">
               <a
@@ -167,6 +169,29 @@ export default async function RadarPage() {
             lastUpdated={lastUpdated}
           />
         )}
+
+        {/* Credibility bridge: the radar reads as a newsletter unless the page
+            says the same people also do the work. Sends warm readers to the
+            services hub without interrupting the subscribe flow below. */}
+        <section className="border-t-[3px] border-pulse-teal bg-dark-bg px-6 py-12">
+          <div className="mx-auto flex max-w-[980px] flex-col items-center gap-5 text-center sm:flex-row sm:justify-between sm:gap-8 sm:text-left">
+            <div>
+              <h2 className="mb-1.5 font-sans text-[22px] font-bold leading-snug text-white">
+                When a signal turns into work, the same team does the work.
+              </h2>
+              <p className="font-sans text-[15px] leading-relaxed text-white/60">
+                The radar is run by the advisors and engineers who manage business technology
+                for our clients every day — not by a research desk.
+              </p>
+            </div>
+            <Link
+              href="/services"
+              className="inline-block shrink-0 rounded border-2 border-pulse-teal px-7 py-[11px] font-sans text-sm font-semibold text-pulse-teal transition-colors hover:bg-pulse-teal hover:text-white"
+            >
+              See Our Services
+            </Link>
+          </div>
+        </section>
 
         <section id="subscribe" className="scroll-mt-4 bg-white px-6 py-14">
           <div className="mx-auto max-w-2xl">

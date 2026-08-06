@@ -8,15 +8,7 @@ import GlobalFooter from "@/components/GlobalFooter";
 import GlobalHeader from "@/components/GlobalHeader";
 import type { FaqItem } from "@/lib/schema";
 
-type ConcernSlug =
-  | "cybersecurity"
-  | "ai"
-  | "compliance"
-  | "cloud"
-  | "strategy"
-  | "disaster";
-type IndustrySlug = "healthcare" | "legal" | "manufacturing" | "financial" | "nonprofit";
-type RoleSlug = "ceo" | "cio" | "ciso" | "coo";
+type ConcernSlug = "cybersecurity" | "ai" | "disaster";
 
 type AssessmentCardModel = {
   id: string;
@@ -25,36 +17,17 @@ type AssessmentCardModel = {
   href: string;
   primaryConcernTag: string;
   concern: ConcernSlug;
-  industriesMatchAll: boolean;
-  industries: IndustrySlug[];
-  roles: RoleSlug[];
 };
 
+/**
+ * One filter row, and only concerns that actually have a card. Filters that
+ * outnumber the inventory read as shelf space we do not have.
+ */
 const CONCERN_FILTERS: { label: string; value: "all" | ConcernSlug }[] = [
   { label: "All", value: "all" },
   { label: "Cybersecurity", value: "cybersecurity" },
   { label: "AI & Emerging Tech", value: "ai" },
-  { label: "Compliance & Risk", value: "compliance" },
-  { label: "Cloud & Infrastructure", value: "cloud" },
-  { label: "Strategy & Leadership", value: "strategy" },
   { label: "Disaster Recovery", value: "disaster" },
-];
-
-const INDUSTRY_FILTERS: { label: string; value: "all" | IndustrySlug }[] = [
-  { label: "All", value: "all" },
-  { label: "Healthcare", value: "healthcare" },
-  { label: "Legal", value: "legal" },
-  { label: "Manufacturing", value: "manufacturing" },
-  { label: "Financial Services", value: "financial" },
-  { label: "Nonprofit", value: "nonprofit" },
-];
-
-const ROLE_FILTERS: { label: string; value: "all" | RoleSlug }[] = [
-  { label: "All", value: "all" },
-  { label: "CEO / Owner", value: "ceo" },
-  { label: "CIO / CTO", value: "cio" },
-  { label: "CISO", value: "ciso" },
-  { label: "COO / Operations", value: "coo" },
 ];
 
 const ASSESSMENT_GROUPS: Array<{
@@ -76,11 +49,8 @@ const ASSESSMENT_GROUPS: Array<{
         href: "https://getcyberready.info/pulseonecyber",
         primaryConcernTag: "Cybersecurity",
         concern: "cybersecurity",
-        industriesMatchAll: true,
-        industries: [],
-        roles: ["ciso", "coo"],
         description:
-          "Elevate your cybersecurity posture with our free online Cyber Insurance Readiness assessment. Reveal hidden vulnerabilities within your network, systems, and applications, and take proactive measures to secure your valuable assets. This assessment guides you in evaluating your readiness for essential Cyber Insurance requirements, while uncovering potential discounts based on the robustness of your security framework.",
+          "Carriers now ask detailed questions about sign-in protection, backups, patching, and incident response before they quote or renew. This assessment checks your environment against those controls, scored by section, so gaps surface before the renewal questionnaire arrives — and stronger answers often mean better premiums.",
       },
     ],
   },
@@ -96,11 +66,8 @@ const ASSESSMENT_GROUPS: Array<{
         href: "https://getcyberready.info/pulseoneai",
         primaryConcernTag: "AI & Emerging Tech",
         concern: "ai",
-        industriesMatchAll: true,
-        industries: [],
-        roles: ["cio", "ceo"],
         description:
-          "At PulseOne, we understand the rapid pace of AI technology brings both opportunities and challenges. Our free online AI readiness assessment helps you pinpoint growth areas and guides you toward effectively and ethically leveraging AI. By employing advanced tools and proven methods, we enable you to assess your current capabilities while preparing for AI integration.",
+          "Copilot is only as useful as the environment underneath it: permissions, data hygiene, and governance decide whether it helps or leaks. This assessment scores your Microsoft environment's readiness before you buy licenses, so the rollout starts where the foundations are strong instead of where the demo looked best.",
       },
     ],
   },
@@ -116,36 +83,15 @@ const ASSESSMENT_GROUPS: Array<{
         href: "https://getcyberready.info/pulseonedr",
         primaryConcernTag: "Disaster Recovery",
         concern: "disaster",
-        industriesMatchAll: true,
-        industries: [],
-        roles: ["cio", "ciso"],
         description:
-          "Our online disaster recovery assessment helps business leaders enhance IT resilience by identifying gaps in their strategies and preparing for disruptions. This user-friendly tool guides you through tailored questions, allowing you to assess your readiness to respond to disasters while protecting essential assets. With a focus on proactive planning and actionable insights, our assessment aids in developing a strong disaster recovery strategy to ensure swift recovery and continuity during challenges.",
+          "A backup that has never been restored is a hope, not a plan. This assessment walks through your recovery objectives, backup coverage, and continuity plan, scored by section, so you know how long a real outage would take before one measures it for you.",
       },
     ],
   },
 ];
 
-function roleMatches(selection: RoleSlug, tokens: RoleSlug[]) {
-  return tokens.includes(selection);
-}
-
-function assessmentVisible(
-  card: AssessmentCardModel,
-  concern: "all" | ConcernSlug,
-  industry: "all" | IndustrySlug,
-  role: "all" | RoleSlug,
-  q: string,
-) {
-  const concernOk = concern === "all" || card.concern === concern;
-  const industryOk =
-    industry === "all" || card.industriesMatchAll || card.industries.includes(industry);
-  const roleOk = role === "all" || roleMatches(role, card.roles);
-
-  const hay = `${card.title} ${card.description}`.toLowerCase();
-  const searchOk = !q.trim() || hay.includes(q.trim().toLowerCase());
-
-  return concernOk && industryOk && roleOk && searchOk;
+function assessmentVisible(card: AssessmentCardModel, concern: "all" | ConcernSlug) {
+  return concern === "all" || card.concern === concern;
 }
 
 function FilterPills<T extends string>(props: {
@@ -208,28 +154,18 @@ const ASSESSMENT_FAQ: FaqItem[] = [
 
 export default function AssessmentsPage() {
   const [concern, setConcern] = useState<(typeof CONCERN_FILTERS)[number]["value"]>("all");
-  const [industry, setIndustry] = useState<(typeof INDUSTRY_FILTERS)[number]["value"]>("all");
-  const [role, setRole] = useState<(typeof ROLE_FILTERS)[number]["value"]>("all");
-  const [search, setSearch] = useState("");
 
   const { visibleCount, visibleCards } = useMemo(() => {
     const cards: AssessmentCardModel[] = [];
     ASSESSMENT_GROUPS.forEach((g) => {
       g.cards.forEach((c) => {
-        if (assessmentVisible(c, concern, industry, role, search)) {
+        if (assessmentVisible(c, concern)) {
           cards.push(c);
         }
       });
     });
     return { visibleCount: cards.length, visibleCards: cards };
-  }, [concern, industry, role, search]);
-
-  function clearAll() {
-    setConcern("all");
-    setIndustry("all");
-    setRole("all");
-    setSearch("");
-  }
+  }, [concern]);
 
   return (
     <div className="flex min-h-screen flex-col bg-[#f4f4f4]">
@@ -350,75 +286,22 @@ export default function AssessmentsPage() {
           </div>
         </section>
 
-        <div className="border-b border-white/10 bg-dark-bg px-6 py-7 shadow-[0_4px_16px_rgba(0,0,0,0.18)]">
-          <div className="mx-auto flex max-w-[1200px] flex-col gap-4">
-            <p className="w-full font-sans text-[15px] font-semibold tracking-wide text-white/75">
-              Search through our online IT assessments by concern, industry, and/or role.
-            </p>
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative min-w-[220px] flex-1">
-                <svg
-                  className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-white/40"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2.5}
-                  aria-hidden
-                >
-                  <circle cx="11" cy="11" r="8" />
-                  <path strokeLinecap="round" d="m21 21-4.35-4.35" />
-                </svg>
-                <input
-                  type="search"
-                  placeholder="Search assessments…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full rounded-md border-2 border-white/15 bg-white/[0.07] py-2.5 pr-4 pl-10 font-sans text-sm text-white outline-none placeholder:text-white/35 focus:border-pulse-teal"
-                  aria-label="Search assessments"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={clearAll}
-                className="cursor-pointer font-sans text-[13px] text-white/35 underline hover:text-pulse-red"
-              >
-                Clear all
-              </button>
-              <span className="ml-auto whitespace-nowrap rounded-xl border border-pulse-teal/30 bg-pulse-teal/12 px-2.5 py-1 font-sans text-[12px] font-semibold text-pulse-teal">
-                {visibleCount} assessment{visibleCount !== 1 ? "s" : ""}
-              </span>
-            </div>
-
-            <div className="flex flex-wrap items-start gap-x-6 gap-y-5">
-              <div className="flex flex-col gap-2">
-                <span className="font-sans text-[11px] font-semibold tracking-[2px] text-white/35 uppercase">
-                  Concern
-                </span>
-                <FilterPills options={CONCERN_FILTERS} value={concern} onChange={setConcern} />
-              </div>
-              <div className="hidden h-8 w-px shrink-0 self-center bg-white/15 sm:block" aria-hidden />
-              <div className="flex flex-col gap-2">
-                <span className="font-sans text-[11px] font-semibold tracking-[2px] text-white/35 uppercase">
-                  Industry
-                </span>
-                <FilterPills options={INDUSTRY_FILTERS} value={industry} onChange={setIndustry} />
-              </div>
-              <div className="hidden h-8 w-px shrink-0 self-center bg-white/15 sm:block" aria-hidden />
-              <div className="flex flex-col gap-2">
-                <span className="font-sans text-[11px] font-semibold tracking-[2px] text-white/35 uppercase">
-                  Role
-                </span>
-                <FilterPills options={ROLE_FILTERS} value={role} onChange={setRole} />
-              </div>
-            </div>
+        <div className="border-b border-white/10 bg-dark-bg px-6 py-6 shadow-[0_4px_16px_rgba(0,0,0,0.18)]">
+          <div className="mx-auto flex max-w-[1200px] flex-wrap items-center gap-x-5 gap-y-3">
+            <span className="font-sans text-[11px] font-semibold tracking-[2px] text-white/35 uppercase">
+              Filter by concern
+            </span>
+            <FilterPills options={CONCERN_FILTERS} value={concern} onChange={setConcern} />
+            <span className="ml-auto whitespace-nowrap rounded-xl border border-pulse-teal/30 bg-pulse-teal/12 px-2.5 py-1 font-sans text-[12px] font-semibold text-pulse-teal">
+              {visibleCount} assessment{visibleCount !== 1 ? "s" : ""}
+            </span>
           </div>
         </div>
 
         <section className="scroll-mt-[76px] bg-[#f4f4f4] px-6 py-14 pb-[72px]">
           <div className="mx-auto max-w-[1200px]">
-            {visibleCount > 0 ? (
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))] gap-5">
-                {visibleCards.map((c) => (
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))] gap-5">
+              {visibleCards.map((c) => (
                   <a
                     key={c.id}
                     href={c.href}
@@ -444,27 +327,7 @@ export default function AssessmentsPage() {
                     </div>
                   </a>
                 ))}
-              </div>
-            ) : null}
-
-            {visibleCount === 0 ? (
-              <div className="rounded-lg border border-[#e0e0e0] bg-white px-6 py-[60px] text-center shadow-sm">
-                <h3 className="mb-4 font-sans text-[22px] font-bold text-[#1a1a1a]">
-                  No assessments match your filters.
-                </h3>
-                <p className="mx-auto max-w-lg font-sans text-[15px] text-[#646464]">
-                  Try adjusting your filters, or{" "}
-                  <button
-                    type="button"
-                    onClick={clearAll}
-                    className="cursor-pointer font-sans font-medium text-pulse-teal underline"
-                  >
-                    clear all filters
-                  </button>{" "}
-                  to see everything.
-                </p>
-              </div>
-            ) : null}
+            </div>
           </div>
         </section>
 

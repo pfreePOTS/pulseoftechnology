@@ -78,6 +78,7 @@ export const SERVICES: ServiceContent[] = [
     intro: [
       "Managed business technology means PulseOne takes ongoing ownership of the systems your organization runs on and the work of making them better: adopting new tools properly, tuning what is already in place, connecting platforms that do not talk to each other, and governing the data and agentic tools now moving into everyday work. Keeping the environment stable is included. It is the starting condition rather than the deliverable.",
       "Most organizations cannot name a performance problem. What they have is a dozen platforms bought at different times, staff quietly working around the gaps, and agentic tools arriving before anyone decided what those tools may touch. This service exists to own that picture continuously across your core technology capabilities, instead of revisiting it once a year.",
+      "Security, data, policy, and automation are not separate concerns from AI adoption. They are what agentic tools stand on, and they decide whether adoption compounds or quietly falls apart. Managing that backplane is the core of this service.",
     ],
     capabilities: [
       {

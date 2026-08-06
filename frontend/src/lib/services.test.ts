@@ -33,4 +33,29 @@ describe("service content", () => {
       expect(service.industryFocus).toBeUndefined();
     }
   });
+
+  it("recommends a six-step path forward on the AI page, in order", () => {
+    const service = getService("ai-and-emerging-tech");
+    expect(service?.pathForward).toBeDefined();
+    // Order is the advice: policy and audit before any tooling decision.
+    expect(service!.pathForward!.steps.map((step) => step.title)).toEqual([
+      "Create an AI use policy",
+      "Run a shadow AI audit",
+      "Form an AI advisory council",
+      "Create a roadmap",
+      "Prepare the infrastructure",
+      "Deploy, measure, manage",
+    ]);
+    for (const step of service!.pathForward!.steps) {
+      expect(step.body.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps the path-forward section opt-in for other services", () => {
+    const others = SERVICES.filter((service) => service.slug !== "ai-and-emerging-tech");
+    expect(others.length).toBeGreaterThan(0);
+    for (const service of others) {
+      expect(service.pathForward).toBeUndefined();
+    }
+  });
 });

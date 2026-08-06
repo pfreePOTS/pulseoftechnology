@@ -176,6 +176,46 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
           </div>
         </section>
 
+        {service.pathForward ? (
+          <section className="px-6 py-[90px]">
+            <div className="mx-auto max-w-[1100px]">
+              <div className="mb-12 max-w-[720px]">
+                <span className="mb-3 block font-sans text-[11px] font-semibold tracking-[3px] text-pulse-teal uppercase">
+                  Where to Start
+                </span>
+                <h2 className="mb-4 font-sans text-4xl font-bold text-[#1a1a1a]">
+                  {service.pathForward.heading}
+                </h2>
+                <p className="font-sans text-[16px] leading-[1.8] text-[#4a4a4a]">
+                  {service.pathForward.intro}
+                </p>
+              </div>
+              <ol className="grid gap-x-12 gap-y-9 sm:grid-cols-2">
+                {service.pathForward.steps.map((step, index) => (
+                  <li key={step.title} className="flex gap-5">
+                    <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-pulse-red font-sans text-sm font-bold text-white">
+                      {index + 1}
+                    </div>
+                    <div>
+                      <h3 className="mb-1.5 font-sans text-lg font-bold text-[#1a1a1a]">
+                        {step.title}
+                      </h3>
+                      <p className="font-sans text-[15px] leading-[1.75] text-[#646464]">
+                        {step.body}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+              {service.pathForward.outro ? (
+                <p className="mt-11 max-w-[720px] border-l-[3px] border-pulse-teal pl-5 font-sans text-[15px] leading-[1.75] text-[#4a4a4a]">
+                  {service.pathForward.outro}
+                </p>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
         {service.industryFocus ? (
           <section className="px-6 py-[90px]">
             <div className="mx-auto max-w-[1100px]">

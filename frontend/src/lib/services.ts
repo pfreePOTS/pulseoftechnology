@@ -21,6 +21,18 @@ export type ServiceIndustryFocus = {
   items: { industry: string; body: string }[];
 };
 
+/**
+ * Optional ordered recommendation for how an organization should start.
+ * Rendered as numbered steps; order is the advice, so it matters.
+ */
+export type ServicePathForward = {
+  heading: string;
+  intro: string;
+  steps: { title: string; body: string }[];
+  /** Closing line under the steps, e.g. tying them back to services. */
+  outro?: string;
+};
+
 export type ServiceContent = {
   slug: string;
   /** Label used in the global footer and service hub. */
@@ -39,6 +51,8 @@ export type ServiceContent = {
   capabilities: ServiceCapability[];
   /** Rendered only when the service defines it. */
   industryFocus?: ServiceIndustryFocus;
+  /** Rendered only when the service defines it. */
+  pathForward?: ServicePathForward;
   /** Stated scope limit. Renders visibly and feeds `llms.txt`. */
   boundary: string;
   /** Sidebar heading above `boundary`. Defaults to "Where this stops". */
@@ -297,6 +311,7 @@ export const SERVICES: ServiceContent[] = [
     intro: [
       "This work covers selecting, configuring, and rolling out agentic tools and intelligent automation inside an organization, together with the access boundaries and review steps that keep them safe to use. The technology is the easy half; deciding what these tools may touch, and who checks their output, is the part that determines whether adoption holds.",
       "Adoption is usually already underway before leadership plans it. Staff bring consumer tools to work because they are useful, which puts company information somewhere nobody chose. A deliberate rollout replaces that with approved tools, defined data boundaries, and a workflow people are willing to follow because it is faster than the workaround.",
+      "Agents are the visible part of this shift, but they are not the foundation. Whether adoption holds depends on the backplane underneath: security, data quality, integration, and the policies that govern all three. That is why the path forward starts with policy and an honest audit, not with a purchase.",
     ],
     capabilities: [
       {
@@ -324,6 +339,39 @@ export const SERVICES: ServiceContent[] = [
         body: "Practical guidance so the people doing the work know what the tool is for, where it fails, and when to override it.",
       },
     ],
+    pathForward: {
+      heading: "A practical path forward",
+      intro:
+        "You do not need a transformation program to start, and you do not start by buying a tool. These six steps, in this order, work for most small and mid-market organizations. The early ones cost more honesty than money.",
+      steps: [
+        {
+          title: "Create an AI use policy",
+          body: "Write down which tools are approved, what data they may touch, and who decides exceptions. One page people actually read beats a binder nobody opens, and it gives every later step something to point to.",
+        },
+        {
+          title: "Run a shadow AI audit",
+          body: "Find out what staff are already using before selecting anything new. The gap between approved tools and actual practice shows where help is needed most, and where company information is already going.",
+        },
+        {
+          title: "Form an AI advisory council",
+          body: "Build it from the bottom up. The people doing the work know where the friction is, and a small cross-functional group keeps adoption grounded in real workflows instead of vendor demos.",
+        },
+        {
+          title: "Create a roadmap",
+          body: "Sequence use cases by readiness and payoff, not by announcement cycle. What your security, data, and integration foundations can support today decides what goes first.",
+        },
+        {
+          title: "Prepare the infrastructure",
+          body: "Identity and access, data quality, integrations, and security controls determine whether a new tool helps or leaks. Most of the real work lives here, and it pays off across everything that follows.",
+        },
+        {
+          title: "Deploy, measure, manage",
+          body: "Roll out deliberately, measure against the numbers you chose in advance, and keep managing what the rollout leaves behind so improvement compounds instead of decaying.",
+        },
+      ],
+      outro:
+        "Each step maps to work PulseOne already delivers: policy and audits through advisory, the foundation through our security and data work, and the ongoing half through Managed Business Technology.",
+    },
     boundary:
       "PulseOne rolls out and integrates commercially available tools and automation. Ongoing management of what a rollout leaves behind is covered under Managed Business Technology. We do not train foundation models, and we do not advise on marketing, HR, or general business strategy.",
     faq: [

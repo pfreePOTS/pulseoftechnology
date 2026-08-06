@@ -882,3 +882,39 @@ class TestGenerateTopicSummary:
         user_content = mock_chat.call_args_list[0].kwargs["user"]
         assert "Article 10" in user_content
         assert "Article 11" not in user_content
+
+
+class TestRoleDisplayPhrase:
+    """Multi-named intake roles must never surface as slash combos in customer copy."""
+
+    def test_multi_named_roles_map_to_collective_phrases(self):
+        assert ai_service.role_display_phrase("CEO / President / Owner") == "organizational leaders"
+        assert ai_service.role_display_phrase("CIO / CTO") == "technology leaders"
+        assert ai_service.role_display_phrase("IT Manager / Director") == "IT leaders"
+        assert ai_service.role_display_phrase("Other / Not Sure") == "leadership teams"
+
+    def test_single_titles_pass_through(self):
+        assert ai_service.role_display_phrase("CFO") == "CFO"
+        assert ai_service.role_display_phrase("Operations") == "Operations"
+
+    def test_headline_does_not_pluralize_collective_phrases(self):
+        headline = ai_service._sparse_fallback_headline(
+            "", "Pharma & Biotech", "CEO / President / Owner", "", ""
+        )
+        assert headline == "Technology priorities for organizational leaders in Pharma & Biotech"
+        assert ai_service._role_plural_headline("CFO") == "CFOs"
+
+    def test_fallback_process_cards_use_display_phrase(self):
+        cards = ai_service._fallback_process_cards(
+            "", "Pharma & Biotech", "CEO / President / Owner", "", ""
+        )
+        understand = cards[0]["bullets"][0]
+        assert "organizational leaders in Pharma & Biotech" in understand
+        assert "CEO / President / Owner" not in understand
+
+    def test_llm_intake_block_gets_display_phrase(self):
+        block = ai_service._path_intake_user_block(
+            "", "Healthcare", "CIO / CTO", "Cybersecurity", ""
+        )
+        assert "Role / title: technology leaders" in block
+        assert "CIO / CTO" not in block

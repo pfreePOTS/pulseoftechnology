@@ -2557,7 +2557,8 @@ def _fallback_process_cards(
         x in st_low for x in ("remote", "branch", "office", "help desk", "helpdesk", "desk", "site")
     )
 
-    who = f"{ro} in {i}" if ro and i else (ro or i or "your team")
+    ro_disp = role_display_phrase(ro)
+    who = f"{ro_disp} in {i}" if ro_disp and i else (ro_disp or i or "your team")
 
     u1 = f"We start with how things work for {who} — real workloads and deadlines, not slide decks."
     if st:
@@ -2636,7 +2637,9 @@ def _path_intake_user_block(
     pairs = (
         ("Region", region.strip()),
         ("Industry", industry.strip()),
-        ("Role / title", role.strip()),
+        # Display phrase, not the raw multi-named identifier — the model echoes
+        # this line into customer-facing copy ("CEO / President / Owner" reads oddly).
+        ("Role / title", role_display_phrase(role)),
         ("Primary technology concern", issue.strip()),
         ("Adoption stage or urgency framing", stage.strip()),
     )
@@ -2650,11 +2653,31 @@ def _path_intake_user_block(
     return "\n".join(lines) + footer
 
 
+# Multi-named intake role identifiers ("CEO / President / Owner") organize content
+# behind the scenes, but the slash combo reads oddly in customer-facing copy. Map
+# them to a natural collective phrase for display; single titles pass through.
+# Mirrors ROLE_DISPLAY_PHRASES in frontend `recommendedPathIntakeCopy.ts`.
+ROLE_DISPLAY_PHRASES: dict[str, str] = {
+    "CEO / President / Owner": "organizational leaders",
+    "CIO / CTO": "technology leaders",
+    "IT Manager / Director": "IT leaders",
+    "Other / Not Sure": "leadership teams",
+}
+
+
+def role_display_phrase(role: str) -> str:
+    """Customer-facing phrase for an intake role; the raw identifier stays in data/URLs."""
+    t = (role or "").strip()
+    return ROLE_DISPLAY_PHRASES.get(t, t)
+
+
 def _role_plural_headline(rl: str) -> str:
     """Append trailing s for headings like CFOs … unless the label already ends in s (e.g. Operations)."""
     t = rl.strip()
     if not t:
         return t
+    if t in ROLE_DISPLAY_PHRASES:
+        return ROLE_DISPLAY_PHRASES[t]  # already a collective phrase
     if t.lower().endswith("s"):
         return t
     return f"{t}s"
@@ -2698,7 +2721,7 @@ def _sparse_fallback_synthesis(
 
     if ind and rl and iss:
         p1 = (
-            f"As {rl} in {ind}, staying ahead of {iss} is easier when the basics are clear early—"
+            f"As {role_display_phrase(rl)} in {ind}, staying ahead of {iss} is easier when the basics are clear early—"
             "who decides, what gets funded first, and what can wait."
         )
     elif iss:
@@ -2816,7 +2839,12 @@ def _fallback_experience_items(
     ) or ("license" in (issue or "").lower())
 
     rl = (role or "").strip()
-    subj_hint = f" for {rl} teams" if rl else ""
+    if rl in ROLE_DISPLAY_PHRASES:
+        subj_hint = f" for {ROLE_DISPLAY_PHRASES[rl]}"  # already collective; no "teams" suffix
+    elif rl:
+        subj_hint = f" for {rl} teams"
+    else:
+        subj_hint = ""
     stage_ref = (
         f' Aligned with your note: "{st[:180]}{"…" if len(st) > 180 else ""}".' if st else ""
     )
@@ -3006,7 +3034,9 @@ def offline_watch_slice_copy(
 
     brief_bullets: list[str] = []
     if ind or rl:
-        subj = f"{_role_plural_headline(rl)} in {ind}" if rl and ind else (rl or ind)
+        subj = (
+            f"{_role_plural_headline(rl)} in {ind}" if rl and ind else (role_display_phrase(rl) or ind)
+        )
         iss_note = f" focusing on {iss}" if iss else ""
         brief_bullets.append(
             f"For {subj}{iss_note}, investment and governance meet where agentic and automation work leaves pure experimentation."

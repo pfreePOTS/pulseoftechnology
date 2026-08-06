@@ -94,8 +94,16 @@ export const SERVICES: ServiceContent[] = [
         body: "Connecting the platforms your operations depend on so information moves without anyone retyping it.",
       },
       {
+        title: "Security management",
+        body: "The security posture of everything above — sign-in discipline, access, configuration, and exposure — managed as part of the work rather than audited once a year.",
+      },
+      {
         title: "Data management",
         body: "Where business information lives, who may reach it, how long it is kept, and whether it is fit for the tools now reading it.",
+      },
+      {
+        title: "Backup and data recovery",
+        body: "Protected backups with restores that are actually tested. How long recovery takes should be a number we can state, not a hope.",
       },
       {
         title: "Agentic tool management",
@@ -107,7 +115,7 @@ export const SERVICES: ServiceContent[] = [
       },
       {
         title: "Day-to-day operations, included",
-        body: "Help desk, monitoring, patching, and backups run underneath this work. Necessary, unremarkable, and not where the value is.",
+        body: "Help desk, monitoring, and patching run underneath this work. Necessary, unremarkable, and not where the value is.",
       },
     ],
     industryFocus: {

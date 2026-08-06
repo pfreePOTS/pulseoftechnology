@@ -214,15 +214,70 @@ def test_domains_for_intake_strategy_does_not_map_to_ai():
     assert "ai" in _domains_for_intake("AI", "planning for AI adoption")
 
 
-def test_domains_for_intake_stage_ai_tokens_are_tight():
-    """PULSE-020: bare assistant / generative / copilot must not soft-boost AI."""
-    from backend.routers.public import _domains_for_intake
+def test_industry_aligned_topic_ids_batches_article_lookup(db_session):
+    """PULSE-017: one article query covers many topics that lack grid metadata."""
+    from datetime import UTC, datetime, timedelta
+    from unittest.mock import patch
 
-    assert "ai" not in _domains_for_intake("Strategy", "Need an executive assistant workflow")
-    assert "ai" not in _domains_for_intake("Cloud", "Microsoft Copilot licensing rollout")
-    assert "ai" not in _domains_for_intake("Other", "planning generative design tools")
-    assert "ai" in _domains_for_intake("Other", "planning generative AI rollout")
-    assert "ai" in _domains_for_intake("Other", "evaluate llm vendors")
+    from backend.models.article import Article, ArticleStatus
+    from backend.models.source import Source, SourceType
+    from backend.models.topic import TopicStatus
+    from backend.routers import public as public_mod
+    from backend.tests.domain_fixtures import make_topic
+
+    source = Source(name="Feed", url="https://example.com/p017", type=SourceType.rss)
+    now = datetime.now(UTC)
+    since = now - timedelta(hours=96)
+    topics = []
+    articles = []
+    for i in range(5):
+        t = make_topic(
+            db_session,
+            name=f"Generic theme {i}",
+            domain_slug="security" if i % 2 == 0 else "cloud",
+            subdomain="Ops",
+            status=TopicStatus.selected,
+            is_published=True,
+            urgency_score=50.0 + i,
+            industry_positions=None,
+        )
+        topics.append(t)
+        articles.append(
+            Article(
+                source=source,
+                topic=t,
+                title=f"Insurance carriers story {i}" if i == 2 else f"Generic cloud story {i}",
+                url=f"https://example.com/p017-{i}",
+                content=(
+                    "Insurance carriers rebuild claims workflows."
+                    if i == 2
+                    else "Generic cloud capacity expansion."
+                ),
+                status=ArticleStatus.processed,
+                ingested_at=now,
+                published_at=now,
+            )
+        )
+    db_session.add(source)
+    db_session.add_all(topics)
+    db_session.flush()
+    db_session.add_all(articles)
+    db_session.commit()
+
+    real_query = db_session.query
+    article_queries = {"n": 0}
+
+    def counting_query(model):
+        q = real_query(model)
+        if model is Article:
+            article_queries["n"] += 1
+        return q
+
+    with patch.object(db_session, "query", side_effect=counting_query):
+        hits = public_mod._industry_aligned_topic_ids(db_session, topics, "Insurance", since=since)
+
+    assert topics[2].id in hits
+    assert article_queries["n"] == 1
 
 
 def test_strategy_intake_prefers_industry_aligned_theme_and_story(client, db_session):

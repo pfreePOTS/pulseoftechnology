@@ -107,19 +107,7 @@ def test_build_library_prompt_contains_industry_and_section_cues():
     assert "photorealistic" in prompt.lower()
 
 
-def test_build_library_prompt_is_people_free_and_industry_specific():
-    prompt = build_library_prompt("Pharma & Biotech", "implement").lower()
-    assert "no people" in prompt
-    assert "no faces" in prompt
-    assert "no hands" in prompt
-    assert "lab" in prompt
-    assert "bioprocessing" in prompt or "stainless" in prompt
-    assert "colleagues" not in prompt
-    assert "business-casual" not in prompt
-    assert "hands visible" not in prompt
-
-
-def test_build_library_prompt_varies_by_section_without_people():
+def test_build_library_prompt_keeps_recommend_and_manage_people_free():
     recommend = build_library_prompt("Legal Services", "recommend").lower()
     manage = build_library_prompt("Legal Services", "manage").lower()
     assert "law" in recommend
@@ -129,6 +117,31 @@ def test_build_library_prompt_varies_by_section_without_people():
     for prompt in (recommend, manage):
         assert "no people" in prompt
         assert "no readable text" in prompt
+
+
+def test_build_library_prompt_puts_people_in_understand_and_implement():
+    understand = build_library_prompt("Pharma & Biotech", "understand")
+    implement = build_library_prompt("Pharma & Biotech", "implement")
+    assert "Two professionals" in understand
+    assert "One specialist" in implement
+    for prompt in (understand, implement):
+        assert "no people" not in prompt.lower()
+        assert "no readable text" in prompt.lower()
+        assert "lab" in prompt.lower()
+        # Industry attire keeps people plausible in the setting.
+        assert "lab coats" in prompt.lower()
+
+
+def test_build_library_prompt_people_vary_across_cells():
+    # One generic prompt would render the same face everywhere; the cast pool must
+    # produce different person descriptions across industries and across sections.
+    prompts = [
+        build_library_prompt(industry, section)
+        for industry in ("Healthcare", "Manufacturing", "Legal Services", "Retail")
+        for section in ("understand", "implement")
+    ]
+    people_fragments = {p.split("People: ", 1)[1].split(" Photorealistic", 1)[0] for p in prompts}
+    assert len(people_fragments) == len(prompts)
 
 
 def test_process_card_library_image_endpoint_serves_blob(client, db_session):

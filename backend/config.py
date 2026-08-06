@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-v4-pro"
+    # Fast-tier model for latency-sensitive, user-facing synthesis
+    # (/recommended-path and /everyone build while a visitor watches a spinner).
+    recommended_path_llm_model: str = "deepseek-v4-flash"
     # Anthropic Claude — optional fallback when DeepSeek fails or when only this key is set
     # OpenAI (Images API — generated `/recommended-path` banners, stored as BYTEA rows)
     openai_api_key: str = ""

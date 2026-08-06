@@ -72,19 +72,19 @@ type OverviewPayload = {
 const ENGAGEMENT_STEPS: Array<{ title: string; body: string }> = [
   {
     title: "Introductory Call",
-    body: "A 30-minute no-pressure conversation with one of our advisors. We listen first — no pitch, no agenda. Just an honest conversation about where you are.",
+    body: "A 30-minute conversation with one of our advisors. No pitch, no agenda. We mostly listen, and we tell you honestly whether we can help.",
   },
   {
     title: "Situation Review",
-    body: "We take the time to understand your organization, your team, and the specific technology challenges you're navigating — including AI exposure and governance readiness.",
+    body: "We take time to understand your organization, your team, and the specific technology challenges in front of you, including AI exposure and governance.",
   },
   {
     title: "Recommended Path",
-    body: "We present a clear, tailored recommendation — whether that's a single assessment, an advisory engagement, or a longer-term partnership. You decide what fits.",
+    body: "We come back with a clear recommendation. That might be a single assessment, an advisory engagement, or a longer-term partnership. You decide what fits.",
   },
   {
     title: "We Work Alongside You",
-    body: "Our team becomes an extension of yours — available, accountable, and always aligned with your business objectives, not just your technology stack.",
+    body: "Our team works as an extension of yours: available, accountable, and focused on your business goals, not just your technology stack.",
   },
 ];
 
@@ -110,7 +110,7 @@ export default async function EveryonePage() {
             className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[rgba(10,10,15,0.82)] via-[rgba(10,10,15,0.65)] to-[rgba(10,10,15,0.45)]"
             aria-hidden
           />
-          <div className="relative z-[1] mx-auto w-full max-w-[1100px] px-6 py-16">
+          <div className="relative z-[1] mx-auto w-full max-w-[1200px] px-6 py-16">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-pulse-teal/30 bg-pulse-teal/10 px-4 py-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-pulse-teal" aria-hidden />
               <span className="font-sans text-[13px] font-semibold tracking-[2px] text-pulse-teal uppercase">
@@ -121,8 +121,9 @@ export default async function EveryonePage() {
               {data?.headline ?? "Where C-suite attention is concentrated on the radar right now"}
             </h1>
             <p className="mb-8 max-w-[680px] font-sans text-lg leading-relaxed text-white/60">
-              A broad, vendor-neutral overview of what every executive should be tracking this week.
-              Generated from the live PulseOne radar — no profile required.
+              A broad, vendor-neutral overview of what every executive should be tracking this
+              week. Generated from the Pulse of Technology Radar — PulseOne&rsquo;s live view of
+              the technology landscape. No profile required.
             </p>
             <div className="flex flex-wrap gap-2.5">
               <StatBadge label="Live Topics" value={stats?.published_topics ?? "—"} />
@@ -135,7 +136,7 @@ export default async function EveryonePage() {
 
         {/* CONTEXT — AI synthesis (broad, no profile). */}
         <section className="border-b border-[#e0e0e0] bg-light-bg px-8 py-16">
-          <div className="mx-auto max-w-[1100px]">
+          <div className="mx-auto max-w-[1200px]">
             <div className="mb-8 text-center">
               <span className="mb-3 block font-sans text-[13px] font-semibold tracking-[3px] text-pulse-teal uppercase">
                 What Most Boards Are Re-Checking
@@ -175,7 +176,7 @@ export default async function EveryonePage() {
 
         {/* RADAR SNAPSHOT — top topics across ALL domains (6, not 3). */}
         <section className="border-b border-[#e8e8e8] bg-dark-bg px-8 py-16 md:py-20">
-          <div className="mx-auto max-w-[1100px]">
+          <div className="mx-auto max-w-[1200px]">
             <span className="mb-2 block font-sans text-[13px] font-semibold tracking-[3px] text-white/45 uppercase">
               Radar Snapshot
             </span>
@@ -193,7 +194,7 @@ export default async function EveryonePage() {
                   </span>
                   <h3 className="mb-2 font-sans text-base font-bold text-white">{t.name}</h3>
                   <p className="font-sans text-sm leading-relaxed text-white/50">
-                    {t.summary ?? "Published radar topic — open the full radar for more context."}
+                    {t.summary ?? "Published radar topic. Open the full radar for more context."}
                   </p>
                   <p className="mt-3 font-sans text-xs text-white/35">
                     Urgency {t.urgency_score.toFixed(1)}
@@ -202,7 +203,7 @@ export default async function EveryonePage() {
               ))}
               {(!data?.topics || data.topics.length === 0) && (
                 <p className="font-sans text-sm text-white/45 md:col-span-2 lg:col-span-3">
-                  No published topics yet — explore the full radar for live signals.
+                  No published topics yet. Explore the full radar for live signals.
                 </p>
               )}
             </div>
@@ -262,7 +263,7 @@ export default async function EveryonePage() {
 
         {/* HOW WE WORK — same 4-step content as /recommended-path. */}
         <section className="border-t border-[#e0e0e0] bg-light-bg px-8 py-20">
-          <div className="mx-auto max-w-[1100px]">
+          <div className="mx-auto max-w-[1200px]">
             <div className="mb-12 text-center">
               <span className="mb-3 block font-sans text-[13px] font-semibold tracking-[3px] text-pulse-teal uppercase">
                 How We Work
@@ -300,7 +301,7 @@ export default async function EveryonePage() {
               <em className="text-pulse-teal not-italic">your</em> organization.
             </>
           }
-          description="Send us a message about where you are and where you want to go — an advisor will follow up within one business day."
+          description="Tell us where you are and where you want to go. An advisor will follow up within one business day."
         />
       </main>
       <GlobalFooter />

@@ -136,7 +136,7 @@ Replace `_EMAIL_TEMPLATE` with a new template that has these sections in order. 
 
 ### Section 3: Personalized Greeting
 - "Good morning, {first_name}." in 18px bold `#111827`
-- Below: "Here are the top technology signals your team needs to know about{industry_line}, curated by AI and reviewed by PulseOne analysts." in 14px `#4A5F6D`
+- Below: "Here are the top technology signals your team needs to know about{industry_line}." in 14px `#4A5F6D`
 - Below: "Share this briefing · Forward to a colleague" links in `#019E7C`
 
 ### Section 4: Top Stories Rollup

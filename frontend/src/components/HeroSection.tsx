@@ -62,16 +62,18 @@ export default function HeroSection() {
             </span>
             <span className="text-white">.</span>
           </h1>
-          <p className="mx-auto mb-7 max-w-[580px] font-sans text-lg leading-relaxed text-white/78">
-            PulseOne helps business leaders navigate technology change with clarity,
-            confidence, and the operational depth to act on it.
+          <p className="mx-auto mb-7 max-w-[620px] font-sans text-lg leading-relaxed text-white/78">
+            PulseOne pairs a live technology radar with two decades of hands-on delivery,
+            so you are ready for what&rsquo;s next and get more from what you already run.
           </p>
           <div className="flex flex-wrap justify-center gap-3.5">
+            {/* Primary CTA stays on-site: the intake is the site's main conversion
+                action, so the first click must never leave the domain. */}
             <Link
-              href="/assessments"
+              href="#how-can-we-help"
               className="inline-block rounded bg-pulse-red px-[26px] py-[13px] font-sans text-sm font-semibold text-white transition-colors hover:bg-[#a81117]"
             >
-              View Our Executive Assessments
+              Get Your Recommended Path
             </Link>
             <Link
               href="/contact"

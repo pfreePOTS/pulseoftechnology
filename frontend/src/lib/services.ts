@@ -53,6 +53,12 @@ export type ServiceContent = {
   industryFocus?: ServiceIndustryFocus;
   /** Rendered only when the service defines it. */
   pathForward?: ServicePathForward;
+  /**
+   * Composite engagement narrative — never a named client, present or
+   * conditional voice per `backend/content/pulseone-identity.md`. Renders
+   * directly above the closing contact CTA.
+   */
+  vignette: { title: string; body: string[] };
   /** Stated scope limit. Renders visibly and feeds `llms.txt`. */
   boundary: string;
   /** Sidebar heading above `boundary`. Defaults to "Where this stops". */
@@ -141,6 +147,13 @@ export const SERVICES: ServiceContent[] = [
         },
       ],
     },
+    vignette: {
+      title: "A distributor with three warehouses",
+      body: [
+        "A regional distributor runs on a dozen platforms bought over ten years. Orders are retyped from the storefront into accounting, a warehouse scanner system nobody fully owns keeps drifting out of sync, and a quoting agent someone enabled last quarter can read the entire shared drive. Three tools nobody has opened this year are still being paid for.",
+        "The engagement starts with that inventory. Integration removes the retyping, the unused licenses come out of the budget, the agent gets scoped access and a review step, and recovery time becomes a number leadership has seen tested. Each quarter closes with what changed, what it returned, and what comes next.",
+      ],
+    },
     boundaryHeading: "How we work with you",
     boundary:
       "You know your company, your customers, and how work actually gets done. PulseOne combines industry knowledge, business process understanding, and technology expertise to help you run better, longer, and more productively. We manage the platforms, data, integrations, agentic tools, and policies your business depends on, so improvement compounds over time rather than resetting every year.",
@@ -211,6 +224,13 @@ export const SERVICES: ServiceContent[] = [
         body: "Separating operational and production equipment, guest access, and business systems so one compromise does not reach everything.",
       },
     ],
+    vignette: {
+      title: "A restaurant group with nine locations",
+      body: [
+        "A restaurant group with nine locations has nine slightly different networks, shared sign-ins at the registers, and a cyber insurance renewal asking questions nobody can answer with confidence. The weakest site sets the security posture for the whole company.",
+        "The work standardizes sign-in and access across every location, segments point-of-sale from guest Wi-Fi, puts monitoring and patching on one cadence, and proves the backups restore. The renewal questionnaire gets answered from evidence rather than memory — and the next one is a formality.",
+      ],
+    },
     boundary:
       "PulseOne secures, segments, and monitors the networks that operational and production equipment runs on. We do not install, configure, or commission that equipment itself.",
     faq: [
@@ -279,6 +299,13 @@ export const SERVICES: ServiceContent[] = [
         body: "A recurring review rhythm, because a point-in-time result stops being true the moment systems change.",
       },
     ],
+    vignette: {
+      title: "A manufacturer facing two questionnaires at once",
+      body: [
+        "A mid-size manufacturer gets a security questionnaire from its largest customer the same quarter its cyber insurance renewal lands. Two documents, mostly the same questions, and no single place where the answers live.",
+        "A review maps the environment once against both sets of requirements, produces the evidence each asks for, and turns the gaps into a remediation plan with owners and dates. The next questionnaire starts from a maintained answer set instead of a scramble.",
+      ],
+    },
     boundary:
       "PulseOne performs compliance-oriented technology reviews and remediation. We are not an auditor or a certifying body, and we do not provide legal advice on which regulations apply to your business.",
     faq: [
@@ -381,6 +408,13 @@ export const SERVICES: ServiceContent[] = [
       outro:
         "Each step maps to work PulseOne already delivers: policy and audits through advisory, the foundation through our security and data work, and the ongoing half through Managed Business Technology.",
     },
+    vignette: {
+      title: "A firm that suspects shadow AI, and is right",
+      body: [
+        "A professional services firm suspects staff are pasting client work into consumer tools. A shadow audit finds four in regular use, none approved, and one workflow — intake summarization — where automation would genuinely pay for itself.",
+        "The rollout replaces the workarounds with an approved tool behind the firm's own sign-in, data boundaries drawn per client, and a one-page use policy people actually read. Intake summaries get automated with a required human check. The measure, chosen in advance: hours returned to the team each week.",
+      ],
+    },
     boundary:
       "PulseOne rolls out and integrates commercially available tools and automation. Ongoing management of what a rollout leaves behind is covered under Managed Business Technology. We do not train foundation models, and we do not advise on marketing, HR, or general business strategy.",
     faq: [
@@ -449,6 +483,13 @@ export const SERVICES: ServiceContent[] = [
         body: "A recurring review with the leadership team, so the plan adjusts to reality instead of aging quietly in a folder.",
       },
     ],
+    vignette: {
+      title: "An operator opening three locations in eighteen months",
+      body: [
+        "An operator planning three new locations has a technology budget built from guesses and a different stack at every existing site. Each opening reinvents the network, the point of sale, and the vendor list from scratch.",
+        "Advisory work produces a standard opening package — network, endpoints, software, vendors — a roadmap that sequences consolidation between openings, and a budget the board can hold the plan against. A quarterly cadence keeps decisions moving instead of piling up in an annual review.",
+      ],
+    },
     boundary:
       "PulseOne advises on technology. We do not provide HR, staffing, marketing, real estate, franchise sales, or general business operations consulting.",
     faq: [

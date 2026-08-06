@@ -6,6 +6,7 @@ import IndustryCardIcon from "@/components/IndustryCardIcon";
 import IndustryIntakeModal from "@/components/IndustryIntakeModal";
 import {
   INDUSTRY_DESCRIPTIONS,
+  INDUSTRY_HOW_WE_FIT,
   INDUSTRY_OPTIONS,
   industryColor,
 } from "@/lib/industryGrid";
@@ -51,8 +52,13 @@ export default function IndustriesGrid() {
                 <IndustryCardIcon industryName={name} className="h-[38px] w-[38px]" />
               </div>
               <h3 className="mb-2 font-sans text-[18px] font-bold text-[#111]">{name}</h3>
-              <p className="mb-5 flex-1 font-sans text-[14px] leading-relaxed text-[#555]">
+              <p className="mb-3 font-sans text-[14px] leading-relaxed text-[#555]">
                 {INDUSTRY_DESCRIPTIONS[name]}
+              </p>
+              {/* Demonstration layer: how the work concretely changes in this
+                  sector, so expertise is shown rather than asserted. */}
+              <p className="mb-5 flex-1 border-l-2 border-pulse-teal/40 pl-3 font-sans text-[13px] leading-relaxed text-[#666]">
+                {INDUSTRY_HOW_WE_FIT[name]}
               </p>
               <span
                 aria-hidden

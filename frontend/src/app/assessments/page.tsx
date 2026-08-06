@@ -3,8 +3,10 @@
 import Image from "next/image";
 import { useMemo, useState } from "react";
 import ContactCtaBand from "@/components/ContactCtaBand";
+import FaqSection from "@/components/FaqSection";
 import GlobalFooter from "@/components/GlobalFooter";
 import GlobalHeader from "@/components/GlobalHeader";
+import type { FaqItem } from "@/lib/schema";
 
 type ConcernSlug =
   | "cybersecurity"
@@ -175,6 +177,34 @@ function FilterPills<T extends string>(props: {
     </div>
   );
 }
+
+const ASSESSMENT_FAQ: FaqItem[] = [
+  {
+    question: "Are the assessments really free?",
+    answer:
+      "Yes. Each assessment is a free online self-assessment you complete on your own, with no cost and no obligation to engage PulseOne afterwards. You receive scored results by section whether or not you ever speak to us.",
+  },
+  {
+    question: "How long does an assessment take?",
+    answer:
+      "Most people finish in one sitting. Each assessment is organised into three sections, and you can complete it alone or walk through it with your team if the answers span several people. Scored results are produced per section as soon as you finish.",
+  },
+  {
+    question: "What is a cyber insurance readiness assessment?",
+    answer:
+      "It checks your technology environment against the controls cyber insurance carriers now ask about before quoting or renewing: sign-in protection, backups, patching, access management, and incident response. Organisations typically use it to find gaps before the renewal questionnaire arrives rather than during it.",
+  },
+  {
+    question: "Do I have to become a client to get the results?",
+    answer:
+      "No. Results are yours to keep and act on however you choose, including handing them to your existing IT provider. If you want help closing the gaps, PulseOne can do that work, but nothing in the assessment depends on it.",
+  },
+  {
+    question: "What if I need an assessment that is not listed?",
+    answer:
+      "PulseOne runs custom technology assessments covering infrastructure, security posture, platforms, and integration when the standard self-assessments do not fit the question you are asking. Those are scoped in a conversation rather than completed online.",
+  },
+];
 
 export default function AssessmentsPage() {
   const [concern, setConcern] = useState<(typeof CONCERN_FILTERS)[number]["value"]>("all");
@@ -451,6 +481,8 @@ export default function AssessmentsPage() {
           description="Tell us what you need — complete an assessment with our team or request a custom assessment for your situation."
           buttonLabel="Contact us"
         />
+
+        <FaqSection items={ASSESSMENT_FAQ} heading="Assessment questions" />
       </main>
 
       <GlobalFooter />

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import RadarSection from "@/components/RadarSection";
 import TrackedStoriesSection, {
@@ -10,6 +11,52 @@ import { type RadarTopic } from "@/components/RadarChart";
 import { formatStoryDateUtc } from "@/lib/formatStoryDateUtc";
 import { ssrFetchJson } from "@/lib/ssrPublicApi";
 import { API_BASE } from "@/lib/api";
+import JsonLd from "@/components/JsonLd";
+import FaqSection from "@/components/FaqSection";
+import { breadcrumbSchema, type FaqItem } from "@/lib/schema";
+
+const DESCRIPTION =
+  "Track which technology domains are moving and what they mean for your organization. A curated radar and daily briefing written for C-suite readers.";
+
+export const metadata: Metadata = {
+  title: "Technology Radar and Daily Briefing",
+  description: DESCRIPTION,
+  alternates: { canonical: "/radar" },
+  openGraph: {
+    type: "website",
+    url: "/radar",
+    title: "Technology Radar and Daily Briefing",
+    description: DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Technology Radar and Daily Briefing",
+    description: DESCRIPTION,
+  },
+};
+
+const FAQ: FaqItem[] = [
+  {
+    question: "What is the Pulse of Technology radar?",
+    answer:
+      "The radar is a curated view of the technology domains moving fastest right now, scored by how urgently they warrant executive attention. It is maintained by PulseOne and written for leaders who need to know what changed and why it matters, not for specialists tracking product releases.",
+  },
+  {
+    question: "How often is the radar updated?",
+    answer:
+      "Topics and tracked stories update continuously as signals are reviewed, and the daily briefing summarises what moved. The page shows when the radar was last updated so you can see how current the view is.",
+  },
+  {
+    question: "What does the daily briefing include?",
+    answer:
+      "The briefing summarises the signals that moved on the radar, filtered to the domains and industry you select when subscribing. It is written for scanning in a few minutes and links through to the underlying stories when you want the detail.",
+  },
+  {
+    question: "Do I need to be a PulseOne client to use the radar?",
+    answer:
+      "No. The radar and the briefing are open to any executive who wants them, with no sign-in and no client relationship required. Subscribing asks only for the details needed to tailor which signals you receive.",
+  },
+];
 
 type TrackedArticleApi = Omit<TrackedArticle, "displayDate">;
 
@@ -48,6 +95,7 @@ export default async function RadarPage() {
   return (
     <div className="flex min-h-screen flex-col bg-white text-gray-900">
       <GlobalHeader />
+      <JsonLd data={breadcrumbSchema([{ name: "Home", path: "/" }, { name: "Radar" }])} />
       <main className="flex-1">
         {/* HERO — sizing/padding/gradient match HeroSection.tsx so the homepage
             and /radar heroes feel like one design system, but each owns its
@@ -76,7 +124,6 @@ export default async function RadarPage() {
               <span className="text-pulse-red [text-shadow:0_0_40px_rgba(213,23,30,0.4)]">
                 C-Suite Leaders
               </span>
-              .
             </h1>
             <p className="mx-auto mb-7 max-w-[640px] font-sans text-lg leading-relaxed text-white/78">
               Cut through the noise. Know exactly which emerging technologies matter to your
@@ -133,6 +180,8 @@ export default async function RadarPage() {
             <SubscribeWizard apiBase={API_BASE} />
           </div>
         </section>
+
+        <FaqSection items={FAQ} heading="About the radar" tone="surface" />
       </main>
       <GlobalFooter />
     </div>

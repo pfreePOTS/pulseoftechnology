@@ -46,9 +46,15 @@ export default function RecommendedPathBuildingScreen({ embedded = false }: Prop
       <span className="mb-3 block font-sans text-[13px] font-semibold tracking-[3px] text-pulse-teal uppercase">
         Custom Path
       </span>
-      <h1 className="mb-3 text-center font-sans text-[clamp(1.625rem,3.5vw,2.25rem)] leading-tight font-extrabold text-white">
+      {/* Not a heading: when `embedded`, this loader renders as an overlay on top
+          of the page body, which already has its own h1. */}
+      <p
+        role="status"
+        aria-live="polite"
+        className="mb-3 text-center font-sans text-[clamp(1.625rem,3.5vw,2.25rem)] leading-tight font-extrabold text-white"
+      >
         Building your specific solution.
-      </h1>
+      </p>
       <p className="mb-10 max-w-[540px] text-center font-sans text-[15px] leading-relaxed text-white/55">
         We&rsquo;re tailoring radar signals, resources, and a recommendation to your situation. This usually takes
         about ten seconds.

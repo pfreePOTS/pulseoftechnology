@@ -1,12 +1,31 @@
+import type { Metadata } from "next";
+import type { ReactNode } from "react";
+
 import ContactForm from "@/components/ContactForm";
 import GlobalFooter from "@/components/GlobalFooter";
 import GlobalHeader from "@/components/GlobalHeader";
-import type { ReactNode } from "react";
+import JsonLd from "@/components/JsonLd";
+import { breadcrumbSchema, contactPageSchema } from "@/lib/schema";
 
-export const metadata = {
-  title: "Contact Us — PulseOne",
-  description:
-    "Send us a message and one of our advisors will reply within one business day — no pitch, just an honest conversation.",
+const DESCRIPTION =
+  "Tell us what you're working on. Reach the PulseOne team by form or phone for managed IT, security, compliance, and technology advisory work.";
+
+export const metadata: Metadata = {
+  // Absolute: the root template would otherwise render "Contact PulseOne | PulseOne".
+  title: { absolute: "Contact PulseOne" },
+  description: DESCRIPTION,
+  alternates: { canonical: "/contact" },
+  openGraph: {
+    type: "website",
+    url: "/contact",
+    title: "Contact PulseOne",
+    description: DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Contact PulseOne",
+    description: DESCRIPTION,
+  },
 };
 
 function ContactDetail({ label, children }: { label: string; children: ReactNode }) {
@@ -43,6 +62,8 @@ export default function ContactPage() {
   return (
     <div className="flex min-h-screen flex-col bg-white">
       <GlobalHeader />
+      <JsonLd data={contactPageSchema()} />
+      <JsonLd data={breadcrumbSchema([{ name: "Home", path: "/" }, { name: "Contact" }])} />
       <main className="flex-1">
         <section className="relative overflow-hidden border-b-4 border-pulse-teal bg-[#111] px-8 py-16">
           <div

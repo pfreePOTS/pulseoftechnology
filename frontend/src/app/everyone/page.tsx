@@ -1,9 +1,32 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import ContactCtaBand from "@/components/ContactCtaBand";
 import GlobalFooter from "@/components/GlobalFooter";
 import GlobalHeader from "@/components/GlobalHeader";
+import JsonLd from "@/components/JsonLd";
+import { breadcrumbSchema } from "@/lib/schema";
 import { ssrFetchJson } from "@/lib/ssrPublicApi";
+
+const DESCRIPTION =
+  "A vendor-neutral overview of where executive attention is concentrated right now, drawn from the live PulseOne radar. No sign-in required.";
+
+export const metadata: Metadata = {
+  title: "C-Suite Technology Briefing",
+  description: DESCRIPTION,
+  alternates: { canonical: "/everyone" },
+  openGraph: {
+    type: "website",
+    url: "/everyone",
+    title: "C-Suite Technology Briefing",
+    description: DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "C-Suite Technology Briefing",
+    description: DESCRIPTION,
+  },
+};
 
 // Server-formatted date so SSR/CSR markup matches and we never hydration-mismatch.
 const OVERVIEW_DATE_FORMAT = new Intl.DateTimeFormat("en-US", {
@@ -79,6 +102,7 @@ export default async function EveryonePage() {
   return (
     <div className="flex min-h-screen flex-col bg-white">
       <GlobalHeader />
+      <JsonLd data={breadcrumbSchema([{ name: "Home", path: "/" }, { name: "Briefing" }])} />
       <main className="flex-1">
         {/* HERO — min-height + padding aligned with HeroSection / /radar */}
         <section className="relative flex min-h-[560px] items-center overflow-hidden border-b-4 border-pulse-teal bg-[#111]">

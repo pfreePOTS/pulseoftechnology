@@ -30,7 +30,7 @@ When the PR Review Council approves with follow-ups, add each actionable follow-
 | Minor | Broad stage AI tokens (`assistant`, `generative`, `copilot`) | `public._domains_for_intake` → PULSE-020 |
 | Minor | Hero art maps many tech industries/issues to AI image | `recommendedPathHero.ts` → PULSE-021 |
 | Note | `Finance` → `compliance` legacy slug | intentional consolidation, not AI bias |
-| Note | Static `/custom-solutions` mock is Healthcare CEO + AI focus | marketing fixture; not live intake |
+| Cleared | Static `/custom-solutions` mock is Healthcare CEO + AI focus | route removed during SEO/AIEO pass; replaced by `/services` |
 | Note | README “AI-powered…” | repo-only, not public site |
 | Cleared | Strategy → AI hard-map + AI-curation customer copy | PR #13 |
 

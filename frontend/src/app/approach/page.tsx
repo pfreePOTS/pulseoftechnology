@@ -1,9 +1,56 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import ExecutiveIntakeForm from "@/components/ExecutiveIntakeForm";
+import FaqSection from "@/components/FaqSection";
 import GlobalFooter from "@/components/GlobalFooter";
 import GlobalHeader from "@/components/GlobalHeader";
+import JsonLd from "@/components/JsonLd";
 import { APPROACH_PARTNERS } from "@/lib/approachPartners";
+import { breadcrumbSchema, type FaqItem } from "@/lib/schema";
+
+const DESCRIPTION =
+  "PulseOne works alongside your team rather than replacing it. See how engagements start, how our partners fit, and what two decades of delivery looks like.";
+
+export const metadata: Metadata = {
+  title: "How We Work: Co-Managed IT and Advisory",
+  description: DESCRIPTION,
+  alternates: { canonical: "/approach" },
+  openGraph: {
+    type: "website",
+    url: "/approach",
+    title: "How We Work: Co-Managed IT and Advisory",
+    description: DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "How We Work: Co-Managed IT and Advisory",
+    description: DESCRIPTION,
+  },
+};
+
+const FAQ: FaqItem[] = [
+  {
+    question: "How does an engagement with PulseOne start?",
+    answer:
+      "Engagements start with a conversation rather than a proposal. PulseOne listens to where your organization is and what is causing pressure, then runs a structured review of your technology environment. A roadmap follows, prioritized with you, and delivery works through it in that order.",
+  },
+  {
+    question: "Do you replace our existing IT team?",
+    answer:
+      "Usually not. Most engagements are co-managed, meaning PulseOne works alongside the people you already have. We commonly take on after-hours coverage, monitoring, patching, and specialist work so internal staff can stay on the projects only they can do.",
+  },
+  {
+    question: "What size organization do you work with?",
+    answer:
+      "PulseOne serves small and mid-market organizations. That includes single-site businesses and multi-location operators running restaurants, retail stores, franchises, branch offices, and warehouses across more than thirty industries.",
+  },
+  {
+    question: "Are you tied to particular technology vendors?",
+    answer:
+      "PulseOne is vendor-neutral in its recommendations and works in categories of action rather than product pitches. We maintain partnerships with major platform providers because delivery requires it, and we say plainly when a recommendation is something we would also implement.",
+  },
+];
 
 /** First three insights (“All Roles”) from `docs/frontend-redesign/source/our-approach.html`. */
 const INSIGHT_CARDS_DEFAULT = [
@@ -106,6 +153,8 @@ export default function ApproachPage() {
     <>
       <GlobalHeader />
       <div className="h-[5px] w-full bg-gradient-to-r from-pulse-red to-pulse-teal" aria-hidden />
+
+      <JsonLd data={breadcrumbSchema([{ name: "Home", path: "/" }, { name: "Our Approach" }])} />
 
       <main className="flex flex-1 flex-col bg-white">
         {/* Hero shell — min-height + padding aligned with HeroSection / /radar */}
@@ -419,6 +468,8 @@ export default function ApproachPage() {
             </div>
           </div>
         </section>
+
+        <FaqSection items={FAQ} heading="How we work, answered directly" />
       </main>
 
       <GlobalFooter />

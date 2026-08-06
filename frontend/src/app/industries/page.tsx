@@ -1,19 +1,62 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
+import FaqSection from "@/components/FaqSection";
 import GlobalFooter from "@/components/GlobalFooter";
 import GlobalHeader from "@/components/GlobalHeader";
 import IndustriesGrid from "@/components/IndustriesGrid";
+import JsonLd from "@/components/JsonLd";
+import { breadcrumbSchema } from "@/lib/schema";
+import type { FaqItem } from "@/lib/schema";
 
-export const metadata = {
-  title: "Industries We Serve — PulseOne",
-  description:
-    "Twenty industries, one common challenge: balancing accelerating technology change with operational reality. Pick your sector to build a custom recommended path.",
+const DESCRIPTION =
+  "Twenty industries, one common challenge. See how PulseOne fits managed IT, security, and integration work to the sector you actually operate in.";
+
+export const metadata: Metadata = {
+  title: "IT Support by Industry: 20 Sectors We Serve",
+  description: DESCRIPTION,
+  alternates: { canonical: "/industries" },
+  openGraph: {
+    type: "website",
+    url: "/industries",
+    title: "IT Support by Industry: 20 Sectors We Serve",
+    description: DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "IT Support by Industry: 20 Sectors We Serve",
+    description: DESCRIPTION,
+  },
 };
+
+const FAQ: FaqItem[] = [
+  {
+    question: "Does the industry change what PulseOne actually does?",
+    answer:
+      "The industry changes the context, not the scope. Managed IT, remote support, security, and integration work are the same services everywhere. What differs is the systems involved, the rules the sector answers to, and the hours when an outage costs the most. A restaurant group and a manufacturer need the same discipline applied to very different constraints.",
+  },
+  {
+    question: "Do you support organizations with multiple locations?",
+    answer:
+      "Yes, and it is core work. Restaurants, franchises, retail stores, branch offices, field offices, and warehouses are supported remotely from one help desk, with consistent technology standards across sites rather than whatever each location assembled independently.",
+  },
+  {
+    question: "What if our industry is not on the list?",
+    answer:
+      "The twenty sectors shown cover the most common cases, not the limit. The underlying work is the same: support, security, integration, and advisory applied to whatever systems your business runs on. Tell us what you operate and we will say plainly whether it fits.",
+  },
+  {
+    question: "Do you work on production or operational equipment?",
+    answer:
+      "PulseOne handles the technology layer around that equipment: networking, segmentation, monitoring, security, and integrating its data into business systems. Installing, configuring, or commissioning the machinery itself belongs to the manufacturer or its integrator.",
+  },
+];
 
 export default function IndustriesPage() {
   return (
     <div className="flex min-h-screen flex-col bg-white">
       <GlobalHeader />
+      <JsonLd data={breadcrumbSchema([{ name: "Home", path: "/" }, { name: "Industries" }])} />
       <main className="flex-1">
         {/* HERO — min-height + padding aligned with HeroSection / /radar */}
         <section className="relative flex min-h-[560px] items-center overflow-hidden border-b-4 border-pulse-teal bg-[#111]">
@@ -83,6 +126,12 @@ export default function IndustriesPage() {
             </Link>
           </div>
         </section>
+
+        <FaqSection
+          items={FAQ}
+          heading="Working with PulseOne by industry"
+          tone="surface"
+        />
       </main>
       <GlobalFooter />
     </div>

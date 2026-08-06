@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { PulseOneOfficialLogo } from "@/components/PulseOneOfficialLogo";
+import { SERVICES, servicePath } from "@/lib/services";
 
 export default function GlobalFooter() {
   const year = new Date().getFullYear();
@@ -20,23 +21,21 @@ export default function GlobalFooter() {
             </p>
           </div>
           <div>
-            <h5 className="mb-4 font-sans text-sm font-bold text-white">Our Services</h5>
+            <h5 className="mb-4 font-sans text-sm font-bold text-white">
+              <Link href="/services" className="hover:text-pulse-teal">
+                Our Services
+              </Link>
+            </h5>
             <div className="flex flex-col gap-2 font-sans text-sm text-white/55">
-              <a href="#" className="hover:text-pulse-teal">
-                Cybersecurity
-              </a>
-              <a href="#" className="hover:text-pulse-teal">
-                AI &amp; Emerging Tech
-              </a>
-              <a href="#" className="hover:text-pulse-teal">
-                Compliance &amp; Risk
-              </a>
-              <a href="#" className="hover:text-pulse-teal">
-                Managed IT Services
-              </a>
-              <a href="#" className="hover:text-pulse-teal">
-                Strategic Advisory
-              </a>
+              {SERVICES.map((service) => (
+                <Link
+                  key={service.slug}
+                  href={servicePath(service.slug)}
+                  className="hover:text-pulse-teal"
+                >
+                  {service.navLabel}
+                </Link>
+              ))}
             </div>
           </div>
           <div>

@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+
 import ContactCtaBand from "@/components/ContactCtaBand";
 import GlobalFooter from "@/components/GlobalFooter";
 import GlobalHeader from "@/components/GlobalHeader";
@@ -15,6 +17,17 @@ export type {
   RecommendedWatchStoryPayload,
   SynthesisCardPayload,
 } from "@/lib/recommendedPathTypes";
+
+/**
+ * Excluded from search indexes on purpose. Five intake parameters (region,
+ * industry, role, issue, stage) generate a combinatorial set of URLs whose body
+ * content is fetched client-side, so each one would be near-duplicate thin
+ * content to a crawler. `follow` is kept so links out of the page still count.
+ */
+export const metadata: Metadata = {
+  title: "Your Recommended Path",
+  robots: { index: false, follow: true },
+};
 
 const ENGAGEMENT_STEPS: Array<{ title: string; body: string }> = [
   {

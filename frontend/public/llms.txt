@@ -1,0 +1,64 @@
+# PulseOne
+
+> A strategic technology advisory firm and managed service provider serving small
+> and mid-market organizations in the United States. Founded 2002.
+
+PulseOne provides managed and co-managed IT, cybersecurity, compliance-oriented
+reviews, emerging technology adoption, and strategic technology advisory.
+Remote support for multi-site operations — restaurants, franchises, retail
+stores, branch and field offices, and warehouses — is core work. Tagline:
+People | Technology | Progress.
+
+## Services
+
+- [Managed and Co-Managed IT Services](/services/managed-it-services): Help desk, monitoring, patching, backups, cloud and workplace platform administration, phone and voice systems, and technology standards for new locations. Delivered as a full IT department or alongside existing in-house staff.
+- [Cybersecurity Services](/services/cybersecurity): Security and posture reviews, sign-in and access control, monitoring, patching and vulnerability remediation, protected backups with tested recovery, and network segmentation across every site.
+- [Compliance and Risk Reviews](/services/compliance-and-risk): Technology reviews mapped to cyber insurance questionnaires, customer security reviews, payment card rules, and health information rules, with evidence and a prioritized remediation plan.
+- [AI and Emerging Technology Adoption](/services/ai-and-emerging-tech): Rollout of agentic tools and intelligent automation with defined data boundaries, access controls, human review steps, and integration into existing business systems.
+- [Strategic Technology Advisory](/services/strategic-advisory): Technology assessments, roadmaps, budget planning, vendor-neutral platform selection, expansion planning, and a recurring governance cadence.
+
+## Company
+
+- [Our Approach](/approach): How engagements start, the co-managed model, partner ecosystem, and company history since 2002.
+- [Industries We Serve](/industries): Twenty named sectors, including restaurants, retail, healthcare, manufacturing, financial services, legal, and nonprofit.
+- [Contact](/contact): Contact form and phone. Offices in Ventura CA, Los Angeles CA, New Jersey, Nashville TN, and Bozeman MT.
+
+## Free assessments
+
+- [IT Readiness Assessments](/assessments): Three free online self-assessments — cyber insurance readiness, Microsoft Copilot readiness, and disaster recovery readiness. Scored by section, no client relationship required.
+
+## Technology intelligence
+
+- [Pulse of Technology Radar](/radar): A curated radar of the technology domains moving fastest, scored for executive urgency, plus a daily briefing tailored by industry and domain.
+- [C-Suite Briefing](/everyone): Vendor-neutral overview of where executive attention is concentrated on the radar right now. No sign-in required.
+
+## Scope
+
+PulseOne provides technology services only.
+
+In scope: managed and co-managed IT, remote and multi-site support, help desk
+and escalation, monitoring, backups, patching, security and compliance-oriented
+reviews, cloud and Microsoft-style workplace platforms, software and
+line-of-business integration, point-of-sale and ordering system integration at
+the technology layer, phone and unified communications, website management and
+related hosting and domain administration, identity and access management,
+technology standards for store openings and expansion, technology assessments
+and advisory, agentic tool and automation rollouts with guardrails, and
+technology-only procurement and vendor selection.
+
+Sites may contain operational or production equipment such as robotics,
+packaging lines, industrial machinery, production ovens, warehouse automation,
+or CNC equipment. PulseOne provides the networking, segmentation, monitoring,
+and security for those systems, and integrates their data into business systems
+where appropriate. PulseOne does not install, configure, commission, or specify
+that equipment.
+
+Out of scope: installing or commissioning operational and production equipment;
+buying or specifying non-technology equipment; negotiating non-technology
+supplier agreements; equipment lists, kitchen layouts, or facilities programs;
+and HR, staffing, menu, marketing, real estate, franchise sales, or general
+business operations consulting. Industry names set context only and never
+remove managed IT, remote support, or integration work from scope.
+
+PulseOne is not an auditor or certifying body and does not provide legal advice
+on which regulations apply to a business.

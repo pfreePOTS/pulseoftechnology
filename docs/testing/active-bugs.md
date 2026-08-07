@@ -17,6 +17,7 @@ When the PR Review Council approves with follow-ups, add each actionable follow-
 
 | ID | Summary | Severity | Status | Reported | Notes |
 |----|---------|----------|--------|----------|-------|
+| PULSE-029 | Homepage `LoopSection` still uses lowercase “See it coming” / “Make the most of it” while `/approach` and radar panel use brand IT wordplay | Minor | Open | 2026-08-07 | PR #25 council. Align only if desired; keep ≤1 IT play per copy block. |
 | PULSE-028 | Public voice regression (`voice.test.ts`) only scans frontend sources; backend identity + system-prompt constants can reintroduce banned brochure phrases | Enhancement | Open | 2026-08-07 | PR #24 council. Extend scan (or add a small backend test) to `backend/content/pulseone-identity.md` and key `*_SYSTEM` / `*_INSTRUCTIONS` strings in `ai_service.py`. |
 | PULSE-025 | Staging process-card library may still lack people-inclusive Understand/Implement cells after local reseed | Minor | Open | 2026-08-05 | PR #23 council. Same class of gap as PULSE-004. After merge, compare Dev vs Staging cell counts/bytes and copy with `backend/copy_process_card_images_between` if Staging lags. |
 | PULSE-026 | Recommended-path / everyone synthesis cache is in-process only (lost on restart; not shared across replicas) | Enhancement | Open | 2026-08-05 | PR #23 council. `ai_service` TTL + single-flight. Fine for single-API Compose; consider shared cache if staging/prod runs multiple API replicas. |

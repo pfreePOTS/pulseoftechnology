@@ -1802,11 +1802,18 @@ def publish_topic(
     db: Session = Depends(get_db),
     _: AdminUser = Depends(require_admin),
 ):
+    from ..services.signal_service import topic_has_active_articles
+
     topic = db.query(Topic).filter(Topic.id == topic_id).first()
     if topic is None:
         raise HTTPException(status_code=404, detail="Topic not found")
     if topic.status != TopicStatus.selected:
         raise HTTPException(status_code=400, detail="Topic must be selected before publishing")
+    if not topic_has_active_articles(db, topic_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Topic must have at least one active (non-archived) article before publishing",
+        )
     topic.is_published = True
     db.commit()
     db.refresh(topic)

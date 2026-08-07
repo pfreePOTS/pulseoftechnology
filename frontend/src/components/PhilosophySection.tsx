@@ -18,7 +18,7 @@ const pillars = [
   },
   {
     title: "We Understand",
-    body: "We watch the technology landscape every day and translate it into what actually matters for your business, so you can decide with confidence.",
+    body: "We watch what's changing in tech every day and translate it into what matters for your business, so you can make a clear call.",
     image: "/images/technology_server.jpg",
     imageAlt: "Technology infrastructure",
     badgeClass: "bg-pulse-teal",
@@ -60,9 +60,9 @@ export default function PhilosophySection() {
             A People-First Philosophy
           </h2>
           <p className="font-sans text-[17px] leading-[1.8] text-[#646464]">
-            For over 20 years, PulseOne has operated across various industries on a simple belief:
-            technology is only as powerful as the relationships built around it. Our customer service
-            begins with listening to your wants, needs, and challenges.
+            For over 20 years we&rsquo;ve worked across a lot of industries with one rule: start
+            with the people doing the work. We listen to what you need, then we deal with the
+            technology.
           </p>
         </div>
         <div className="grid gap-6 md:grid-cols-3">

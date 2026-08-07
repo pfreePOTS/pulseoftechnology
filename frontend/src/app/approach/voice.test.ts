@@ -17,6 +17,11 @@ const BANNED_PHRASES = [
   "Better IT",
   '"get IT done"',
   "global IT services company",
+  "Mid-Market Leaders",
+  "mid-market leaders",
+  "thought leader",
+  "world-class",
+  "world class",
 ];
 
 /**

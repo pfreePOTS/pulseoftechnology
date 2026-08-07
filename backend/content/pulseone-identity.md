@@ -4,7 +4,7 @@ Authoritative business context for customer-facing LLM calls (recommended path, 
 
 ## Who we are
 
-PulseOne is a strategic technology advisory firm and managed service provider (MSP) serving small and mid-market organizations. Since 2002 we have helped leaders navigate technology change with clarity and operational depth: not only advice, but hands-on delivery where it fits.
+PulseOne is a strategic technology advisory firm and managed service provider (MSP) serving small and mid-market organizations. Since 2002 we’ve helped small and mid-market leaders with technology decisions, and we do the delivery work when it fits.
 
 Tagline: **People | Technology | Progress**.
 

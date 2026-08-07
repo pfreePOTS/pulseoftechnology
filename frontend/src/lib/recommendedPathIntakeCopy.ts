@@ -65,5 +65,5 @@ export function fallbackHeadlineFromIntake(
   if (stg) {
     return "Aligning posture before the next tooling or programme milestone";
   }
-  return "Technology clarity that serves your leadership cadence";
+  return "A practical read on where to focus next";
 }

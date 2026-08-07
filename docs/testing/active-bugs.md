@@ -44,6 +44,7 @@ Validated against current `dev` when the tracker was created (2026-08-05). Kept 
 
 | ID | Summary | Severity | Status | Closed | Evidence |
 |----|---------|----------|--------|--------|----------|
+| PULSE-027 | Published/selected radar topics stayed live with zero non-archived articles (duplicate Identity and access + other empty published rows) | Major | Fixed | 2026-08-06 | `demote_radar_topics_without_articles` in signal flow; publish guard; public `/topics/published` requires ≥1 active article. Live: 14 demoted; Identity id=2 kept (25 arts). `backend/tests/test_demote_empty_radar_topics.py` |
 | PULSE-010 | Admin auth used static password as Bearer token (SEC-01) | Critical | Fixed | ~2026-04 | JWT + `admin_users`; `require_admin` / httpOnly `pulse_admin` cookie (`backend/dependencies.py`, `test_admin_auth.py`) |
 | PULSE-011 | Admin token stored in `localStorage` (SEC-02) | Critical | Fixed | ~2026-04 | Cookie-only session; `frontend/src/lib/api.ts` `adminFetch` — no localStorage token |
 | PULSE-012 | No rate limiting on login/subscribe (SEC-04) | Major | Fixed | ~2026-04 | SlowAPI `limiter` on login/subscribe (`backend/rate_limits.py`, routers) |

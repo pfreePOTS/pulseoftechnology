@@ -39,7 +39,7 @@ export default function LoopSection() {
             See it coming. Know where you stand. Make the most of it.
           </h2>
           <p className="font-sans text-[16px] leading-[1.8] text-[#646464]">
-            We watch the technology landscape so you don&rsquo;t have to. We&rsquo;ll tell
+            We watch what&rsquo;s changing in technology so you don&rsquo;t have to. We&rsquo;ll tell
             you what it means for your industry, show you where you stand, and then do the
             work and keep improving it.
           </p>

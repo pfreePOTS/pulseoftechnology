@@ -127,8 +127,8 @@ export default async function RadarPage() {
               </span>
             </h1>
             <p className="mx-auto mb-7 max-w-[660px] font-sans text-lg leading-relaxed text-white/78">
-              The Pulse of Technology Radar is PulseOne&rsquo;s live view of the technology
-              landscape: which emerging technologies matter to your industry, what your
+              The Pulse of Technology Radar is PulseOne&rsquo;s live view of what&rsquo;s
+              changing: which emerging technologies matter to your industry, what your
               posture should be, and when to act.
             </p>
             <div className="flex flex-wrap justify-center gap-3.5">

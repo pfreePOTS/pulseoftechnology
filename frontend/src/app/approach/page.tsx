@@ -13,18 +13,18 @@ const DESCRIPTION =
   "PulseOne works alongside your team rather than replacing it. See how engagements start, how our partners fit, and what two decades of delivery looks like.";
 
 export const metadata: Metadata = {
-  title: "How We Work: Co-Managed Technology and Advisory",
+  title: "Our Approach to Better IT",
   description: DESCRIPTION,
   alternates: { canonical: "/approach" },
   openGraph: {
     type: "website",
     url: "/approach",
-    title: "How We Work: Co-Managed Technology and Advisory",
+    title: "Our Approach to Better IT",
     description: DESCRIPTION,
   },
   twitter: {
     card: "summary_large_image",
-    title: "How We Work: Co-Managed Technology and Advisory",
+    title: "Our Approach to Better IT",
     description: DESCRIPTION,
   },
 };
@@ -72,7 +72,7 @@ const INSIGHT_CARDS_DEFAULT = [
     tagClass: "bg-pulse-teal/12 text-[#0fa09b]",
     tagLabel: "AI & Emerging Tech",
     title: "CCOs: Get Ready for AI Regulation Before It Arrives at Your Door",
-    body: "AI governance frameworks are moving from voluntary guidelines to enforceable requirements. Chief Compliance Officers who wait for final rules will find themselves behind. Here's how to get ahead of it.",
+    body: "AI governance frameworks are moving from voluntary guidelines to enforceable requirements. Chief Compliance Officers who wait for final rules will find themselves behind. Here's how to get ahead of IT.",
     href: "https://blog.pulseone.com/ccos-get-ready-for-ai-regulation-before-it-arrives-at-your-door",
   },
 ];
@@ -81,7 +81,7 @@ const TIMELINE = [
   {
     year: "2002",
     title: "Founded in Ventura, CA",
-    body: "We started as a regional IT services company focused on strategic and day-to-day technology needs for small and mid-sized businesses.",
+    body: "We started as a regional technology services company focused on strategic and day-to-day needs for small and mid-sized businesses.",
     dotBorder: "border-pulse-red" as const,
     yearTint: "text-pulse-red" as const,
     icon: (
@@ -187,9 +187,7 @@ export default function ApproachPage() {
                 </span>
               </h1>
               <p className="mx-auto max-w-[640px] font-sans text-lg leading-relaxed text-white/78">
-                PulseOne combines industry knowledge, business-process understanding, and
-                technology expertise to help your organization run better, longer, and more
-                productively.
+                Your success is our success. PulseOne is your &ldquo;get IT done&rdquo; people.
               </p>
             </div>
           </div>
@@ -207,7 +205,11 @@ export default function ApproachPage() {
                 </h2>
                 <div className="space-y-[14px] font-sans text-[15px] leading-[1.75] text-[#646464]">
                   <p>
-                    PulseOne is a strategic technology advisory and IT integration firm. Since 2002, we&apos;ve
+                    Better IT is a partnership, not a replacement for the people who already know the
+                    business.
+                  </p>
+                  <p>
+                    PulseOne is a strategic technology advisory and integration firm. Since 2002, we&apos;ve
                     helped small and mid-sized organizations navigate the technology decisions that matter.
                   </p>
                   <p>
@@ -251,7 +253,7 @@ export default function ApproachPage() {
                 Our History
               </span>
               <h2 className="mt-3 font-sans text-4xl font-bold text-white">
-                Two Decades of Doing It Right
+                Two Decades of Doing IT Right
               </h2>
             </div>
 

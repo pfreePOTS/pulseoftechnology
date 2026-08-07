@@ -8,14 +8,15 @@ import { describe, expect, it } from "vitest";
 
 /**
  * Regression guard for PULSE-022: the /approach page (and the rest of the
- * public site) must not slide back into the retired MSP voice. Phrases are
+ * public site) must not slide back into retired brochure voice. Phrases are
  * banned by `backend/content/pulseone-identity.md` (clichés) or contradict
  * positioning (`areaServed: United States`, SMB focus).
+ *
+ * Brand IT wordplay ("Better IT", "get IT done", "Doing IT Right") is allowed —
+ * keep at most one such play per sentence or copy block.
  */
 const BANNED_PHRASES = [
   "best-in-class",
-  "Better IT",
-  '"get IT done"',
   "global IT services company",
   "Mid-Market Leaders",
   "mid-market leaders",

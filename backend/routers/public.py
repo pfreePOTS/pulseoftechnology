@@ -8,7 +8,7 @@ import jwt
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, field_validator, model_validator
-from sqlalchemy import func
+from sqlalchemy import and_, exists, func
 from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
@@ -417,11 +417,18 @@ def list_roles_public(db: Session = Depends(get_db)):
 
 @router.get("/topics/published", response_model=list[TopicPublic])
 def get_published_topics(db: Session = Depends(get_db)):
-    """Return topics marked as published (live on the public Radar)."""
+    """Return topics marked as published (live on the public Radar).
+
+    Only includes topics with at least one non-archived article so empty
+    duplicates never appear as radar stars (PULSE-027).
+    """
+    has_active_article = exists().where(
+        and_(Article.topic_id == Topic.id, Article.archived_at.is_(None))
+    )
     rows = (
         db.query(Topic)
         .options(joinedload(Topic.domain))
-        .filter(Topic.is_published == True)  # noqa: E712
+        .filter(Topic.is_published == True, has_active_article)  # noqa: E712
         .order_by(Topic.urgency_score.desc())
         .all()
     )

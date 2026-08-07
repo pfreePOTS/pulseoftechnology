@@ -145,7 +145,7 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
                 Start with an Assessment
               </Link>
               <p className="mt-6 border-t border-[#e0e0e0] pt-5 font-sans text-[13px] leading-relaxed text-[#646464]">
-                Our advisors track the technology landscape continuously. The{" "}
+                Our advisors watch what&rsquo;s changing in technology continuously. The{" "}
                 <Link href="/radar" className="font-semibold text-pulse-teal hover:underline">
                   Pulse of Technology Radar
                 </Link>{" "}

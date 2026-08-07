@@ -17,6 +17,7 @@ When the PR Review Council approves with follow-ups, add each actionable follow-
 
 | ID | Summary | Severity | Status | Reported | Notes |
 |----|---------|----------|--------|----------|-------|
+| PULSE-028 | Public voice regression (`voice.test.ts`) only scans frontend sources; backend identity + system-prompt constants can reintroduce banned brochure phrases | Enhancement | Open | 2026-08-07 | PR #24 council. Extend scan (or add a small backend test) to `backend/content/pulseone-identity.md` and key `*_SYSTEM` / `*_INSTRUCTIONS` strings in `ai_service.py`. |
 | PULSE-025 | Staging process-card library may still lack people-inclusive Understand/Implement cells after local reseed | Minor | Open | 2026-08-05 | PR #23 council. Same class of gap as PULSE-004. After merge, compare Dev vs Staging cell counts/bytes and copy with `backend/copy_process_card_images_between` if Staging lags. |
 | PULSE-026 | Recommended-path / everyone synthesis cache is in-process only (lost on restart; not shared across replicas) | Enhancement | Open | 2026-08-05 | PR #23 council. `ai_service` TTL + single-flight. Fine for single-API Compose; consider shared cache if staging/prod runs multiple API replicas. |
 | PULSE-001 | `client_ip` ignores `X-Forwarded-For` / Railway proxy — auth and subscribe logs may record the proxy hop, not the client | Minor | Open | 2026-08-05 | PR #12 council. `backend/log_events.py` `client_ip()`. Prefer trusted-proxy extraction (or SlowAPI’s remote address helper) before relying on IPs for abuse detection. |
@@ -44,6 +45,7 @@ Validated against current `dev` when the tracker was created (2026-08-05). Kept 
 
 | ID | Summary | Severity | Status | Closed | Evidence |
 |----|---------|----------|--------|--------|----------|
+| PULSE-027 | Published/selected radar topics stayed live with zero non-archived articles (duplicate Identity and access + other empty published rows) | Major | Fixed | 2026-08-06 | `demote_radar_topics_without_articles` in signal flow; publish guard; public `/topics/published` requires ≥1 active article. Live: 14 demoted; Identity id=2 kept (25 arts). `backend/tests/test_demote_empty_radar_topics.py` |
 | PULSE-010 | Admin auth used static password as Bearer token (SEC-01) | Critical | Fixed | ~2026-04 | JWT + `admin_users`; `require_admin` / httpOnly `pulse_admin` cookie (`backend/dependencies.py`, `test_admin_auth.py`) |
 | PULSE-011 | Admin token stored in `localStorage` (SEC-02) | Critical | Fixed | ~2026-04 | Cookie-only session; `frontend/src/lib/api.ts` `adminFetch` — no localStorage token |
 | PULSE-012 | No rate limiting on login/subscribe (SEC-04) | Major | Fixed | ~2026-04 | SlowAPI `limiter` on login/subscribe (`backend/rate_limits.py`, routers) |

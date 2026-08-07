@@ -15,7 +15,7 @@ Also provides topic cleanup utilities.
 import logging
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from ..models.article import Article
@@ -421,23 +421,81 @@ def cleanup_empty_topics(db: Session) -> int:
     return count
 
 
+def demote_radar_topics_without_articles(db: Session) -> int:
+    """
+    Unpublish live/pipeline radar topics that have no non-archived articles and
+    move them to ``watched`` for manual review.
+
+    Applies when ``is_published`` is true (public radar) or ``status`` is
+    ``selected`` (radar pipeline). Topics that still have at least one active
+    article are left alone.
+
+    Returns the number of topics demoted.
+    """
+    orphaned: list[Topic] = (
+        db.query(Topic)
+        .outerjoin(
+            Article,
+            and_(Article.topic_id == Topic.id, Article.archived_at.is_(None)),
+        )
+        .filter(
+            or_(
+                Topic.is_published.is_(True),
+                Topic.status == TopicStatus.selected,
+            )
+        )
+        .group_by(Topic.id)
+        .having(func.count(Article.id) == 0)
+        .all()
+    )
+
+    count = len(orphaned)
+    for topic in orphaned:
+        logger.info(
+            "[job] demote_empty_radar topic_id=%s name=%r was_published=%s was_status=%s",
+            topic.id,
+            topic.name,
+            topic.is_published,
+            topic.status.value if hasattr(topic.status, "value") else topic.status,
+        )
+        topic.is_published = False
+        topic.status = TopicStatus.watched
+        topic.selected_at = None
+    if count:
+        db.commit()
+        logger.info("Demoted %d radar topic(s) with no active articles to watched", count)
+    return count
+
+
+def topic_has_active_articles(db: Session, topic_id: int) -> bool:
+    """True when the topic has at least one non-archived linked article."""
+    n = (
+        db.query(func.count(Article.id))
+        .filter(Article.topic_id == topic_id, Article.archived_at.is_(None))
+        .scalar()
+    )
+    return int(n or 0) > 0
+
+
 def execute_full_signal_flow(db: Session, *, backfill_limit: int = 50) -> None:
     """
     Run the full signal pipeline in a fixed order:
 
     1. Archive articles outside the active evidence window
     2. ``cleanup_empty_topics`` — remove orphaned pending topics with no articles
-    3. ``run_signal_scorer`` — create recommendations for high-velocity topics
-    4. ``refresh_all_signals`` — refresh watched/selected and stale pending signals
-    5. ``backfill_missing_trend_suggestions`` — fill trend suggestions for topics still missing them
+    3. ``demote_radar_topics_without_articles`` — unpublish empty radar topics → watched
+    4. ``run_signal_scorer`` — create recommendations for high-velocity topics
+    5. ``refresh_all_signals`` — refresh watched/selected and stale pending signals
+    6. ``backfill_missing_trend_suggestions`` — fill trend suggestions for topics still missing them
 
     Used by the scheduled signal job and the admin ``/jobs/signals`` trigger.
-    Steps 3–4 log and continue on failure so a single bad topic does not abort the run.
+    Steps 4–5 log and continue on failure so a single bad topic does not abort the run.
     """
     from .archive_service import archive_outside_active_evidence_window
 
     archive_outside_active_evidence_window(db)
     cleanup_empty_topics(db)
+    demote_radar_topics_without_articles(db)
     run_signal_scorer(db)
     try:
         refresh_all_signals(db)

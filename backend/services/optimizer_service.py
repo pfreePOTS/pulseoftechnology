@@ -154,7 +154,7 @@ def generate_prompt_improvement(db: Session, agent_name: str) -> PromptProposal 
 
     examples_text = "\n\n".join(examples_blocks)
 
-    user_message = f"""You are an expert AI prompt engineer. The following system prompt is failing on these edge cases. Rewrite the system prompt to be more robust, strictly enforcing JSON output and handling these specific inputs. Return ONLY the new prompt text.
+    user_message = f"""You are an expert AI prompt engineer. The following system prompt is failing on these edge cases. Rewrite the system prompt to be stricter and clearer, strictly enforcing JSON output and handling these specific inputs. Return ONLY the new prompt text.
 
 ## Current system prompt
 

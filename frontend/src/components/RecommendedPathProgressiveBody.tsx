@@ -241,7 +241,7 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
   if (!hasIntake) {
     heroSubtext = (
       <>
-        Share a bit about your situation from the homepage survey or intake links to unlock a tailored path, radar tie-ins,
+        Share a bit about your situation from the homepage survey or intake links to get a tailored path, radar tie-ins,
         and next steps.
       </>
     );

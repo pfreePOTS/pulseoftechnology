@@ -29,12 +29,12 @@ export const metadata: Metadata = {
     siteName: SITE_NAME,
     locale: "en_US",
     url: "/",
-    title: "Managed Business Technology and Advisory for Mid-Market Leaders",
+    title: "Managed Business Technology and Advisory for Small and Mid-Market Organizations",
     description: SITE_DESCRIPTION,
   },
   twitter: {
     card: "summary_large_image",
-    title: "Managed Business Technology and Advisory for Mid-Market Leaders",
+    title: "Managed Business Technology and Advisory for Small and Mid-Market Organizations",
     description: SITE_DESCRIPTION,
   },
   robots: {

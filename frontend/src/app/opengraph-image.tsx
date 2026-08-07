@@ -52,7 +52,7 @@ export default function OpengraphImage() {
               letterSpacing: -1.5,
             }}
           >
-            for mid-market leaders
+            for small and mid-market organizations
           </div>
         </div>
 

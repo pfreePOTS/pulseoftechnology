@@ -28,6 +28,10 @@ def test_execute_full_signal_flow_calls_steps_in_order():
             side_effect=track("cleanup"),
         ) as m_cleanup,
         patch(
+            "backend.services.signal_service.demote_radar_topics_without_articles",
+            side_effect=track("demote"),
+        ) as m_demote,
+        patch(
             "backend.services.signal_service.run_signal_scorer",
             side_effect=track("scorer"),
         ) as m_scorer,
@@ -42,9 +46,10 @@ def test_execute_full_signal_flow_calls_steps_in_order():
     ):
         execute_full_signal_flow(db)
 
-    assert order == ["archive", "cleanup", "scorer", "refresh", "backfill"]
+    assert order == ["archive", "cleanup", "demote", "scorer", "refresh", "backfill"]
     m_archive.assert_called_once_with(db)
     m_cleanup.assert_called_once_with(db)
+    m_demote.assert_called_once_with(db)
     m_scorer.assert_called_once_with(db)
     m_refresh.assert_called_once_with(db)
     m_backfill.assert_called_once_with(db, limit=50)
@@ -60,6 +65,10 @@ def test_execute_full_signal_flow_passes_backfill_limit():
         ),
         patch(
             "backend.services.signal_service.cleanup_empty_topics",
+            return_value=0,
+        ),
+        patch(
+            "backend.services.signal_service.demote_radar_topics_without_articles",
             return_value=0,
         ),
         patch(

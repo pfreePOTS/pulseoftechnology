@@ -100,7 +100,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       approach:
         "Tabletop-derived incident stories replaced slide-deck generics; immutable backup posture and identity blast-radius were spelled in contract language reviewers expect.",
       solution:
-        "Single executive brief linking clinical continuity hours, escrowed recovery paths, and explicit BA obligations — plus a 90-day gap plan where scans showed exposure.",
+        "Single executive brief linking clinical continuity hours, escrowed recovery paths, and explicit BA obligations, plus a 90-day gap plan where scans showed exposure.",
       howWeHelped:
         "Ran cross-functional rehearsals, reconciled MSSP scope with enterprise reality, coached leadership Q&A until numbers matched runbooks.",
     },
@@ -114,7 +114,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       solution:
         "Rolling 13-week runway with capped parallel initiatives per region, escalation ladder for interoperability exceptions, KPIs tying adoption to clinician hours saved.",
       howWeHelped:
-        "Embedded with transformation PMO to kill duplicate meetings, tighten steering packets, transfer ownership before our exit milestone.",
+        "Embedded with change program office to kill duplicate meetings, tighten steering packets, transfer ownership before our exit milestone.",
     },
   ],
   "Financial Services": [
@@ -212,7 +212,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       teaser:
         "CISO pressured after partner incidents, need defensible segmentation and MFA evidence fast.",
       approach:
-        "Incident timelines tied to MFA coverage and logging retention — not hypotheticals; supplier tiering grounded in BOM criticality.",
+        "Incident timelines tied to MFA coverage and logging retention, not hypotheticals; supplier tiering grounded in BOM criticality.",
       solution:
         "90-day prioritized controls roadmap with capex tied to uptime SLAs owed to marquee customers.",
       howWeHelped:
@@ -250,7 +250,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       teaser:
         "Board asking for ransomware and vendor concentration evidence after sector headlines.",
       approach:
-        "Storylines referenced actual choke points, remote access paths, patching exceptions, immutable backup coverage — mapped to dollarized outage durations.",
+        "Storylines referenced actual choke points, remote access paths, patching exceptions, immutable backup coverage, mapped to dollarized outage durations.",
       solution:
         "Narratives plus 120-day prioritized program with outage-hour assumptions finance validated.",
       howWeHelped:
@@ -353,7 +353,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       who: "CFO-backed IT lead for a multi-site college system.",
       provided: "One help desk model, routing rules, and remote hands aligned to school hours.",
       approach:
-        "We mapped intake channels, SLA expectations by site size, and which issues stay local versus central — before changing tools.",
+        "We mapped intake channels, SLA expectations by site size, and which issues stay local versus central before changing tools.",
       solution:
         "Shared queue, playbook for common endpoints, after-hours bridge for outages, metrics the CFO sees monthly.",
       howWeHelped:
@@ -379,7 +379,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       who: "CIO program office and facilities.",
       provided: "Single PM-led schedule with executive readouts and cutover rehearsals.",
       approach:
-        "Dependencies written in calendar terms leadership understood — not Gantt jargon.",
+        "Dependencies written in calendar terms leadership understood, not Gantt jargon.",
       solution:
         "Frozen windows during exams, parallel paths where safe, rollback tested once per building.",
       howWeHelped:
@@ -623,7 +623,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       approach:
         "Data isolation by matter; citations and mandatory human review on filings and client-visible outputs.",
       solution:
-        "Two-practice cohort pilots with KPIs on leverage vs escalation rates; playbook for sibling offices.",
+        "Two-practice cohort pilots with KPIs on hours saved vs tickets escalated rates; playbook for sibling offices.",
       howWeHelped:
         "Bridged innovation, knowledge management, conflicts, IT; defined defensibility thresholds for vendors.",
     },
@@ -733,7 +733,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       teaser:
         "CIO balancing CRM waves against workplace modernization spanning affiliates.",
       approach:
-        "Outcome lanes distinguishing mission-critical continuity versus speculative analytics bets.",
+        "Outcome lanes distinguishing systems that cannot go down versus speculative analytics bets.",
       solution:
         "Capped parallel migrations each quarter with identity escalation paths bridging chapters.",
       howWeHelped:
@@ -825,7 +825,7 @@ const BY_INDUSTRY: Record<IndustryOption, RecommendedCaseStudy[]> = {
       approach:
         "Tenancy partitioned by mandate; escalation when benchmarks touched ethically sensitive comps.",
       solution:
-        "Two-industry pilot cohorts with KPIs bridging leverage versus rework; playbook for sibling practices.",
+        "Two-industry pilot cohorts with KPIs bridging hours saved versus rework; playbook for sibling practices.",
       howWeHelped:
         "Risk, knowledge, IT facilitation; neutrality in POC language clients could accept.",
     },

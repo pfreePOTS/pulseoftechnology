@@ -19,7 +19,7 @@ People | Technology | Progress.
 
 ## Company
 
-- [Our Approach](/approach): How engagements start, the co-managed model, partner ecosystem, and company history since 2002.
+- [Our Approach](/approach): How engagements start, the co-managed model, the platforms we work with, and company history since 2002.
 - [Industries We Serve](/industries): Twenty named sectors, including restaurants, retail, healthcare, manufacturing, financial services, legal, and nonprofit.
 - [Contact](/contact): Contact form and phone. Offices in Ventura CA, Los Angeles CA, New Jersey, Nashville TN, and Bozeman MT.
 

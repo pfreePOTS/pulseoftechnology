@@ -71,11 +71,13 @@ Once the ingestion job finishes, the AI will have grouped the raw articles into 
 1. Open **Trend Discovery** (`http://localhost:3100/admin` — sidebar **“2. Trending”**). You will see topics sorted by urgency score.
 2. **Click a topic** to open the **detail drawer**. Review the AI-generated summary and source articles.
 3. Click the **pencil icon** to edit positioning: set **Adoption State** and **Industry Positions** (impact/risk per industry) as needed.
-4. Go to **Publishing** (`http://localhost:3100/admin/publishing`). In the **Radar Publishing** section, toggle the topic **on** so it appears on the public radar (or use **Publish All** where appropriate).
+4. Go to **Publishing** (`http://localhost:3100/admin/publishing`). In the **Radar Publishing** section, toggle the topic **on** so it appears on the public radar (or use **Publish All** where appropriate). Publishing requires at least one **active** (non-archived) article on the topic; empty themes are rejected with 400.
+
+The scheduled/manual signal job also demotes published or selected topics that have zero active articles back to **watched** (`demote_radar_topics_without_articles`), and the public `/api/topics/published` list omits those empties so they never show as radar stars.
 
 ## 7. View the Radar
 
-Once you have published at least one topic to the radar, it becomes visible to the public site.
+Once you have published at least one topic with active articles to the radar, it becomes visible to the public site.
 
 1. Navigate to the public frontend: `http://localhost:3100`
 2. Use the **Industry** and **Domain** filters in the radar control bar if you want to narrow the view.

@@ -103,4 +103,14 @@ docker compose logs -f backend
 
 Optional: set **`LOG_LEVEL=DEBUG`** in `.env` (see `.env.example`) for more detail from services and RSS ingestion. Default is `INFO`.
 
-Operational log coverage is tested in `backend/tests/test_logging.py` (pytest `caplog` assertions).
+### Client IP and email in logs (PULSE-001 / PULSE-002)
+
+- **`TRUST_PROXY_HEADERS`** (default: on when `ENVIRONMENT` is `staging` or `production`): `[auth]` / `[subscribe]` / `[contact]` lines use the first `X-Forwarded-For` hop so Railway logs show the browser client, not the proxy.
+- **`LOG_REDACT_EMAILS`** (default: on in staging/production): `email=` / `contact_email=` values hash the local-part (`a1b2c3d4e5@domain`) so Railway log sinks hold less raw PII. Local Compose and pytest keep cleartext unless you set `LOG_REDACT_EMAILS=true`.
+- **Retention:** Railway service logs are for short-term ops triage. Do not treat them as a durable CRM or compliance archive; HubSpot / Postgres remain the systems of record for subscriber identity. If you export logs long-term, enable redaction and restrict access to operators who already have admin console access.
+
+Operational log coverage is tested in `backend/tests/test_logging.py` and `backend/tests/test_log_events_privacy.py`.
+
+### Recommended-path synthesis cache (PULSE-026)
+
+`/recommended-path` and `/everyone-overview` cache LLM synthesis **in-process** (1h TTL, single-flight). That is correct for local Compose and for a **single** API replica. Keep the Railway Backend service at **1 replica** until a shared cache (Postgres/Redis) lands; multiple replicas each hold their own cache and can duplicate LLM spend under load.

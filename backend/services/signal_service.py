@@ -222,10 +222,11 @@ def _article_count_in_window(topic_id: int, start: datetime, end: datetime, db: 
     """
     Return article count for topic within [start, end).
 
-    Uses SQL coverage-time counts only. Pinecone semantic velocity is disabled while
-    embeddings are placeholder / not production-ready.
+    Uses SQL coverage-time counts only. Semantic (Pinecone) velocity stays disabled
+    until real Voyage/OpenAI embeddings replace the placeholder hash embedder in
+    ``vector_service`` (PULSE-003). Re-enabling on hash vectors would corrupt trend
+    thresholds without improving signal quality.
     """
-    # TODO: Re-enable when Voyage/OpenAI embeddings ship (query_topic_velocity + article_id metadata)
     return _sql_count(topic_id, start, end, db)
 
 

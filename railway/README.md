@@ -185,6 +185,18 @@ Replace `DEV_PUBLIC_URL` with the full Dev Postgres URL string (user, password, 
 · Use **`seed_local_dev`** for in-repo catalog parity.  
 · Use **`sync_newsletter_cms_between`** (with a **public** Dev `SOURCE_DATABASE_URL`) to match Dev’s **roles + content library** on Staging.
 
+### Our Process card banners (PULSE-025)
+
+`/recommended-path` “Our Process” photos live in `recommended_path_process_card_library` (21 industries × 4 sections). Staging often lacks `OPENAI_API_KEY`, so copy blobs from local Compose or Dev instead of reseeding:
+
+```bash
+TARGET=$(railway variables -s "Backend - Staging" -e staging --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["DATABASE_PUBLIC_URL"])')
+docker compose exec -T -e TARGET_DATABASE_URL="$TARGET" backend bash -lc \
+  'SOURCE_DATABASE_URL="$DATABASE_URL" python -u -m backend.copy_process_card_images_between'
+```
+
+Expect **84** cells (**42** on `understand`/`implement`). Full recipe: [`scripts/db/README.md`](../scripts/db/README.md). Keep the Backend service at **1 replica** while synthesis cache is in-process (see operational runbook / PULSE-026).
+
 ## Troubleshooting
 
 ### Builds use Railpack instead of Docker (monorepo tree in logs)

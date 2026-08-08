@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     environment: str = "development"
     # Root log level for app modules (uvicorn access logs are separate)
     log_level: str = "INFO"
+    # When True, ``kv(email=…)`` / ``contact_email=`` hash the local-part before logging.
+    # Default None → redact automatically in production/staging (see log_events).
+    log_redact_emails: bool | None = None
+    # When True, ``client_ip`` prefers X-Forwarded-For / X-Real-IP (Railway / proxies).
+    # Default None → trust proxies automatically in production/staging.
+    trust_proxy_headers: bool | None = None
     # Comma-separated browser origins for CORS (required when using credentials)
     cors_origins: str = "http://localhost:3000,http://localhost:3100"
     # HS256 signing key for admin JWTs — override in production

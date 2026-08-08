@@ -17,13 +17,8 @@ When the PR Review Council approves with follow-ups, add each actionable follow-
 
 | ID | Summary | Severity | Status | Reported | Notes |
 |----|---------|----------|--------|----------|-------|
-| PULSE-029 | Homepage `LoopSection` still uses lowercase “See it coming” / “Make the most of it” while `/approach` and radar panel use brand IT wordplay | Minor | Open | 2026-08-07 | PR #25 council. Align only if desired; keep ≤1 IT play per copy block. |
-| PULSE-028 | Public voice regression (`voice.test.ts`) only scans frontend sources; backend identity + system-prompt constants can reintroduce banned brochure phrases | Enhancement | Open | 2026-08-07 | PR #24 council. Extend scan (or add a small backend test) to `backend/content/pulseone-identity.md` and key `*_SYSTEM` / `*_INSTRUCTIONS` strings in `ai_service.py`. |
-| PULSE-025 | Staging process-card library may still lack people-inclusive Understand/Implement cells after local reseed | Minor | Open | 2026-08-05 | PR #23 council. Same class of gap as PULSE-004. After merge, compare Dev vs Staging cell counts/bytes and copy with `backend/copy_process_card_images_between` if Staging lags. |
-| PULSE-026 | Recommended-path / everyone synthesis cache is in-process only (lost on restart; not shared across replicas) | Enhancement | Open | 2026-08-05 | PR #23 council. `ai_service` TTL + single-flight. Fine for single-API Compose; consider shared cache if staging/prod runs multiple API replicas. |
-| PULSE-001 | `client_ip` ignores `X-Forwarded-For` / Railway proxy — auth and subscribe logs may record the proxy hop, not the client | Minor | Open | 2026-08-05 | PR #12 council. `backend/log_events.py` `client_ip()`. Prefer trusted-proxy extraction (or SlowAPI’s remote address helper) before relying on IPs for abuse detection. |
-| PULSE-002 | Operational logs include subscriber/admin emails on auth, subscribe, and contact paths — retention/access policy unclear for long-lived Railway logs | Minor | Open | 2026-08-05 | PR #12 council. Intentional for ops (`[auth]` / `[subscribe]` / `[contact]`). Document retention expectations or redact/hash emails in production sinks. |
-| PULSE-003 | Signal velocity path still has embedding/Pinecone TODO — semantic topic velocity not re-enabled | Enhancement | Open | 2026-08-05 | `backend/services/signal_service.py` (~line 228). `vector_service` + Pinecone config exist; scorer still count-based until embeddings ship. Source: system audit / Prompt 24 lineage. |
+| PULSE-026 | Recommended-path / everyone synthesis cache is in-process only (lost on restart; not shared across replicas) | Enhancement | Deferred (single-replica ops) | 2026-08-05 | Documented in `docs/operational-runbook.md` + `railway/README.md`: keep Backend at 1 replica. Shared Postgres/Redis cache is the follow-on when multi-replica is required. |
+| PULSE-003 | Signal velocity path still has embedding/Pinecone TODO — semantic topic velocity not re-enabled | Enhancement | Deferred (needs real embeddings) | 2026-08-05 | Placeholder hash embedder in `vector_service` is not production-ready. SQL coverage counts remain authoritative; comment clarified in `signal_service._article_count_in_window`. Unblock only after Voyage/OpenAI embeds + index backfill. |
 
 ### Hardcoded bias audit notes (2026-08-05)
 
@@ -46,6 +41,11 @@ Validated against current `dev` when the tracker was created (2026-08-05). Kept 
 
 | ID | Summary | Severity | Status | Closed | Evidence |
 |----|---------|----------|--------|--------|----------|
+| PULSE-029 | Homepage `LoopSection` lowercase IT wordplay vs `/approach` / radar | Minor | Fixed | 2026-08-07 | `See IT coming` / `Make the most of IT` in `LoopSection.tsx`; body pronouns stay lowercase |
+| PULSE-028 | Voice regression missed backend identity / `ai_service` brochure phrases | Enhancement | Fixed | 2026-08-07 | `backend/tests/test_backend_voice_bans.py` scans `pulseone-identity.md` + `ai_service.py` |
+| PULSE-025 | Staging process-card library lagged Dev on people-inclusive cells | Minor | Fixed | 2026-08-07 | Compared 84/42 both sides; `copy_process_card_images_between` → Staging 42 updated / 42 current; recipe in `railway/README.md` |
+| PULSE-001 | `client_ip` ignored `X-Forwarded-For` behind Railway | Minor | Fixed | 2026-08-07 | `log_events.client_ip` + `TRUST_PROXY_HEADERS`; `test_log_events_privacy.py` |
+| PULSE-002 | Ops logs logged cleartext emails without retention guidance | Minor | Fixed | 2026-08-07 | `LOG_REDACT_EMAILS` hashes local-part in staging/prod; runbook retention note; privacy tests |
 | PULSE-027 | Published/selected radar topics stayed live with zero non-archived articles (duplicate Identity and access + other empty published rows) | Major | Fixed | 2026-08-06 | `demote_radar_topics_without_articles` in signal flow; publish guard; public `/topics/published` requires ≥1 active article. Live: 14 demoted; Identity id=2 kept (25 arts). `backend/tests/test_demote_empty_radar_topics.py` |
 | PULSE-010 | Admin auth used static password as Bearer token (SEC-01) | Critical | Fixed | ~2026-04 | JWT + `admin_users`; `require_admin` / httpOnly `pulse_admin` cookie (`backend/dependencies.py`, `test_admin_auth.py`) |
 | PULSE-011 | Admin token stored in `localStorage` (SEC-02) | Critical | Fixed | ~2026-04 | Cookie-only session; `frontend/src/lib/api.ts` `adminFetch` — no localStorage token |

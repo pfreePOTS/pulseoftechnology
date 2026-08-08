@@ -8,7 +8,7 @@ import Link from "next/link";
  */
 const BEATS = [
   {
-    title: "See it coming",
+    title: "See IT coming",
     body: "Our advisors track what's moving and what it means for your industry. The Pulse of Technology Radar and daily briefing keep you pointed in the right direction without burying you in noise.",
     cta: "Get the Daily Briefing",
     href: "#subscribe",
@@ -20,7 +20,7 @@ const BEATS = [
     href: "#how-can-we-help",
   },
   {
-    title: "Make the most of it",
+    title: "Make the most of IT",
     body: "When a signal turns into a project, the same team does the work: managed business technology, security, and AI adoption that keeps getting better, not just staying up.",
     cta: "See Our Services",
     href: "/services",
@@ -36,7 +36,7 @@ export default function LoopSection() {
             How PulseOne Works
           </span>
           <h2 className="mb-4 border-l-[5px] border-pulse-red py-0 pl-[18px] font-sans text-[34px] leading-tight font-bold tracking-tight text-[#1a1a1a]">
-            See it coming. Know where you stand. Make the most of it.
+            See IT coming. Know where you stand. Make the most of IT.
           </h2>
           <p className="font-sans text-[16px] leading-[1.8] text-[#646464]">
             We watch what&rsquo;s changing in technology so you don&rsquo;t have to. We&rsquo;ll tell

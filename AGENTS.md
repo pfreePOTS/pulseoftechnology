@@ -4,7 +4,7 @@
 - **Operational runbook**: `docs/operational-runbook.md` (first boot, seeding, jobs, logs).
 - **Bug list**: `docs/testing/active-bugs.md` (IDs `PULSE-NNN`; template `docs/testing/bug-template.md`). PR Review Council follow-ups and schedulable defects go here.
 - **PulseOne AI identity** (services, scope, voice for customer-facing LLM copy): `backend/content/pulseone-identity.md` — loaded via `backend/services/pulseone_identity.py` into recommended-path and related advisor prompts. Edit this file instead of duplicating scope in `ai_service.py`.
-- **Public voice**: prefer the Rod humanizer (`.cursor/skills/rod/`; global promotion pending in `~/.uai`). Banned-phrase regression: `frontend/src/app/approach/voice.test.ts` (frontend only today — see PULSE-028 for backend prompt coverage).
+- **Public voice**: prefer the Rod humanizer (`.cursor/skills/rod/` and `skills-library/marketing/rod` in universal-ai-identity `dev`). Banned-phrase regression: `frontend/src/app/approach/voice.test.ts` (frontend only today — see PULSE-028 for backend prompt coverage).
 - **Cursor rules**: `.cursor/rules/` for stack, backend, and frontend conventions; Universal AI Identity via `.cursorrules` + local `.ai/` (gitignored cache from `init-ai`).
 - **Skills library**: after `init-ai`, full library at `.ai/skills-library/` (including `meta-system/project-docs-manager`). Refresh with `init-ai --update`. Local project skills also live under `.cursor/skills/` (e.g. `rod`).
 - **Frontend Next.js quirks**: see `frontend/AGENTS.md` (Next 16 vs older training data).

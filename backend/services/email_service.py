@@ -98,6 +98,11 @@ def _newsletter_article_pick_cutoffs(c: NewsletterArticleIngestCutoffs) -> list[
 # Prefer this many radar themes before widening the topic pool beyond strict profile/article fit.
 NEWSLETTER_ASSEMBLY_MIN_TOPICS = 5
 
+# Canonical PulseOne company LinkedIn (newsletter footer / brand links — not share-offsite).
+PULSEONE_LINKEDIN_URL = (
+    "https://www.linkedin.com/company/pulseone-group-llc/people/?viewAsMember=true"
+)
+
 
 def _format_sendgrid_error(exc: BaseException) -> str:
     """Pull a short, human-readable message from python_http_client / SendGrid errors."""
@@ -319,37 +324,100 @@ def _newsletter_subject_and_headline(
     return sub, None
 
 
-def _build_newsletter_header_banner_html(*, headline_article_title: str | None) -> str:
+def _build_newsletter_header_banner_html() -> str:
     """
-    Light surface header (DESIGN.md). Renders the official hosted logo image with text fallback.
-    Logo links to the main PulseOne marketing site.
+    Light surface header (DESIGN.md): newsletter name as hero, PulseOne logo secondary.
+    Logo links to the main PulseOne marketing site. No hot-story headline here.
     """
     logo_src = html.escape(_newsletter_logo_url())
     logo_href = html.escape("https://pulseone.com")
     img_block = f"""
-    <p style="margin:0 0 14px;">
+    <p style="margin:12px 0 8px;">
       <a href="{logo_href}" style="text-decoration:none;border:0;display:inline-block;" target="_blank" rel="noopener noreferrer">
-        <img src="{logo_src}" alt="PulseOne | People | Technology | Progress" width="386" height="83"
-             style="display:block;margin:0 auto;max-width:260px;width:100%;height:auto;border:0;" />
+        <img src="{logo_src}" alt="PulseOne | People | Technology | Progress" width="140" height="30"
+             style="display:block;margin:0 auto;max-width:140px;width:100%;height:auto;border:0;" />
       </a>
-    </p>"""
-    headline_block = ""
-    if headline_article_title and headline_article_title.strip():
-        t = html.escape(headline_article_title.strip())
-        headline_block = f"""
-    <p style="margin:18px 0 0;font-size:19px;font-weight:700;line-height:1.35;color:#111827;font-family:{_FF};">
-      {t}
     </p>"""
     return f"""
 <tr>
   <td style="background:#F4F8FA;padding:28px 32px 24px;text-align:center;border-bottom:1px solid #E5E7EB;">
+    <p style="margin:0;font-size:34px;font-weight:700;line-height:1.15;letter-spacing:-0.02em;
+              color:#111827;font-family:{_FF};">
+      The Pulse of <span style="color:#E91D24;">Technology</span>
+    </p>
     {img_block}
-    <p style="margin:0;font-size:11px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;
-              color:#4A5F6D;font-family:{_FF};">Pulse of Technology Daily</p>
-    {headline_block}
+    <p style="margin:0;font-size:10px;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;
+              color:#4A5F6D;font-family:{_FF};">PEOPLE | TECHNOLOGY | PROGRESS</p>
   </td>
 </tr>
 """
+
+
+def _join_english_list(items: list[str]) -> str:
+    cleaned = [x.strip() for x in items if x and str(x).strip()]
+    if not cleaned:
+        return ""
+    if len(cleaned) == 1:
+        return cleaned[0]
+    if len(cleaned) == 2:
+        return f"{cleaned[0]} and {cleaned[1]}"
+    return f"{', '.join(cleaned[:-1])}, and {cleaned[-1]}"
+
+
+def _build_welcome_rollup_html(
+    *,
+    now: datetime,
+    industry_line: str,
+    hot_article_title: str | None,
+    top_story_names: list[str],
+) -> str:
+    """
+    Deterministic greeting body from the issue's hot lead + top stories (no LLM).
+    ``industry_line`` is the same fragment used previously (e.g. `` for the Technology sector``).
+    """
+    weekday = now.strftime("%A")
+    date_long = _format_date_long(now)
+    # ``industry_line`` may arrive with a leading space (legacy fragment); normalize then
+    # always re-insert spacing at join points so we never emit "trackingfor".
+    industry_bit = (industry_line or "").strip()
+    open_line = f"It's {weekday}, {date_long}."
+    if industry_bit:
+        open_line += f" Here's what we're tracking {industry_bit}."
+    else:
+        open_line += " Here's what we're tracking for your briefing."
+
+    hot = (hot_article_title or "").strip()
+    stories = [n.strip() for n in top_story_names if n and str(n).strip()]
+    # Avoid repeating the hot theme name if it also appears in remaining top stories.
+    if hot:
+        stories = [s for s in stories if s.casefold() != hot.casefold()]
+
+    detail_parts: list[str] = []
+    if hot:
+        detail_parts.append(f"Leading today: {hot}.")
+    story_list = _join_english_list(stories[:3])
+    if story_list:
+        prefix = "Also on your radar" if hot else "Today's top signals include"
+        detail_parts.append(f"{prefix}: {story_list}.")
+    if not detail_parts:
+        if industry_bit:
+            detail_parts.append(
+                f"Here are the top technology signals your team needs to know about {industry_bit}."
+            )
+        else:
+            detail_parts.append(
+                "Here are the top technology signals your team needs to know about."
+            )
+
+    open_esc = html.escape(open_line)
+    detail_esc = html.escape(" ".join(detail_parts))
+    return f"""
+            <p style="margin:0 0 10px;font-size:14px;color:#4A5F6D;font-family:{_FF};line-height:1.65;">
+              {open_esc}
+            </p>
+            <p style="margin:0 0 14px;font-size:14px;color:#4A5F6D;font-family:{_FF};line-height:1.65;">
+              {detail_esc}
+            </p>"""
 
 
 def _first_sentences(text: str | None, max_sentences: int = 3) -> str:
@@ -387,11 +455,11 @@ def _industry_position_narrative(pos: object) -> str:
 def _subscriber_industry_teaser(topic: Topic, subscriber: Subscriber | None) -> str:
     if subscriber is None or not isinstance(topic.industry_positions, dict):
         return ""
-    for ind in getattr(subscriber, "industries", None) or []:
-        pos = topic.industry_positions.get(ind)
-        block = _industry_position_narrative(pos)
-        if block:
-            return _first_sentences(block, 3)
+    inds = _subscriber_industry_labels(subscriber)
+    pos = _industry_positions_lookup(topic.industry_positions, inds)
+    block = _industry_position_narrative(pos)
+    if block:
+        return _first_sentences(block, 3)
     return ""
 
 
@@ -420,12 +488,12 @@ def _article_recency_ts(article: Article) -> datetime:
 def _subscriber_remediation_teaser(topic: Topic, subscriber: Subscriber | None) -> str:
     if subscriber is None or not isinstance(topic.industry_positions, dict):
         return ""
-    for ind in getattr(subscriber, "industries", None) or []:
-        pos = topic.industry_positions.get(ind)
-        if isinstance(pos, dict):
-            r = (pos.get("remediation") or "").strip()
-            if r:
-                return _clamp_brief_sentences(r, 3)
+    inds = _subscriber_industry_labels(subscriber)
+    pos = _industry_positions_lookup(topic.industry_positions, inds)
+    if isinstance(pos, dict):
+        r = (pos.get("remediation") or "").strip()
+        if r:
+            return _clamp_brief_sentences(r, 3)
     return ""
 
 
@@ -698,7 +766,7 @@ _EMAIL_TEMPLATE = """\
           </td>
         </tr>
 
-        <!-- 2 Header: PulseOne logo + Pulse of Technology Daily + optional hot-article title -->
+        <!-- 2 Header: Pulse of Technology title + PulseOne logo -->
         {header_banner_html}
 
         <!-- 3 Greeting -->
@@ -707,9 +775,7 @@ _EMAIL_TEMPLATE = """\
             <p style="margin:0 0 10px;font-size:18px;font-weight:700;color:#111827;font-family:{ff};">
               Good morning, {first_name}.
             </p>
-            <p style="margin:0 0 14px;font-size:14px;color:#4A5F6D;font-family:{ff};line-height:1.65;">
-              Here are the top technology signals your team needs to know about{industry_line}.
-            </p>
+            {welcome_rollup_html}
             <p style="margin:0;font-size:13px;font-family:{ff};line-height:1.65;">
               <span style="color:#4A5F6D;">Share:</span>
               <a href="{share_x_url}" style="color:#019E7C;text-decoration:none;font-weight:600;">X</a>
@@ -753,7 +819,7 @@ _EMAIL_TEMPLATE = """\
           <td style="background:#F4F8FA;padding:28px 32px;border-top:1px solid #E5E7EB;">
             <p style="margin:0 0 10px;font-size:12px;font-weight:700;color:#111827;font-family:{ff};">Stay Connected</p>
             <p style="margin:0 0 16px;font-size:12px;font-family:{ff};">
-              <a href="https://www.linkedin.com/company/pulseone" style="color:#019E7C;text-decoration:none;">LinkedIn</a>
+              <a href="{pulseone_linkedin_url}" style="color:#019E7C;text-decoration:none;">LinkedIn</a>
               <span style="color:#9CA3AF;"> &middot; </span>
               <a href="https://x.com/pulseone" style="color:#019E7C;text-decoration:none;">X</a>
             </p>
@@ -785,6 +851,10 @@ def _resolve_hot_topic_lead_for_subscriber(
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None, int | None]:
     """
     Return the global ``hot_of_day`` lead for everyone when ``hot_topic`` / ``hot_article`` exist.
+
+    Product decision (2026-08-12): hot lead is the shared top story for every subscriber so a
+    single briefing still surfaces the day's lead. Personalized **Top Stories** below remain
+    profile-sorted from the assembled preference pool (hot topic peeled to avoid duplicates).
 
     ``topics`` is retained for call-site compatibility only; the lead is **not** gated on
     whether the subscriber's domain-filtered briefing includes that topic. The returned topic
@@ -985,8 +1055,10 @@ def _build_deep_dive_section(
       </tr>
     </table>"""
 
+    lead = articles[0] if articles else None
+    more_articles = articles[1:3] if articles else []
     art_rows = []
-    for i, a in enumerate(articles[:3], start=1):
+    for i, a in enumerate(more_articles, start=1):
         title = html.escape(a.title or "Read article")
         url = html.escape(a.url or "#")
         art_rows.append(
@@ -1033,13 +1105,33 @@ def _build_deep_dive_section(
       Open the live radar filtered to <strong style="color:#4A5F6D;">{html.escape(dom)}</strong> for charts, tracked stories, and more context.
     </p>"""
 
+    # Article-first: linked lead title as headline; domain · topic as radar context.
+    if lead is not None and (lead.title or "").strip():
+        lead_title = html.escape((lead.title or "").strip())
+        lead_url = html.escape((lead.url or "").strip() or "#")
+        headline_html = f"""
+    <p style="margin:0 0 8px;font-size:20px;font-weight:700;color:#111827;font-family:{_FF};line-height:1.25;">
+      <a href="{lead_url}" style="color:#111827;text-decoration:none;">{lead_title}</a>
+    </p>"""
+    else:
+        headline_html = f"""
+    <p style="margin:0 0 8px;font-size:20px;font-weight:700;color:#111827;font-family:{_FF};line-height:1.25;">
+      {html.escape(topic.name)}
+    </p>"""
+
+    context_html = f"""
+    <p style="margin:0 0 12px;font-size:12px;font-family:{_FF};line-height:1.5;">
+      <span style="font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:{color};">{html.escape(dom.upper())}</span>
+      <span style="color:#9CA3AF;"> &middot; </span>
+      <span style="font-weight:600;color:#4A5F6D;">{html.escape(topic.name)}</span>
+    </p>"""
+
     return f"""
 <tr>
   <td style="padding:24px 32px 0;">
     <hr style="border:none;border-top:1px solid #E5E7EB;margin:0 0 18px;">
-    <p style="margin:0 0 6px;font-size:10px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;
-              color:{color};font-family:{_FF};">{html.escape(dom.upper())}</p>
-    <p style="margin:0 0 12px;font-size:20px;font-weight:700;color:#111827;font-family:{_FF};line-height:1.25;">{html.escape(topic.name)}</p>
+    {headline_html}
+    {context_html}
     <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 18px;font-family:{_FF};">
       <tr>
         <td style="padding:0 10px 0 0;vertical-align:middle;width:1%;white-space:nowrap;">
@@ -1258,15 +1350,7 @@ def _build_html(
 
     ht, ha, hot_topic_id_for_sections = _resolve_hot_topic_lead_for_subscriber(topics, hot_data)
     hot_lead_html = _build_hot_topic_lead_html(ht, ha) if ht and ha else ""
-
-    headline_for_header: str | None = None
-    if isinstance(ha, dict):
-        raw_h = (ha.get("title") or "").strip()
-        if raw_h:
-            headline_for_header = raw_h
-    header_banner_html = _build_newsletter_header_banner_html(
-        headline_article_title=headline_for_header,
-    )
+    header_banner_html = _build_newsletter_header_banner_html()
 
     if hot_topic_id_for_sections is not None:
         rest_topics = [t for t in sorted_topics if t.id != hot_topic_id_for_sections]
@@ -1354,6 +1438,16 @@ def _build_html(
     else:
         industry_line = ""
 
+    hot_title_for_welcome: str | None = None
+    if isinstance(ha, dict):
+        hot_title_for_welcome = (ha.get("title") or "").strip() or None
+    welcome_rollup_html = _build_welcome_rollup_html(
+        now=now,
+        industry_line=industry_line,
+        hot_article_title=hot_title_for_welcome,
+        top_story_names=[getattr(t, "name", "") or "" for t in top_stories],
+    )
+
     return _EMAIL_TEMPLATE.format(
         ff=_FF,
         date=html.escape(_format_date_long(now)),
@@ -1364,7 +1458,7 @@ def _build_html(
         manage_preferences_url=html.escape(preferences_page),
         unsubscribe_url=html.escape(unsubscribe_page),
         first_name=html.escape(subscriber.first_name or "there"),
-        industry_line=html.escape(industry_line) if industry_line else "",
+        welcome_rollup_html=welcome_rollup_html,
         header_banner_html=header_banner_html,
         hot_lead_html=hot_lead_html,
         top_stories_html=top_stories_html,
@@ -1373,6 +1467,7 @@ def _build_html(
         quick_hits_html=quick_hits_html,
         tip_html=tip_html,
         survey_html=survey_html,
+        pulseone_linkedin_url=html.escape(PULSEONE_LINKEDIN_URL),
         domains_label=html.escape(", ".join(subscriber.domains or []) or "All"),
         industry_label=html.escape(", ".join(inds) or "Not specified"),
         role_label=html.escape(role_footer or "Not specified"),
@@ -1523,24 +1618,79 @@ def _domain_topics_for_subscriber(all_approved: list[Topic], subscriber: Subscri
     return [t for t in all_approved if topic_domain_slug_for_filter(t) in allow_l]
 
 
+def _is_other_domain_topic(topic: Topic | object) -> bool:
+    """``Other`` is a fallback bucket — never a preference pillar for briefing assembly."""
+    slug = (topic_domain_slug_for_filter(topic) or "").strip().lower()
+    if slug in ("other",):
+        return True
+    return topic_domain_short(topic).strip().lower() == "other"
+
+
+def _exclude_other_domain_topics(topics: list[Topic]) -> list[Topic]:
+    return [t for t in topics if not _is_other_domain_topic(t)]
+
+
 def _subscriber_industry_labels(subscriber: Subscriber | object) -> list[str]:
     raw = getattr(subscriber, "industries", None) or []
     return [str(x).strip() for x in raw if x is not None and str(x).strip()]
+
+
+def _subscriber_industry_match_labels(industries: list[str]) -> list[str]:
+    """
+    Expand wizard industry picks to include Analysis-grid canonical labels.
+
+    Reuses ``canonical_industry_label`` / ``_INDUSTRY_NAME_ALIASES`` so
+    ``Finance & Banking`` matches grid key ``Financial Services``.
+    """
+    from .recommended_path_process_card_library import canonical_industry_label
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in industries:
+        label = (raw or "").strip()
+        if not label:
+            continue
+        candidates = [label]
+        canon = canonical_industry_label(label)
+        if canon:
+            candidates.append(canon)
+        for cand in candidates:
+            key = cand.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(cand)
+    return out
+
+
+def _industry_positions_lookup(ip: dict, industries: list[str]) -> object | None:
+    """Return the first industry_positions value matching wizard or canonical labels."""
+    match_labels = _subscriber_industry_match_labels(industries)
+    if not match_labels:
+        return None
+    by_lower = {str(k).strip().lower(): v for k, v in ip.items() if k is not None}
+    for ind in match_labels:
+        hit = by_lower.get(ind.strip().lower())
+        if hit is not None:
+            return hit
+    for ind in match_labels:
+        il = ind.strip().lower()
+        if len(il) < 4:
+            continue
+        for key_l, val in by_lower.items():
+            if il in key_l or key_l in il:
+                return val
+    return None
 
 
 def _industry_signals_for_article(topic: Topic, article: Article, industries: list[str]) -> bool:
     if not industries:
         return True
     ip = topic.industry_positions
-    if isinstance(ip, dict):
-        for ind in industries:
-            il = ind.strip().lower()
-            if len(il) < 2:
-                continue
-            for key in ip.keys():
-                if il in str(key).lower():
-                    return True
-    return any(article_industry_bonus(article, ind) > 0 for ind in industries)
+    if isinstance(ip, dict) and _industry_positions_lookup(ip, industries) is not None:
+        return True
+    match_labels = _subscriber_industry_match_labels(industries)
+    return any(article_industry_bonus(article, ind) > 0 for ind in match_labels)
 
 
 def _newsletter_first_article_via_chain(
@@ -1570,14 +1720,7 @@ def _topic_has_industry_grid_hit(topic: Topic, industries: list[str]) -> bool:
     ip = getattr(topic, "industry_positions", None)
     if not isinstance(ip, dict) or not industries:
         return False
-    for ind in industries:
-        il = ind.strip().lower()
-        if len(il) < 2:
-            continue
-        for key in ip.keys():
-            if il in str(key).lower():
-                return True
-    return False
+    return _industry_positions_lookup(ip, industries) is not None
 
 
 def _order_newsletter_pool_industry_first(
@@ -1697,7 +1840,9 @@ def _resolve_newsletter_topic_pool(
     min_topics: int = NEWSLETTER_ASSEMBLY_MIN_TOPICS,
 ) -> tuple[list[Topic], str]:
     ingest = newsletter_article_ingest_cutoffs(merged_pipeline)
-    cohort_dom = _domain_topics_for_subscriber(all_approved, subscriber)
+    # Never assemble briefing themes from the Other dump bucket (non-pillar / noise).
+    approved = _exclude_other_domain_topics(all_approved)
+    cohort_dom = _domain_topics_for_subscriber(approved, subscriber)
     role_objs = _resolve_subscriber_roles(subscriber, db)
     names = [(getattr(r, "name", None) or "").strip() for r in role_objs]
     role_names = [n for n in names if n] or None
@@ -1736,14 +1881,14 @@ def _resolve_newsletter_topic_pool(
         (
             "cross_domain_industry_fresh",
             lambda: _assemble_topics_cross_domain_industry(
-                all_approved,
+                approved,
                 db=db,
                 subscriber=subscriber,
                 role_names=role_names,
                 ingest=ingest,
             ),
         ),
-        ("all_pipeline_topics", lambda: list(all_approved)),
+        ("all_pipeline_topics", lambda: list(approved)),
     ]
 
     best_pick: tuple[int, list[Topic], str] | None = None
@@ -1833,6 +1978,46 @@ def assemble_promoted_content(
     return all_active[:3]
 
 
+def assemble_newsletter_topics_with_tier(
+    subscriber: Subscriber,
+    all_approved: list[Topic],
+    db: Session | None = None,
+    *,
+    skip_domain_filter: bool = False,
+    merged_pipeline: MergedPipelineSettings | None = None,
+) -> tuple[list[Topic], str]:
+    """
+    Same as ``assemble_newsletter_topics``, plus the ladder tier label that produced the pool.
+
+    Tier labels include ``preview_skip_domain_filter``, ``legacy_domain_filter_only``, and the
+    assembly ladder ids from ``_resolve_newsletter_topic_pool`` (e.g. ``domains_only``).
+    """
+    if skip_domain_filter:
+        return (
+            _exclude_other_domain_topics(
+                sorted(all_approved, key=lambda t: t.urgency_score, reverse=True)
+            ),
+            "preview_skip_domain_filter",
+        )
+
+    if merged_pipeline is None or db is None:
+        cohort = _domain_topics_for_subscriber(all_approved, subscriber)
+        return (
+            _exclude_other_domain_topics(
+                sorted(cohort, key=lambda t: t.urgency_score, reverse=True)
+            ),
+            "legacy_domain_filter_only",
+        )
+
+    cohort, label = _resolve_newsletter_topic_pool(
+        subscriber=subscriber,
+        all_approved=all_approved,
+        db=db,
+        merged_pipeline=merged_pipeline,
+    )
+    return _exclude_other_domain_topics(cohort), label
+
+
 def assemble_newsletter_topics(
     subscriber: Subscriber,
     all_approved: list[Topic],
@@ -1856,20 +2041,49 @@ def assemble_newsletter_topics(
 
     When ``merged_pipeline`` or ``db`` is omitted, behaves as legacy **domain-filter only**.
     """
-    if skip_domain_filter:
-        return sorted(all_approved, key=lambda t: t.urgency_score, reverse=True)
-
-    if merged_pipeline is None or db is None:
-        cohort = _domain_topics_for_subscriber(all_approved, subscriber)
-        return sorted(cohort, key=lambda t: t.urgency_score, reverse=True)
-
-    cohort, _label = _resolve_newsletter_topic_pool(
-        subscriber=subscriber,
-        all_approved=all_approved,
-        db=db,
+    topics, _tier = assemble_newsletter_topics_with_tier(
+        subscriber,
+        all_approved,
+        db,
+        skip_domain_filter=skip_domain_filter,
         merged_pipeline=merged_pipeline,
     )
-    return cohort
+    return topics
+
+
+def _inject_preview_assembly_banner(
+    html_body: str,
+    *,
+    tier: str,
+    topic_count: int,
+    domains: list[str],
+    industries: list[str],
+) -> str:
+    """Admin-only strip so sandbox preview shows which preference ladder step won."""
+    dom_label = ", ".join(domains) if domains else "(none — full pool / skip domain filter)"
+    ind_label = ", ".join(industries) if industries else "(default Technology)"
+    banner = f"""
+<table width="100%" cellpadding="0" cellspacing="0" data-assembly-tier="{html.escape(tier)}">
+  <tr>
+    <td style="background:#ECFDF5;border-bottom:1px solid #A7F3D0;padding:10px 16px;
+               font-family:{_FF};font-size:12px;color:#065F46;line-height:1.5;">
+      <strong>Assembly tier:</strong> {html.escape(tier)}
+      &nbsp;&middot;&nbsp; <strong>Topics:</strong> {topic_count}
+      &nbsp;&middot;&nbsp; <strong>Domains:</strong> {html.escape(dom_label)}
+      &nbsp;&middot;&nbsp; <strong>Industries:</strong> {html.escape(ind_label)}
+    </td>
+  </tr>
+</table>
+"""
+    marker = "<body"
+    idx = html_body.lower().find(marker)
+    if idx < 0:
+        return banner + html_body
+    # Insert immediately after the opening <body ...> tag
+    gt = html_body.find(">", idx)
+    if gt < 0:
+        return banner + html_body
+    return html_body[: gt + 1] + banner + html_body[gt + 1 :]
 
 
 def generate_newsletter_preview(
@@ -1886,6 +2100,8 @@ def generate_newsletter_preview(
 
     When **no domain filters** are passed, topic filtering by domain / role tags is skipped
     so the preview shows the full eligible pool (roles still drive persona lines in deep dives).
+
+    Injects an admin-only assembly-tier banner (not used on real sends).
     """
     role_objs: list[Role] = []
     if role_ids:
@@ -1894,6 +2110,7 @@ def generate_newsletter_preview(
         role_objs.sort(key=lambda r: order.get(r.id, 999))
 
     domain_list = list(domains) if domains else []
+    industry_list = list(industries) if industries else []
     skip_domain_topic_filter = len(domain_list) == 0
 
     dummy = Subscriber(
@@ -1901,7 +2118,7 @@ def generate_newsletter_preview(
         email="preview@pulseone.internal",
         first_name="Jane",
         last_name="Executive",
-        industries=industries if industries else ["Technology"],
+        industries=industry_list if industry_list else ["Technology"],
         domains=domain_list if domain_list else None,
         role_ids=role_ids if role_ids else None,
         is_active=True,
@@ -1917,17 +2134,18 @@ def generate_newsletter_preview(
     )
 
     merged = merge_pipeline_settings(db)
-    topics = assemble_newsletter_topics(
+    topics, tier = assemble_newsletter_topics_with_tier(
         dummy,
         eligible,
         db,
         skip_domain_filter=skip_domain_topic_filter,
         merged_pipeline=None if skip_domain_topic_filter else merged,
-    )[:20]
+    )
+    topics = topics[:20]
 
     if not topics:
         no_match = f" matching your domain picks ({', '.join(domain_list)})" if domain_list else ""
-        return (
+        empty = (
             "<!DOCTYPE html><html><body style='background:#F3F4F6;"
             "color:#374151;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;padding:40px;'>"
             f"<h2 style='color:#111827;'>No topics available for preview{no_match}.</h2>"
@@ -1935,14 +2153,28 @@ def generate_newsletter_preview(
             "or clear domain filters.</p>"
             "</body></html>"
         )
+        return _inject_preview_assembly_banner(
+            empty,
+            tier=tier,
+            topic_count=0,
+            domains=domain_list,
+            industries=industry_list if industry_list else ["Technology"],
+        )
 
     promoted = assemble_promoted_content(dummy, db)
-    return _build_html(
+    html_body = _build_html(
         dummy,
         topics,
         db=db,
         promoted_content=promoted,
         merged_pipeline=merged,
+    )
+    return _inject_preview_assembly_banner(
+        html_body,
+        tier=tier,
+        topic_count=len(topics),
+        domains=domain_list,
+        industries=industry_list if industry_list else ["Technology"],
     )
 
 

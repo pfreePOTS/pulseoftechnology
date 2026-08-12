@@ -22,6 +22,7 @@ const PREVIEW_MIN_HEIGHT = 1200;
 
 export default function NewsletterSandboxPanel({ embedded = false }: Props) {
   const [html, setHtml] = useState<string>("");
+  const [assemblyTier, setAssemblyTier] = useState<string | null>(null);
   const [state, setState] = useState<LoadState>("idle");
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
 
@@ -74,10 +75,14 @@ export default function NewsletterSandboxPanel({ embedded = false }: Props) {
         }`;
         const res = await adminFetch(url, { cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        setHtml(await res.text());
+        const body = await res.text();
+        const tierMatch = body.match(/data-assembly-tier="([^"]+)"/);
+        setAssemblyTier(tierMatch?.[1] ?? null);
+        setHtml(body);
         setLastRefreshed(new Date());
         setState("loaded");
       } catch {
+        setAssemblyTier(null);
         setState("error");
       }
     },
@@ -269,6 +274,14 @@ export default function NewsletterSandboxPanel({ embedded = false }: Props) {
 
             <div className="flex min-w-[160px] max-w-md flex-col justify-end text-xs text-gray-500">
               <span className="text-gray-400">(auto-refreshes)</span>
+              {assemblyTier && (
+                <span
+                  className="mt-1 font-mono text-[11px] leading-snug text-emerald-400/95"
+                  title="Preference ladder step that produced this preview pool"
+                >
+                  tier={assemblyTier}
+                </span>
+              )}
               {embedded && (
                 <span
                   className="mt-1 line-clamp-2 text-[11px] leading-snug text-indigo-400/90"

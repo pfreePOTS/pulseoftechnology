@@ -268,6 +268,18 @@ class TestAssembleNewsletterTopics:
         mock_r.assert_called_once()
 
 
+def test_assemble_newsletter_topics_excludes_other_domain():
+    sub = _sub(domains=None)
+    topics = [
+        _topic("AI", 9.0, "A"),
+        _topic("Other", 9.5, "Oil markets"),
+        _topic("Security", 8.0, "S"),
+    ]
+    out = email_service.assemble_newsletter_topics(sub, topics)
+    assert all(t.domain != "Other" for t in out)
+    assert {t.name for t in out} == {"A", "S"}
+
+
 def test_order_newsletter_pool_industry_first_prefers_grid_hits():
     """PULSE-019: high-urgency AI without industry signals sorts after industry hits."""
     ingest = email_service.NewsletterArticleIngestCutoffs(
@@ -300,6 +312,60 @@ def test_order_newsletter_pool_industry_first_prefers_grid_hits():
         ingest=ingest,
     )
     assert [t.name for t in ordered] == ["Insurance cyber ops", "AI Agents Everywhere"]
+
+
+def test_finance_banking_alias_matches_financial_services_grid_and_ranks_first():
+    """Wizard 'Finance & Banking' must match Analysis grid key 'Financial Services'."""
+    ingest = email_service.NewsletterArticleIngestCutoffs(
+        top_rank_peak=datetime.now(UTC),
+        deep_dive_primary=datetime.now(UTC),
+        legacy_fallback=datetime.now(UTC),
+    )
+    ai_hot = SimpleNamespace(
+        id=1,
+        name="Generic AI agents",
+        urgency_score=99.0,
+        industry_positions=None,
+        domain="AI",
+    )
+    fs_security = SimpleNamespace(
+        id=2,
+        name="Banking ransomware posture",
+        urgency_score=40.0,
+        industry_positions={
+            "Financial Services": {
+                "industry_impact": "Core banking outages hit payments and trust.",
+            },
+        },
+        domain="Security",
+    )
+    assert email_service._topic_has_industry_grid_hit(
+        fs_security, ["Finance & Banking"]
+    )
+    assert not email_service._topic_has_industry_grid_hit(ai_hot, ["Finance & Banking"])
+
+    sub = _sub(industries=["Finance & Banking"], domains=["security"])
+    ordered = email_service._order_newsletter_pool_industry_first(
+        [ai_hot, fs_security],
+        db=MagicMock(),
+        subscriber=sub,
+        role_names=None,
+        ingest=ingest,
+    )
+    assert [t.name for t in ordered] == ["Banking ransomware posture", "Generic AI agents"]
+
+    teaser = email_service._subscriber_industry_teaser(fs_security, sub)
+    assert "Core banking outages" in teaser
+
+
+def test_assemble_newsletter_topics_with_tier_reports_skip_label():
+    sub = _sub(domains=["AI"])
+    topics = [_topic("AI"), _topic("Security")]
+    out, tier = email_service.assemble_newsletter_topics_with_tier(
+        sub, topics, skip_domain_filter=True
+    )
+    assert tier == "preview_skip_domain_filter"
+    assert len(out) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -468,6 +534,71 @@ def test_deep_dive_section_has_structured_briefing_and_trending():
     assert "&#8593;" in html
     assert "Enterprises are wiring agents" in html
     assert "<img" not in html
+    # No lead article: topic name remains the section headline.
+    assert "AI Agents" in html
+
+
+def test_deep_dive_leads_with_linked_article_title_then_radar_context():
+    from ..models.topic import AdoptionState
+
+    topic = SimpleNamespace(
+        id=42,
+        name="Identity and access",
+        domain="Security",
+        urgency_score=8.0,
+        summary="Topic summary.",
+        newsletter_briefing={
+            "what_is_it": "Biometric checks are becoming table stakes.",
+            "what_changed": "Fraud rings scaled fake remote hires.",
+            "why_it_matters": "One fake employee can expose secrets.",
+            "what_to_do": "Require liveness checks for privileged hires.",
+        },
+        industry_positions=None,
+        adoption_state=AdoptionState.get_prepared_for,
+    )
+    lead = SimpleNamespace(
+        title="Anthropic Adds AI Watermarks",
+        url="https://example.com/anthropic-watermarks",
+        what_is_it=None,
+        why_it_matters=None,
+        persona_by_role=None,
+        ingested_at=datetime(2026, 8, 12, 10, 0, tzinfo=UTC),
+        published_at=None,
+    )
+    extra = SimpleNamespace(
+        title="Secondary source on identity risk",
+        url="https://example.com/secondary",
+        what_is_it=None,
+        why_it_matters=None,
+        persona_by_role=None,
+        ingested_at=datetime(2026, 8, 11, 10, 0, tzinfo=UTC),
+        published_at=None,
+    )
+    mock_db = MagicMock()
+    with patch.object(email_service, "newsletter_topic_velocity_trend", return_value="flat"):
+        html = email_service._build_deep_dive_section(
+            topic,
+            [lead, extra],
+            [],
+            "Leader",
+            subscriber=None,
+            db=mock_db,
+        )
+
+    lead_pos = html.find("Anthropic Adds AI Watermarks")
+    domain_pos = html.find("SECURITY")
+    topic_pos = html.find("Identity and access")
+    briefing_pos = html.find("What it is (today)")
+    assert lead_pos != -1
+    assert domain_pos != -1 and topic_pos != -1 and briefing_pos != -1
+    assert lead_pos < domain_pos < briefing_pos
+    assert lead_pos < topic_pos < briefing_pos
+    assert 'href="https://example.com/anthropic-watermarks"' in html
+    assert "YOUR POSTURE:" in html
+    assert "Top reads (sources)" in html
+    assert "Secondary source on identity risk" in html
+    # Lead article is the headline, not duplicated in Top reads.
+    assert "Anthropic Adds AI Watermarks" not in html.split("Top reads (sources)")[1]
 
 
 def test_newsletter_what_to_do_fallback_is_contextual_not_generic():
@@ -501,6 +632,77 @@ def test_newsletter_what_to_do_fallback_is_contextual_not_generic():
     assert len([s for s in briefing["what_to_do"].split(".") if s.strip()]) <= 2
 
 
+def test_welcome_rollup_keeps_space_before_industry_clause():
+    html = email_service._build_welcome_rollup_html(
+        now=datetime(2026, 8, 12, 12, 0, tzinfo=UTC),
+        industry_line=" for the Technology sector",
+        hot_article_title="Lead story",
+        top_story_names=["Second story"],
+    )
+    assert "tracking for the Technology sector" in html
+    assert "trackingfor" not in html
+
+
+def test_newsletter_header_banner_promotes_pulse_of_technology():
+    """Brand banner: newsletter name is hero; PulseOne logo is secondary; no lead headline."""
+    banner = email_service._build_newsletter_header_banner_html()
+    assert "The Pulse of" in banner
+    assert "Technology" in banner
+    assert "#E91D24" in banner
+    assert "Pulse of Technology Daily" not in banner
+    assert "PEOPLE" in banner and "TECHNOLOGY" in banner and "PROGRESS" in banner
+    assert "pots_logo_new.png" in banner
+    assert 'width="140"' in banner or 'max-width:140px' in banner
+    assert "font-size:34px" in banner
+    # Split accent: Technology in brand red (not a single flat black title string only).
+    assert 'color:#E91D24' in banner or 'color: #E91D24' in banner
+    assert "The Pulse of Technology</p>" not in banner
+
+def test_build_html_header_omits_hot_headline_and_includes_story_rollup():
+    hot = {
+        "hot_topic": {
+            "id": 1,
+            "name": "Enterprise AI",
+            "domain": "AI",
+            "subdomain": "Agents",
+        },
+        "hot_article": {
+            "title": "Microsoft agent story",
+            "url": "https://example.com/x",
+            "source_name": "TechCrunch",
+            "ingested_at": datetime(2026, 4, 13, 12, 13, 7, tzinfo=UTC),
+        },
+    }
+    topics = [
+        SimpleNamespace(id=1, name="Enterprise AI", domain="AI", urgency_score=9.0, summary="A."),
+        SimpleNamespace(id=2, name="Second story", domain="AI", urgency_score=8.0, summary="B."),
+        SimpleNamespace(id=3, name="Cloud spend", domain="Cloud", urgency_score=7.0, summary="C."),
+    ]
+    sub = _sub()
+    html = email_service._build_html(
+        sub,
+        topics,
+        db=MagicMock(),
+        hot_of_day=hot,
+    )
+    pre_greeting, _, post_greeting = html.partition("Good morning")
+    assert "Microsoft agent story" not in pre_greeting
+    assert "Pulse of Technology" in pre_greeting
+    assert "Pulse of Technology Daily" not in pre_greeting
+    assert "Microsoft agent story" in post_greeting
+    assert "Hot on your radar" in html
+    assert "Second story" in html
+    assert "pots_logo_new.png" in html
+    assert 'href="https://pulseone.com"' in html
+    assert "twitter.com/intent/tweet" in html
+    assert "mailto:?" in html
+    # Welcome rollup names the hot lead and remaining top stories.
+    assert "Microsoft agent story" in post_greeting.split("Hot on your radar")[0]
+    assert "Second story" in post_greeting.split("Hot on your radar")[0]
+    # Logo + hot lead image only; do not add another lead image to the remaining top story.
+    assert html.count("<img") == 2
+
+
 def test_build_html_hot_topic_lead_when_subscriber_includes_hot_topic():
     hot = {
         "hot_topic": {
@@ -528,7 +730,7 @@ def test_build_html_hot_topic_lead_when_subscriber_includes_hot_topic():
         hot_of_day=hot,
     )
     assert "Microsoft agent story" in html
-    assert "Pulse of Technology Daily" in html
+    assert "Pulse of Technology" in html
     assert "pots_logo_new.png" in html
     assert 'href="https://pulseone.com"' in html
     assert "twitter.com/intent/tweet" in html
@@ -562,7 +764,7 @@ def test_build_html_hot_lead_shows_when_hot_topic_not_in_subscriber_topics():
     )
     assert "Breaking global briefing lead" in html
     assert "Hot on your radar" in html
-    assert "Pulse of Technology Daily" in html
+    assert "Pulse of Technology" in html
     assert "pots_logo_new.png" in html
 
 
@@ -624,6 +826,17 @@ def test_hot_topic_lead_includes_short_article_summary_sections():
     assert "AWS announced a coordinated set of services for agent deployment." in html
     assert "Executives get a clearer signal" in html
     assert "Extra detail should not appear" not in html
+
+
+def test_newsletter_footer_linkedin_points_to_pulseone_group():
+    sub = _sub()
+    html = email_service._build_html(sub, [_topic()], db=None)
+    assert (
+        "https://www.linkedin.com/company/pulseone-group-llc/people/?viewAsMember=true"
+        in html
+    )
+    assert "linkedin.com/company/pulseone\"" not in html
+    assert "linkedin.com/company/pulseone/" not in html
 
 
 def test_newsletter_footer_has_signed_preferences_links():

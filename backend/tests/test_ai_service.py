@@ -79,10 +79,67 @@ class TestEvaluateArticle:
         mock_db = MagicMock()
 
         with _patch_llm(json.dumps(payload)), _patch_prompts():
-            result = ai_service.evaluate_article("Celebrity spotted at coffee shop.", mock_db)
+            result = ai_service.evaluate_article("Celebrity gossip unrelated to tech.", mock_db)
 
         assert result is None
 
+
+def test_prioritize_topic_names_for_domain_lists_same_domain_first():
+    names = ["AI Agents Everywhere", "Ransomware Affiliate Ecosystems", "Cloud FinOps"]
+    domains = {
+        "AI Agents Everywhere": "AI",
+        "Ransomware Affiliate Ecosystems": "Security",
+        "Cloud FinOps": "Cloud",
+    }
+    ordered = ai_service.prioritize_topic_names_for_domain(
+        names, domain_hint="Security", topic_domains=domains
+    )
+    assert ordered[0] == "Ransomware Affiliate Ecosystems"
+    assert set(ordered) == set(names)
+
+
+def test_cluster_fallback_prompt_prefers_same_domain_and_clear_fit():
+    prompt = ai_service._FALLBACK_PROMPTS["cluster"]
+    assert "same domain" in prompt.lower()
+    assert "clearly" in prompt.lower()
+    assert "loosely related" not in prompt.lower()
+    assert "Ransomware Affiliate Ecosystems" in prompt
+
+
+def test_classify_boundary_table_guides_security_ai_overlap():
+    from backend.services.domain_registry import _CLASSIFY_BOUNDARY_TABLE
+
+    assert "AI tooling" in _CLASSIFY_BOUNDARY_TABLE
+    assert "AI-assisted attacks" in _CLASSIFY_BOUNDARY_TABLE or "cyber risk/control" in _CLASSIFY_BOUNDARY_TABLE
+
+
+def test_oil_spot_price_hard_rejected_before_llm_gate():
+    content = (
+        "Title: Current price of oil as of August 12, 2026\n\n"
+        "Brent crude traded at $91.60 per barrel amid Hormuz tensions and consumer fuel costs."
+    )
+    assert ai_service.is_obviously_non_tech_markets_content(content) is True
+    mock_db = MagicMock()
+    with patch.object(ai_service.llm_client, "chat_completion_result") as mock_chat:
+        assert ai_service._node_gate(mock_db, content, article_id=1) is False
+        mock_chat.assert_not_called()
+
+
+def test_oil_cyber_ot_story_not_hard_rejected():
+    content = (
+        "Title: Current price of oil platforms hit by ransomware in OT networks\n\n"
+        "Attackers disrupted SCADA systems at energy traders, forcing manual trading desks offline."
+    )
+    assert ai_service.is_obviously_non_tech_markets_content(content) is False
+
+
+def test_gate_fallback_prompt_rejects_commodity_price_boards():
+    prompt = ai_service._FALLBACK_PROMPTS["gate"]
+    assert "current price of oil" in prompt.lower() or "Commodity" in prompt
+    assert "Brent" in prompt or "commodity" in prompt.lower()
+
+
+class TestEvaluateArticleContinued:
     def test_malformed_json_requests_retry_instead_of_review_topic(self):
         mock_db = MagicMock()
 

@@ -55,3 +55,4 @@ test-results/
 # Universal AI Identity (local cache — do not commit)
 .ai/
 inbox/
+tmp/

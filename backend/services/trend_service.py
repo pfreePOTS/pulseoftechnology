@@ -276,6 +276,13 @@ def build_hot_of_day(db: Session) -> dict[str, Any]:
         .order_by(Topic.urgency_score.desc(), Topic.id.asc())
         .all()
     )
+    # Other is not a radar preference pillar — never promote it as the shared hot lead.
+    topics = [
+        t
+        for t in topics
+        if (topic_domain_short(t) or "").strip().lower() != "other"
+        and (getattr(getattr(t, "domain", None), "slug", None) or "").lower() != "other"
+    ]
     empty: dict[str, Any] = {
         "trend_window_days": tw,
         "hot_topic": None,

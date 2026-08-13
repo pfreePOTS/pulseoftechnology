@@ -17,6 +17,8 @@ When the PR Review Council approves with follow-ups, add each actionable follow-
 
 | ID | Summary | Severity | Status | Reported | Notes |
 |----|---------|----------|--------|----------|-------|
+| PULSE-031 | Newsletter tip-of-week CTA still generic (`pulseone.com`) — not aligned to rotated Marketplace offer / assessment | Enhancement | Open | 2026-08-13 | PR #27 council. `_build_tip_block` in `email_service.py`. |
+| PULSE-030 | Document + run Marketplace Content Library seed on Staging/prod after deploy | Minor | Open | 2026-08-13 | PR #27 council. `python -m backend.seed_marketplace_offers`; add to runbook/Railway README. Static PNGs ship in `frontend/public/marketplace-offers/`. |
 | PULSE-026 | Recommended-path / everyone synthesis cache is in-process only (lost on restart; not shared across replicas) | Enhancement | Deferred (single-replica ops) | 2026-08-05 | Documented in `docs/operational-runbook.md` + `railway/README.md`: keep Backend at 1 replica. Shared Postgres/Redis cache is the follow-on when multi-replica is required. |
 | PULSE-003 | Signal velocity path still has embedding/Pinecone TODO — semantic topic velocity not re-enabled | Enhancement | Deferred (needs real embeddings) | 2026-08-05 | Placeholder hash embedder in `vector_service` is not production-ready. SQL coverage counts remain authoritative; comment clarified in `signal_service._article_count_in_window`. Unblock only after Voyage/OpenAI embeds + index backfill. |
 

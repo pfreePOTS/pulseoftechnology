@@ -110,7 +110,10 @@ def test_classify_boundary_table_guides_security_ai_overlap():
     from backend.services.domain_registry import _CLASSIFY_BOUNDARY_TABLE
 
     assert "AI tooling" in _CLASSIFY_BOUNDARY_TABLE
-    assert "AI-assisted attacks" in _CLASSIFY_BOUNDARY_TABLE or "cyber risk/control" in _CLASSIFY_BOUNDARY_TABLE
+    assert (
+        "AI-assisted attacks" in _CLASSIFY_BOUNDARY_TABLE
+        or "cyber risk/control" in _CLASSIFY_BOUNDARY_TABLE
+    )
 
 
 def test_oil_spot_price_hard_rejected_before_llm_gate():

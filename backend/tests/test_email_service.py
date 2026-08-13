@@ -650,7 +650,9 @@ def test_newsletter_header_banner_promotes_pulse_of_technology():
     assert "Technology" in banner
     assert "#E91D24" in banner
     assert "Pulse of Technology Daily" not in banner
-    assert "PEOPLE" in banner and "TECHNOLOGY" in banner and "PROGRESS" in banner
+    # Tagline lives in the logo artwork (and alt text) — do not duplicate it as body copy.
+    assert "People | Technology | Progress" in banner
+    assert "PEOPLE | TECHNOLOGY | PROGRESS</p>" not in banner
     assert "pots_logo_new.png" in banner
     assert 'width="140"' in banner or 'max-width:140px' in banner
     assert "font-size:34px" in banner
@@ -874,3 +876,90 @@ def test_send_daily_newsletter_persists_read_online_issue(db_session, monkeypatc
     assert issue.subscriber_email == "reader@example.com"
     assert issue.subject
     assert f"http://localhost:8100/api/newsletter/issues/{issue.token}" in issue.html
+
+
+# ---------------------------------------------------------------------------
+# assemble_promoted_content — focus tags + rotation
+# ---------------------------------------------------------------------------
+
+
+def _content(
+    title: str,
+    tags: list[str],
+    *,
+    created_at: datetime | None = None,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=title,
+        title=title,
+        url="https://pulseone.com/contact-us/",
+        type="landing_page",
+        summary=title,
+        image_url=f"/marketplace-offers/{title}.png",
+        tags=tags,
+        is_active=True,
+        created_at=created_at or datetime(2026, 8, 1, tzinfo=UTC),
+    )
+
+
+def test_assemble_promoted_content_prefers_focus_domain_and_rotates_daily():
+    security_a = _content("Sec A", ["Marketplace", "Security"])
+    security_b = _content("Sec B", ["Marketplace", "Security"])
+    ai_only = _content("AI Only", ["Marketplace", "AI"])
+    stub = _content("Old Stub", ["Services"])
+
+    mock_db = MagicMock()
+    q = MagicMock()
+    q.filter.return_value.order_by.return_value.all.return_value = [
+        security_a,
+        security_b,
+        ai_only,
+        stub,
+    ]
+    mock_db.query.return_value = q
+
+    sub = _sub(domains=["Security"], id=42)
+    day1 = datetime(2026, 8, 12, 12, 0, tzinfo=UTC)
+    day2 = datetime(2026, 8, 13, 12, 0, tzinfo=UTC)
+
+    with patch.object(email_service, "_resolve_subscriber_roles", return_value=[]):
+        pick1 = email_service.assemble_promoted_content(sub, mock_db, now=day1)
+        pick2 = email_service.assemble_promoted_content(sub, mock_db, now=day2)
+
+    assert len(pick1) == 1
+    assert pick1[0].title in {"Sec A", "Sec B"}
+    assert pick1[0].title != "AI Only"
+    assert pick2[0].title in {"Sec A", "Sec B"}
+    # Different calendar days should advance the rotation seed.
+    assert {pick1[0].title, pick2[0].title} == {"Sec A", "Sec B"}
+
+
+def test_assemble_promoted_content_falls_back_to_marketplace_pool():
+    market = _content("Market Offer", ["Marketplace", "Cloud"])
+    other = _content("Blog", ["Services"])
+    mock_db = MagicMock()
+    q = MagicMock()
+    q.filter.return_value.order_by.return_value.all.return_value = [other, market]
+    mock_db.query.return_value = q
+
+    sub = _sub(domains=None, id=7)
+    with patch.object(email_service, "_resolve_subscriber_roles", return_value=[]):
+        picks = email_service.assemble_promoted_content(sub, mock_db)
+
+    assert len(picks) == 1
+    assert picks[0].title == "Market Offer"
+
+
+def test_absolute_public_url_resolves_relative_marketplace_path(monkeypatch):
+    monkeypatch.setattr(email_service.settings, "public_site_url", "http://localhost:3100")
+    assert (
+        email_service._absolute_public_url("/marketplace-offers/PulseOne_01_promo_1280x720.png")
+        == "http://localhost:3100/marketplace-offers/PulseOne_01_promo_1280x720.png"
+    )
+
+
+def test_promo_section_labels_landing_page_as_get_more_information():
+    item = _content("AI Readiness Assessment", ["Marketplace", "AI"])
+    html = email_service._build_promo_section([item])
+    assert "Get More Information" in html
+    assert "Landing Page" not in html

@@ -27,12 +27,14 @@ from sendgrid.helpers.mail import Content, Email, Mail, ReplyTo, Subject, To
 from sqlalchemy.orm import Session
 
 from ..config import settings
+from ..marketplace_offers import MARKETPLACE_TAG
 from ..models.article import Article
 from ..models.content import ContentItem
 from ..models.newsletter_issue import NewsletterIssue
 from ..models.role import Role
 from ..models.subscriber import Subscriber
 from ..models.topic import Topic, TopicStatus
+from .domain_registry import CORE_DOMAIN_DEFS, slugify_domain
 from .newsletter_selection import (
     article_has_persona_for_roles,
     article_industry_bonus,
@@ -238,7 +240,7 @@ def _radar_explore_url(public_site_base: str, domain: str | None) -> str:
 _TYPE_LABELS: dict[str, str] = {
     "article": "Article",
     "video": "Video",
-    "landing_page": "Landing Page",
+    "landing_page": "Get More Information",
 }
 
 
@@ -346,8 +348,6 @@ def _build_newsletter_header_banner_html() -> str:
       The Pulse of <span style="color:#E91D24;">Technology</span>
     </p>
     {img_block}
-    <p style="margin:0;font-size:10px;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;
-              color:#4A5F6D;font-family:{_FF};">PEOPLE | TECHNOLOGY | PROGRESS</p>
   </td>
 </tr>
 """
@@ -1183,6 +1183,19 @@ def _build_quick_hits_block(topics: list[Topic]) -> str:
 """
 
 
+def _absolute_public_url(url: str | None) -> str:
+    """Resolve site-relative paths (e.g. /marketplace-offers/…) for email clients."""
+    raw = (url or "").strip()
+    if not raw:
+        return ""
+    if raw.startswith("http://") or raw.startswith("https://"):
+        return raw
+    base = (settings.public_site_url or "http://localhost:3100").rstrip("/")
+    if raw.startswith("/"):
+        return f"{base}{raw}"
+    return f"{base}/{raw}"
+
+
 def _build_promo_section(items: list[ContentItem]) -> str:
     if not items:
         return ""
@@ -1190,10 +1203,11 @@ def _build_promo_section(items: list[ContentItem]) -> str:
     for item in items[:3]:
         tlabel = _TYPE_LABELS.get(item.type, item.type.replace("_", " ").title())
         img_html = ""
-        if getattr(item, "image_url", None):
+        abs_img = _absolute_public_url(getattr(item, "image_url", None))
+        if abs_img:
             img_html = (
                 f'<p style="margin:0 0 10px;">'
-                f'<img src="{html.escape(item.image_url)}" width="560" alt="" '
+                f'<img src="{html.escape(abs_img)}" width="560" alt="" '
                 f'style="display:block;max-width:100%;height:auto;border-radius:6px;border:0;"></p>'
             )
         summ = (
@@ -1944,13 +1958,75 @@ def _resolve_newsletter_topic_pool(
     return [], "empty"
 
 
+_FOCUS_SHORT_BY_SLUG: dict[str, str] = {
+    str(entry["slug"]): str(entry["short_label"])
+    for entry in CORE_DOMAIN_DEFS
+    if entry.get("slug") and entry["slug"] != "other"
+}
+
+
+def _normalize_promo_focus_tag(raw: str) -> str | None:
+    """Map subscriber/topic domain labels to radar short labels used on ContentItem tags."""
+    slug = slugify_domain(raw)
+    if slug == "other" or slug not in _FOCUS_SHORT_BY_SLUG:
+        return None
+    return _FOCUS_SHORT_BY_SLUG[slug]
+
+
+def _promo_focus_tags(
+    subscriber: Subscriber,
+    topics: list[Topic] | None,
+) -> set[str]:
+    focus: set[str] = set()
+    for raw in subscriber.domains or []:
+        short = _normalize_promo_focus_tag(str(raw))
+        if short:
+            focus.add(short.lower())
+    for topic in topics or []:
+        short = _normalize_promo_focus_tag(topic_domain_short(topic))
+        if short:
+            focus.add(short.lower())
+    return focus
+
+
+def _promo_rotation_bucket(*, period: str, now: datetime | None = None) -> str:
+    """Stable daily or weekly key so the same reader sees a rotating offer over time."""
+    when = now or datetime.now(UTC)
+    mode = (period or "daily").strip().lower()
+    if mode == "weekly":
+        iso = when.isocalendar()
+        return f"w{iso.year}-{iso.week:02d}"
+    return when.date().isoformat()
+
+
+def _rotate_content_pool(
+    pool: list[ContentItem],
+    *,
+    seed: str,
+) -> list[ContentItem]:
+    if not pool:
+        return []
+    # Stable across processes (avoid Python's randomized hash())
+    start = sum(ord(c) for c in seed) % len(pool)
+    return pool[start:] + pool[:start]
+
+
 def assemble_promoted_content(
     subscriber: Subscriber,
     db: Session,
+    topics: list[Topic] | None = None,
+    *,
+    limit: int = 1,
+    rotation: str = "daily",
+    now: datetime | None = None,
 ) -> list[ContentItem]:
     """
-    Return up to 3 active ContentItems matched to the subscriber's role tags.
-    Falls back to the 3 most-recently-created active items if no role tags exist.
+    Return active ContentItems matched to focus domains (subscriber + newsletter topics)
+    and role tags, then rotate within that pool on a daily/weekly cadence.
+
+    Marketplace offers are tagged with radar short labels (AI, Security, Cloud, …) plus
+    ``Marketplace``. When nothing matches, fall back to rotating the Marketplace pool,
+    then any active item.
     """
     all_active: list[ContentItem] = (
         db.query(ContentItem)
@@ -1961,21 +2037,50 @@ def assemble_promoted_content(
     if not all_active:
         return []
 
+    focus_tags = _promo_focus_tags(subscriber, topics)
     role_objs = _resolve_subscriber_roles(subscriber, db)
-    role_tags: set[str] | None = None
+    role_tags: set[str] = set()
     for role_obj in role_objs:
         if role_obj and getattr(role_obj, "tags", None):
-            if role_tags is None:
-                role_tags = set()
             role_tags |= {t.lower() for t in role_obj.tags}
 
-    if role_tags:
-        matched = [
-            item for item in all_active if {t.lower() for t in (item.tags or [])} & role_tags
-        ]
-        return matched[:3]
+    marketplace_tag = MARKETPLACE_TAG.lower()
 
-    return all_active[:3]
+    def item_tags(item: ContentItem) -> set[str]:
+        return {str(t).lower() for t in (item.tags or [])}
+
+    def score(item: ContentItem) -> int:
+        tags = item_tags(item)
+        s = 0
+        if focus_tags:
+            s += 3 * len(tags & focus_tags)
+        if role_tags:
+            s += len(tags & role_tags)
+        return s
+
+    scored = sorted(
+        ((score(item), item) for item in all_active),
+        key=lambda x: x[0],
+        reverse=True,
+    )
+    matched = [item for s, item in scored if s > 0]
+    marketplace = [item for item in all_active if marketplace_tag in item_tags(item)]
+    pool = matched or marketplace or all_active
+
+    # Prefer marketplace-tagged rows inside a matched pool so we rotate offers, not old stubs.
+    matched_marketplace = [item for item in pool if marketplace_tag in item_tags(item)]
+    if matched_marketplace:
+        score_by_id = {id(item): score(item) for item in matched_marketplace}
+        top = max(score_by_id.values()) if matched else 0
+        if top > 0:
+            pool = [item for item in matched_marketplace if score_by_id[id(item)] == top]
+        else:
+            pool = matched_marketplace
+
+    bucket = _promo_rotation_bucket(period=rotation, now=now)
+    seed = f"{bucket}:{getattr(subscriber, 'id', '')}:{','.join(sorted(focus_tags))}"
+    rotated = _rotate_content_pool(pool, seed=seed)
+    return rotated[: max(1, limit)]
 
 
 def assemble_newsletter_topics_with_tier(
@@ -2161,7 +2266,7 @@ def generate_newsletter_preview(
             industries=industry_list if industry_list else ["Technology"],
         )
 
-    promoted = assemble_promoted_content(dummy, db)
+    promoted = assemble_promoted_content(dummy, db, topics)
     html_body = _build_html(
         dummy,
         topics,
@@ -2234,7 +2339,7 @@ def run_daily_newsletter(db: Session) -> None:
             merged_pipeline=merged,
         )
         if matched:
-            promoted = assemble_promoted_content(subscriber, db)
+            promoted = assemble_promoted_content(subscriber, db, matched)
             ok, sg_err = send_daily_newsletter(
                 subscriber,
                 matched,
@@ -2306,7 +2411,7 @@ def send_test_newsletter(db: Session, to_email: str) -> tuple[bool, str]:
     if not matched:
         return False, "No topics matched for this send (unexpected)."
 
-    promoted = assemble_promoted_content(dummy, db)
+    promoted = assemble_promoted_content(dummy, db, matched)
     ok, sg_err = send_daily_newsletter(
         dummy,
         matched,

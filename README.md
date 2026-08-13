@@ -114,7 +114,13 @@ After a **`docker compose down -v`** or new Railway Postgres plugin, apply refer
 docker compose exec backend python -m backend.seed_local_dev
 ```
 
-That wraps **`seed_sources`** (RSS catalogue), **`seed_domains`** (domain registry), **`seed_topics`** (core domains, radar‑visible), and **`seed_roles`** (CEO/CFO/CTO/CISO/COO/CMO tags).
+That wraps **`seed_sources`** (RSS catalogue), **`seed_domains`** (domain registry), **`seed_topics`** (core domains, radar‑visible), **`seed_roles`** (CEO/CFO/CTO/CISO/COO/CMO tags), and **`seed_marketplace_offers`** (PulseOne Marketplace Content Library promos, tagged by focus area for newsletter rotation). Promo images ship under `frontend/public/marketplace-offers/`; Staging/prod still need the seed (or CMS sync from Dev) so `content_items` rows exist.
+
+Standalone marketplace seed:
+
+```bash
+docker compose exec backend python -m backend.seed_marketplace_offers
+```
 
 ### Reclassifying after a domain change
 

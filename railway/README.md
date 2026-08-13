@@ -116,7 +116,7 @@ export DATABASE_URL='postgresql://…from Railway Postgres Connect…'
 docker compose exec -T -e DATABASE_URL="$DATABASE_URL" backend python -m backend.seed_local_dev
 ```
 
-That installs **`sources`**, publishes **core radar `topics`**, and upserts **standard `roles`**. For ingestion you still need scheduler ticks or manual processing; **`seed_*` modules do not load historical articles.**
+That installs **`sources`**, publishes **core radar `topics`**, upserts **standard `roles`**, and seeds **Marketplace Content Library** offers (`seed_marketplace_offers`). For ingestion you still need scheduler ticks or manual processing; **`seed_*` modules do not load historical articles.**
 
 Alternatively: restore a **`pg_restore` data-only** archive (`scripts/db/README.md`) instead of curated seeds alone.
 
@@ -128,7 +128,7 @@ Link the **Staging** project and select the **Backend** service (`railway link`,
 
 #### A) Curated seeds only (same as repo — not a literal copy of Dev edits)
 
-Installs **`sources`**, published core **`topics`**, and standard **`roles`**. Does **not** copy **`content_items`** or articles from Dev.
+Installs **`sources`**, published core **`topics`**, standard **`roles`**, and **Marketplace `content_items`**. Does **not** copy custom Dev-only library edits or articles from Dev (use option B for a full CMS mirror).
 
 ```bash
 railway ssh -- python -m backend.seed_local_dev

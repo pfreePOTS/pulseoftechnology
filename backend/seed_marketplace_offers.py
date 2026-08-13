@@ -54,7 +54,9 @@ def seed() -> None:
                 )
                 added += 1
         db.commit()
-        print(f"Marketplace offers: added {added}, updated {updated} (of {len(MARKETPLACE_OFFERS)}).")
+        print(
+            f"Marketplace offers: added {added}, updated {updated} (of {len(MARKETPLACE_OFFERS)})."
+        )
     finally:
         db.close()
 

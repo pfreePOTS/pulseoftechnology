@@ -339,9 +339,7 @@ def test_finance_banking_alias_matches_financial_services_grid_and_ranks_first()
         },
         domain="Security",
     )
-    assert email_service._topic_has_industry_grid_hit(
-        fs_security, ["Finance & Banking"]
-    )
+    assert email_service._topic_has_industry_grid_hit(fs_security, ["Finance & Banking"])
     assert not email_service._topic_has_industry_grid_hit(ai_hot, ["Finance & Banking"])
 
     sub = _sub(industries=["Finance & Banking"], domains=["security"])
@@ -654,11 +652,12 @@ def test_newsletter_header_banner_promotes_pulse_of_technology():
     assert "People | Technology | Progress" in banner
     assert "PEOPLE | TECHNOLOGY | PROGRESS</p>" not in banner
     assert "pots_logo_new.png" in banner
-    assert 'width="140"' in banner or 'max-width:140px' in banner
+    assert 'width="140"' in banner or "max-width:140px" in banner
     assert "font-size:34px" in banner
     # Split accent: Technology in brand red (not a single flat black title string only).
-    assert 'color:#E91D24' in banner or 'color: #E91D24' in banner
+    assert "color:#E91D24" in banner or "color: #E91D24" in banner
     assert "The Pulse of Technology</p>" not in banner
+
 
 def test_build_html_header_omits_hot_headline_and_includes_story_rollup():
     hot = {
@@ -833,11 +832,8 @@ def test_hot_topic_lead_includes_short_article_summary_sections():
 def test_newsletter_footer_linkedin_points_to_pulseone_group():
     sub = _sub()
     html = email_service._build_html(sub, [_topic()], db=None)
-    assert (
-        "https://www.linkedin.com/company/pulseone-group-llc/people/?viewAsMember=true"
-        in html
-    )
-    assert "linkedin.com/company/pulseone\"" not in html
+    assert "https://www.linkedin.com/company/pulseone-group-llc/people/?viewAsMember=true" in html
+    assert 'linkedin.com/company/pulseone"' not in html
     assert "linkedin.com/company/pulseone/" not in html
 
 

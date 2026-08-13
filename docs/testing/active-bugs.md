@@ -18,7 +18,6 @@ When the PR Review Council approves with follow-ups, add each actionable follow-
 | ID | Summary | Severity | Status | Reported | Notes |
 |----|---------|----------|--------|----------|-------|
 | PULSE-031 | Newsletter tip-of-week CTA still generic (`pulseone.com`) — not aligned to rotated Marketplace offer / assessment | Enhancement | Open | 2026-08-13 | PR #27 council. `_build_tip_block` in `email_service.py`. |
-| PULSE-030 | Document + run Marketplace Content Library seed on Staging/prod after deploy | Minor | Open | 2026-08-13 | PR #27 council. `python -m backend.seed_marketplace_offers`; add to runbook/Railway README. Static PNGs ship in `frontend/public/marketplace-offers/`. |
 | PULSE-026 | Recommended-path / everyone synthesis cache is in-process only (lost on restart; not shared across replicas) | Enhancement | Deferred (single-replica ops) | 2026-08-05 | Documented in `docs/operational-runbook.md` + `railway/README.md`: keep Backend at 1 replica. Shared Postgres/Redis cache is the follow-on when multi-replica is required. |
 | PULSE-003 | Signal velocity path still has embedding/Pinecone TODO — semantic topic velocity not re-enabled | Enhancement | Deferred (needs real embeddings) | 2026-08-05 | Placeholder hash embedder in `vector_service` is not production-ready. SQL coverage counts remain authoritative; comment clarified in `signal_service._article_count_in_window`. Unblock only after Voyage/OpenAI embeds + index backfill. |
 
@@ -43,6 +42,7 @@ Validated against current `dev` when the tracker was created (2026-08-05). Kept 
 
 | ID | Summary | Severity | Status | Closed | Evidence |
 |----|---------|----------|--------|--------|----------|
+| PULSE-030 | Document Marketplace Content Library seed for Staging/prod | Minor | Fixed | 2026-08-13 | README + `docs/operational-runbook.md` + `railway/README.md`; `seed_local_dev` includes `seed_marketplace_offers` |
 | PULSE-029 | Homepage `LoopSection` lowercase IT wordplay vs `/approach` / radar | Minor | Fixed | 2026-08-07 | `See IT coming` / `Make the most of IT` in `LoopSection.tsx`; body pronouns stay lowercase |
 | PULSE-028 | Voice regression missed backend identity / `ai_service` brochure phrases | Enhancement | Fixed | 2026-08-07 | `backend/tests/test_backend_voice_bans.py` scans `pulseone-identity.md` + `ai_service.py` |
 | PULSE-025 | Staging process-card library lagged Dev on people-inclusive cells | Minor | Fixed | 2026-08-07 | Compared 84/42 both sides; `copy_process_card_images_between` → Staging 42 updated / 42 current; recipe in `railway/README.md` |

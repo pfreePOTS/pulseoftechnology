@@ -106,9 +106,12 @@ _RETIRED_SUBSCRIBER_DOMAIN_LABELS = frozenset({"leadership"})
 _CLASSIFY_BOUNDARY_TABLE = """\
 **Domain semantics (critical):**
 - **AI** — Models, agents, LLM safety, ML platforms, inference economics, AI governance, vector DBs as ML primitives. \
-NOT general business news. AI compliance frameworks → **Compliance**. AI training infra cost → **Cloud**.
+NOT general business news. AI compliance frameworks → **Compliance**. AI training infra cost → **Cloud**. \
+When the primary story is a **threat, control, IAM, SOC, or ransomware** narrative that happens to involve \
+AI tooling, prefer **Security** (AI remains appropriate when the model/platform itself is the subject).
 - **Security** — Threats, IAM, zero trust, SOC, pen testing, ransomware, cyber resilience. \
-Compliance regimes as rules → **Compliance**. Security-of-storage features → **Storage**.
+Compliance regimes as rules → **Compliance**. Security-of-storage features → **Storage**. \
+AI-assisted attacks or defenses still belong here when cyber risk/control is the primary subject.
 - **Cloud** — Public cloud platforms, multi-cloud, FinOps, cloud-native architecture, PaaS, serverless. \
 On-prem servers → **Infrastructure**. Cloud-storage primitives (S3, blob) → **Storage**.
 - **Storage** — Enterprise storage (NAS, SAN, object), backup/DR, data lifecycle, ransomware-resistant storage, \
@@ -117,7 +120,9 @@ data sovereignty, archival. Database engines → **Storage** unless app-tier foc
 discipline. Internal data quality eng → **AI** or **Storage**.
 - **Infrastructure** — Networking, servers, OS, virtualization, hardware refresh, datacenter, edge. \
 Cloud-native workloads → **Cloud**. Endpoint mgmt → **Security** if security-led, else **Infrastructure**.
-- **Other** — Use only when the article does not fit any domain above. Do NOT use Other as a catch-all for \
+- **Other** — Use only for **enterprise technology** that does not fit a core pillar above. \
+Do NOT use Other as a dump for non-tech commodity prices, consumer markets, sports, or lifestyle \
+(those are out of scope and should not be classified). Do NOT use Other as a catch-all for \
 lazy classification."""
 
 _CLASSIFY_TEMPLATE = """\

@@ -38,6 +38,8 @@ def test_preview_excludes_topics_outside_selected_domains(client, db_session):
     html = r.text
     assert "Sandbox Security Only" not in html
     assert "Sandbox AI Only" in html
+    assert "data-assembly-tier=" in html
+    assert "Assembly tier:" in html
 
 
 def test_preview_domain_filter_is_case_insensitive(client, db_session):

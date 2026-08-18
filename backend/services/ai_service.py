@@ -80,19 +80,33 @@ def _truncate_to_max_sentences(text: object | None, max_sentences: int) -> str:
 
 
 # Pipeline / admin labels; DB model strings may still list legacy ids — ``llm_client.resolved_model()`` maps them.
-HAIKU_MODEL = "deepseek-v4-pro"
+# Hourly ingest is short JSON (gate/classify/score/cluster/summarize). Flash is ~3× cheaper
+# than Pro and is the right default; Prompt Lab can still pin a node back to Pro.
+HAIKU_MODEL = "deepseek-v4-flash"
 SONNET_MODEL = "deepseek-v4-pro"
 
+INTAKE_AGENTS = frozenset(
+    {
+        "gate",
+        "classify",
+        "score",
+        "cluster",
+        "summarize_node_legacy",
+        "summarize_node_persona",
+    }
+)
+
 _SONNET_DEFAULT_AGENTS = {
-    "cluster",
-    "summarize_node_legacy",
-    "summarize_node_persona",
     "summarize_topic",
+    "topic_level_persona",
+    "industry_positioning",
 }
 
 
 def default_model_for_agent(agent_name: str) -> str:
     """Fallback runtime model for agents that do not yet have a DB model value."""
+    if agent_name in INTAKE_AGENTS:
+        return HAIKU_MODEL
     return SONNET_MODEL if agent_name in _SONNET_DEFAULT_AGENTS else HAIKU_MODEL
 
 
@@ -1051,7 +1065,14 @@ def _call_result(
     json_response: bool = False,
     disable_thinking: bool = False,
 ) -> llm_client.ChatCompletionResult:
-    """DeepSeek-first chat completion with provider timing and usage when exposed."""
+    """DeepSeek-first chat completion with provider timing and usage when exposed.
+
+    JSON-mode calls disable DeepSeek thinking. V4 Pro reasons by default and those
+    tokens count against ``max_tokens`` — the ingest nodes only budget 1–2k, so
+    thinking can return empty visible JSON (PULSE-033 / same root as PULSE-023).
+    """
+    if json_response:
+        disable_thinking = True
     return llm_client.chat_completion_result(
         model,
         system=system,
@@ -1240,6 +1261,7 @@ def _node_gate(db: Session, content: str, article_id: int | None = None) -> bool
             _wrap_untrusted_article_cdata(content),
             max_tokens=1024,
             json_response=True,
+            disable_thinking=True,
         )
         result = _parse(
             cr.text,
@@ -1263,8 +1285,8 @@ def _node_gate(db: Session, content: str, article_id: int | None = None) -> bool
         else:
             logger.debug("[gate] relevant=%s confidence=n/a", rel)
         return rel
-    except llm_client.LLMAPIError:
-        logger.warning("[gate] Transient API error — will retry article")
+    except llm_client.LLMAPIError as exc:
+        logger.warning("[gate] Transient API error — will retry article: %s", exc)
         raise
     except Exception as exc:
         if isinstance(exc, PipelineRetryRequested):
@@ -1326,6 +1348,7 @@ def _node_classify(
             user,
             max_tokens=1536,
             json_response=True,
+            disable_thinking=True,
         )
         result = _parse(
             cr.text,
@@ -1344,8 +1367,8 @@ def _node_classify(
             "subdomain": sub_s,
             "tags": result.get("tags") or [],
         }
-    except llm_client.LLMAPIError:
-        logger.warning("[classify] Transient API error — will retry article")
+    except llm_client.LLMAPIError as exc:
+        logger.warning("[classify] Transient API error — will retry article: %s", exc)
         raise
     except Exception as exc:
         if isinstance(exc, PipelineRetryRequested):
@@ -1370,6 +1393,7 @@ def _node_score(
             _wrap_untrusted_article_cdata(content),
             max_tokens=1024,
             json_response=True,
+            disable_thinking=True,
         )
         result = _parse(
             cr.text,
@@ -1385,8 +1409,8 @@ def _node_score(
             "urgency_score": float(result.get("urgency_score") or 5.0),
             "reason": result.get("reason") or "",
         }
-    except llm_client.LLMAPIError:
-        logger.warning("[score] Transient API error — will retry article")
+    except llm_client.LLMAPIError as exc:
+        logger.warning("[score] Transient API error — will retry article: %s", exc)
         raise
     except Exception:
         logger.exception("[score] Unexpected error — using defaults")
@@ -1453,6 +1477,7 @@ def _node_cluster(
                 user,
                 max_tokens=1536,
                 json_response=True,
+                disable_thinking=True,
             )
             result = _parse(
                 cr.text,
@@ -1472,8 +1497,8 @@ def _node_cluster(
             article_id,
         )
         return ""
-    except llm_client.LLMAPIError:
-        logger.warning("[cluster] Transient API error — will retry article")
+    except llm_client.LLMAPIError as exc:
+        logger.warning("[cluster] Transient API error — will retry article: %s", exc)
         raise
     except Exception:
         logger.exception("[cluster] Unexpected error — will retry article")
@@ -1523,6 +1548,7 @@ def _node_summarize(
             _wrap_untrusted_article_cdata(content),
             max_tokens=max_tokens,
             json_response=True,
+            disable_thinking=True,
         )
         result = _parse(
             cr.text,
@@ -1554,8 +1580,8 @@ def _node_summarize(
             "why_it_matters": result.get("why_it_matters") or "",
             "persona_impacts": None,
         }
-    except llm_client.LLMAPIError:
-        logger.warning("[summarize] Transient API error — will retry article")
+    except llm_client.LLMAPIError as exc:
+        logger.warning("[summarize] Transient API error — will retry article: %s", exc)
         raise
     except Exception:
         logger.exception("[summarize] Unexpected error — using defaults")
@@ -1709,7 +1735,7 @@ def suggest_subdomain_for_topic(topic_id: int, db: Session) -> str:
         raise ValueError("Topic not found")
     if not llm_client.is_llm_configured():
         raise ValueError(
-            "No LLM API key configured (set DEEPSEEK_API_KEY and/or ANTHROPIC_API_KEY)"
+            "No LLM API key configured (set DEEPSEEK_API_KEY, ANTHROPIC_API_KEY, and/or OPENAI_API_KEY)"
         )
 
     domain_key = _topic_domain_label(topic)
@@ -1984,6 +2010,22 @@ def process_raw_articles(db: Session) -> int:
             attempts = int(getattr(article, "review_attempts", 0) or 0) + 1
             article.review_attempts = attempts
             article.review_reason = f"LLMAPIError (attempt {attempts}): {str(exc)[:400]}"
+            try:
+                from .optimizer_service import record_agent_run
+
+                record_agent_run(
+                    agent_name="pipeline",
+                    is_success=False,
+                    fallback_used=True,
+                    article_id=article.id,
+                    failure_detail=article.review_reason,
+                )
+            except Exception:
+                logger.debug(
+                    "AgentRun telemetry skipped for pipeline LLMAPIError article id=%s",
+                    article.id,
+                    exc_info=True,
+                )
             if attempts >= _LLM_API_ERROR_RETRY_CAP:
                 logger.warning(
                     "Article id=%d hit LLM API retry cap (%d) — escalating to review",

@@ -17,6 +17,7 @@ When the PR Review Council approves with follow-ups, add each actionable follow-
 
 | ID | Summary | Severity | Status | Reported | Notes |
 |----|---------|----------|--------|----------|-------|
+| PULSE-032 | Staging Collection filling with `raw`/`retry`; AI Performance shows 0 runs because `LLMAPIError` (provider billing/outage) writes no AgentRun | Critical | Open | 2026-08-18 | RSS cron is running (Aug 18 ingest). Local logs: DeepSeek 402 + Anthropic credit too low. Telemetry covered by `test_llm_api_error_increments_attempts_and_escalates_at_cap`. Later same-day logs show DeepSeek **200s** again — billing may be recovered; leftover empty-JSON retries are PULSE-033 (fixed). |
 | PULSE-031 | Newsletter tip-of-week CTA still generic (`pulseone.com`) — not aligned to rotated Marketplace offer / assessment | Enhancement | Open | 2026-08-13 | PR #27 council. `_build_tip_block` in `email_service.py`. |
 | PULSE-026 | Recommended-path / everyone synthesis cache is in-process only (lost on restart; not shared across replicas) | Enhancement | Deferred (single-replica ops) | 2026-08-05 | Documented in `docs/operational-runbook.md` + `railway/README.md`: keep Backend at 1 replica. Shared Postgres/Redis cache is the follow-on when multi-replica is required. |
 | PULSE-003 | Signal velocity path still has embedding/Pinecone TODO — semantic topic velocity not re-enabled | Enhancement | Deferred (needs real embeddings) | 2026-08-05 | Placeholder hash embedder in `vector_service` is not production-ready. SQL coverage counts remain authoritative; comment clarified in `signal_service._article_count_in_window`. Unblock only after Voyage/OpenAI embeds + index backfill. |
@@ -42,6 +43,7 @@ Validated against current `dev` when the tracker was created (2026-08-05). Kept 
 
 | ID | Summary | Severity | Status | Closed | Evidence |
 |----|---------|----------|--------|--------|----------|
+| PULSE-033 | Ingest classify/cluster empty DeepSeek JSON (`deepseek-v4-pro` thinking ate `max_tokens`) | Major | Fixed | 2026-08-18 | `_call_result` forces `disable_thinking=True` on every `json_response` call (ingest nodes + topic_persona, subdomain_topic, industry_positioning, trend_pick, topic_summary, signal). `tests/test_pipeline_disable_thinking.py` |
 | PULSE-030 | Document Marketplace Content Library seed for Staging/prod | Minor | Fixed | 2026-08-13 | README + `docs/operational-runbook.md` + `railway/README.md`; `seed_local_dev` includes `seed_marketplace_offers` |
 | PULSE-029 | Homepage `LoopSection` lowercase IT wordplay vs `/approach` / radar | Minor | Fixed | 2026-08-07 | `See IT coming` / `Make the most of IT` in `LoopSection.tsx`; body pronouns stay lowercase |
 | PULSE-028 | Voice regression missed backend identity / `ai_service` brochure phrases | Enhancement | Fixed | 2026-08-07 | `backend/tests/test_backend_voice_bans.py` scans `pulseone-identity.md` + `ai_service.py` |

@@ -16,6 +16,7 @@ interface ArticleRow {
   ingested_at: string;
   status: string;
   archived_at?: string | null;
+  review_reason?: string | null;
 }
 
 type StatusFilter = "all" | "raw" | "retry" | "processed" | "review" | "skipped";
@@ -65,6 +66,7 @@ export default function ResearchCollectionPage() {
   const [processJob, setProcessJob] = useState<JobState>("idle");
   const [jobToast, setJobToast] = useState<string | null>(null);
   const [progress, setProgress] = useState<PipelineProgress | null>(null);
+  const [requeueBusy, setRequeueBusy] = useState(false);
 
   const fetchPage = useCallback(
     async (offset: number, append: boolean) => {
@@ -175,6 +177,35 @@ export default function ResearchCollectionPage() {
     }
   }
 
+  const requeueable = articles.filter(
+    (row) => row.status === "skipped" || row.status === "review",
+  );
+
+  async function requeueRows(ids: number[], confirmLabel: string) {
+    if (ids.length === 0) return;
+    const ok = window.confirm(confirmLabel);
+    if (!ok) return;
+    setRequeueBusy(true);
+    setJobToast(null);
+    try {
+      const res = await adminFetch(`${API_BASE}/api/admin/articles/requeue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const body = (await res.json()) as { requeued: number };
+      setJobToast(
+        `Requeued ${body.requeued} ${body.requeued === 1 ? "article" : "articles"} to retry. Process raw articles or wait for the hourly job.`,
+      );
+      await refreshList();
+    } catch (e) {
+      setJobToast(e instanceof Error ? e.message : "Requeue failed");
+    } finally {
+      setRequeueBusy(false);
+    }
+  }
+
   const showLoadMore = !loading && canLoadMore;
 
   return (
@@ -252,6 +283,21 @@ export default function ResearchCollectionPage() {
           >
             Refresh list
           </button>
+          {filter === "skipped" && requeueable.length > 0 ? (
+            <button
+              type="button"
+              onClick={() =>
+                void requeueRows(
+                  requeueable.map((row) => row.id),
+                  `Send ${requeueable.length} visible skipped ${requeueable.length === 1 ? "article" : "articles"} back to the AI retry queue? Most skipped rows were judged non-tech and will likely skip again.`,
+                )
+              }
+              disabled={requeueBusy}
+              className="rounded-lg border border-gray-600 bg-gray-900 px-3 py-2 text-sm font-semibold text-gray-100 hover:bg-gray-800 disabled:opacity-50"
+            >
+              {requeueBusy ? "Requeuing…" : "Requeue visible skipped"}
+            </button>
+          ) : null}
         </div>
         {jobToast ? (
           <p className="mt-2 text-sm text-gray-400" role="status">
@@ -379,6 +425,29 @@ export default function ResearchCollectionPage() {
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={row.status} />
+                      {row.review_reason ? (
+                        <p
+                          className="mt-1 max-w-xs text-xs leading-snug text-gray-500"
+                          title={row.review_reason}
+                        >
+                          {row.review_reason}
+                        </p>
+                      ) : null}
+                      {row.status === "skipped" || row.status === "review" ? (
+                        <button
+                          type="button"
+                          disabled={requeueBusy}
+                          onClick={() =>
+                            void requeueRows(
+                              [row.id],
+                              `Send “${row.title}” back to the AI retry queue?`,
+                            )
+                          }
+                          className="mt-2 text-xs font-medium text-[#019E7C] hover:underline disabled:opacity-50"
+                        >
+                          Requeue
+                        </button>
+                      ) : null}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-gray-500">
                       {row.archived_at ? (

@@ -40,6 +40,8 @@ export default function ArticleReviewPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkNote, setBulkNote] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -68,6 +70,34 @@ export default function ArticleReviewPage() {
       cancelled = true;
     };
   }, [load]);
+
+  async function requeueProviderErrors() {
+    const ok = window.confirm(
+      "Send every Review row that failed on an LLM provider error (DeepSeek / Anthropic / OpenAI) back to the AI queue? Uncertain or Review Needed stories stay here.",
+    );
+    if (!ok) return;
+    setBulkBusy(true);
+    setError(null);
+    setBulkNote(null);
+    try {
+      const res = await adminFetch(
+        `${API_BASE}/api/admin/articles/review/requeue-provider-errors`,
+        { method: "POST" },
+      );
+      if (!res.ok) {
+        throw new Error(await res.text().catch(() => res.statusText));
+      }
+      const body = (await res.json()) as { requeued: number; left_in_review: number };
+      setBulkNote(
+        `Requeued ${body.requeued} provider-error ${body.requeued === 1 ? "article" : "articles"}. ${body.left_in_review} still need a human.`,
+      );
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Bulk requeue failed");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   async function submitReview(
     id: number,
@@ -118,7 +148,16 @@ export default function ArticleReviewPage() {
           >
             Refresh
           </button>
+          <button
+            type="button"
+            onClick={() => void requeueProviderErrors()}
+            disabled={loading || bulkBusy}
+            className="rounded-lg border border-gray-700 bg-gray-900 px-3 py-1.5 text-sm font-medium text-gray-200 hover:bg-gray-800 disabled:opacity-50"
+          >
+            {bulkBusy ? "Requeuing…" : "Requeue provider failures"}
+          </button>
         </div>
+        {bulkNote ? <p className="mt-3 text-sm text-gray-300">{bulkNote}</p> : null}
         {error ? (
           <p className="mt-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
             {error}

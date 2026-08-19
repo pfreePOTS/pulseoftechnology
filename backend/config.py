@@ -69,8 +69,9 @@ class Settings(BaseSettings):
     # (/recommended-path and /everyone build while a visitor watches a spinner).
     recommended_path_llm_model: str = "deepseek-v4-flash"
     # Anthropic Claude — optional fallback when DeepSeek fails or when only this key is set
-    # OpenAI (Images API — generated `/recommended-path` banners, stored as BYTEA rows)
+    # OpenAI — Images API plus last-resort chat fallback when DeepSeek and Anthropic fail
     openai_api_key: str = ""
+    openai_chat_model: str = "gpt-4o-mini"
     recommended_path_synthesis_images_enabled: bool = True
     recommended_path_synthesis_image_model: str = "gpt-image-1"
     recommended_path_synthesis_image_size: str = "1536x1024"

@@ -88,3 +88,107 @@ def test_review_endpoint_skips_non_tech_article_and_records_feedback(client, db_
     assert article.topic_id is None
     assert article.review_notes == "Puzzle content, not technology."
     assert feedback.action == "skip"
+
+
+def test_review_retry_resets_attempt_counter(client, db_session):
+    source = Source(name="Forbes", url="https://example.com/rss", type=SourceType.rss)
+    article = Article(
+        source=source,
+        title="Why AI Agents Need More Than A Contact Database To Act",
+        url="https://example.com/agents-crm",
+        content="Enterprise AI agents.",
+        status=ArticleStatus.review,
+        review_attempts=3,
+        review_reason="LLMAPIError (attempt 3): DeepSeek failed; Anthropic fallback failed",
+    )
+    db_session.add_all([source, article])
+    db_session.commit()
+    _login(client)
+
+    response = client.patch(
+        f"/api/admin/articles/{article.id}/review",
+        json={"action": "retry"},
+    )
+
+    assert response.status_code == 200
+    db_session.refresh(article)
+    assert article.status == ArticleStatus.retry
+    assert article.review_attempts == 0
+
+
+def test_requeue_ids_moves_skipped_to_retry(client, db_session):
+    source = Source(name="Wire", url="https://example.com/rss", type=SourceType.rss)
+    skipped = Article(
+        source=source,
+        title="Skipped tech story",
+        url="https://example.com/skipped",
+        content="Body.",
+        status=ArticleStatus.skipped,
+        review_attempts=1,
+    )
+    processed = Article(
+        source=source,
+        title="Already processed",
+        url="https://example.com/processed",
+        content="Body.",
+        status=ArticleStatus.processed,
+    )
+    db_session.add_all([source, skipped, processed])
+    db_session.commit()
+    _login(client)
+
+    response = client.post(
+        "/api/admin/articles/requeue",
+        json={"ids": [skipped.id, processed.id]},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["requeued"] == 1
+    assert processed.id in body["ignored_ids"]
+    db_session.refresh(skipped)
+    db_session.refresh(processed)
+    assert skipped.status == ArticleStatus.retry
+    assert skipped.review_attempts == 0
+    assert processed.status == ArticleStatus.processed
+
+
+def test_bulk_requeue_provider_errors_leaves_genuine_review_rows(client, db_session):
+    source = Source(name="Wire", url="https://example.com/rss", type=SourceType.rss)
+    billing = Article(
+        source=source,
+        title="Billing failure leftover",
+        url="https://example.com/billing",
+        content="Body.",
+        status=ArticleStatus.review,
+        review_attempts=3,
+        review_reason=(
+            "LLMAPIError (attempt 3): DeepSeek failed; Anthropic fallback failed: "
+            "credit balance is too low"
+        ),
+    )
+    uncertain = Article(
+        source=source,
+        title="Real review needed",
+        url="https://example.com/uncertain",
+        content="Body.",
+        status=ArticleStatus.review,
+        review_attempts=2,
+        review_reason="Other: Review Needed fallback",
+    )
+    db_session.add_all([source, billing, uncertain])
+    db_session.commit()
+    _login(client)
+
+    response = client.post("/api/admin/articles/review/requeue-provider-errors")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["requeued"] == 1
+    assert body["left_in_review"] == 1
+    db_session.refresh(billing)
+    db_session.refresh(uncertain)
+    assert billing.status == ArticleStatus.retry
+    assert billing.review_attempts == 0
+    assert uncertain.status == ArticleStatus.review
+    assert uncertain.review_attempts == 2

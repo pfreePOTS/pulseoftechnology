@@ -16,11 +16,80 @@ from ..services.signal_service import _article_coverage_time
 from ..services.topic_serializers import topic_domain_short
 from .ai_service import HAIKU_MODEL
 from .llm_client import LLMAPIError, chat_completion, is_llm_configured
-from .pipeline_settings import merge_pipeline_settings
+from .pipeline_settings import get_site_config_dict, merge_pipeline_settings, upsert_site_config
 
 logger = logging.getLogger(__name__)
 
 Trend = Literal["up", "down", "flat"]
+
+# SiteConfig JSON: [{date: YYYY-MM-DD, topic_id: int, article_id: int | None}, ...]
+HOT_OF_DAY_HISTORY_KEY = "hot_of_day_history"
+_HOT_HISTORY_KEEP_DAYS = 30
+
+
+def _hot_day_iso(when: datetime) -> str:
+    return when.astimezone(UTC).date().isoformat()
+
+
+def _normalize_hot_history(raw: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for row in raw:
+        if not isinstance(row, dict):
+            continue
+        day = str(row.get("date") or "").strip()
+        try:
+            tid = int(row.get("topic_id"))
+        except (TypeError, ValueError):
+            continue
+        if not day or tid <= 0:
+            continue
+        art_id: int | None
+        try:
+            art_raw = row.get("article_id")
+            art_id = int(art_raw) if art_raw is not None else None
+        except (TypeError, ValueError):
+            art_id = None
+        out.append({"date": day, "topic_id": tid, "article_id": art_id})
+    return out
+
+
+def load_hot_of_day_history(db: Session) -> list[dict[str, Any]]:
+    return _normalize_hot_history(get_site_config_dict(db).get(HOT_OF_DAY_HISTORY_KEY))
+
+
+def _recent_hot_topic_ids(
+    history: list[dict[str, Any]], *, today: str, lookback_days: int
+) -> set[int]:
+    cutoff = datetime.fromisoformat(today).date() - timedelta(days=max(1, lookback_days))
+    skip: set[int] = set()
+    for row in history:
+        if row["date"] >= today:
+            continue
+        try:
+            row_day = datetime.fromisoformat(row["date"]).date()
+        except ValueError:
+            continue
+        if row_day >= cutoff:
+            skip.add(int(row["topic_id"]))
+    return skip
+
+
+def persist_hot_of_day_pick(
+    db: Session,
+    *,
+    day: str,
+    topic_id: int,
+    article_id: int | None,
+    now: datetime,
+) -> None:
+    history = [row for row in load_hot_of_day_history(db) if row["date"] != day]
+    history.append({"date": day, "topic_id": topic_id, "article_id": article_id})
+    keep_after = (now.astimezone(UTC).date() - timedelta(days=_HOT_HISTORY_KEEP_DAYS)).isoformat()
+    history = [row for row in history if row["date"] >= keep_after]
+    history.sort(key=lambda r: r["date"])
+    upsert_site_config(db, {HOT_OF_DAY_HISTORY_KEY: history})
 
 
 def _velocity_trend(recent_n: int, prior_n: int) -> Trend:
@@ -254,20 +323,89 @@ def build_positioning_insights(
     return results
 
 
-def build_hot_of_day(db: Session) -> dict[str, Any]:
-    """
-    Among **on-radar** topics (``selected``), pick the topic with the highest article count
-    in the primary trend window (coverage time). Tie-break: higher ``urgency_score``, then
-    lower ``topic_id``.
+def _hot_article_for_topic(
+    db: Session,
+    topic_id: int,
+    *,
+    recent_start: datetime,
+    now: datetime,
+) -> Article | None:
+    ct = _article_coverage_time()
+    return (
+        db.query(Article)
+        .options(joinedload(Article.source))
+        .filter(
+            Article.topic_id == topic_id,
+            Article.archived_at.is_(None),
+            ct >= recent_start,
+            ct < now,
+        )
+        .order_by(Article.ingested_at.desc())
+        .first()
+    )
 
-    **Hot article**: the most recently *ingested* article tied to that topic within the same
-    window (among rows matching the count query).
+
+def _serialize_hot_article(hot_art: Article | None) -> dict[str, Any] | None:
+    if hot_art is None:
+        return None
+    img_u = (getattr(hot_art, "image_url", None) or "").strip()
+    return {
+        "id": hot_art.id,
+        "title": hot_art.title,
+        "url": hot_art.url,
+        "published_at": hot_art.published_at,
+        "ingested_at": hot_art.ingested_at,
+        "source_name": hot_art.source.name if hot_art.source else None,
+        "image_url": img_u or None,
+        "what_is_it": hot_art.what_is_it,
+        "why_it_matters": hot_art.why_it_matters,
+    }
+
+
+def _hot_payload(
+    *,
+    tw: int,
+    topic: Topic,
+    articles_in_window: int,
+    hot_art: Article | None,
+) -> dict[str, Any]:
+    return {
+        "trend_window_days": tw,
+        "hot_topic": {
+            "id": topic.id,
+            "name": topic.name,
+            "domain": topic_domain_short(topic),
+            "subdomain": getattr(topic, "subdomain", None) or "",
+            "urgency_score": topic.urgency_score,
+        },
+        "articles_in_window": articles_in_window,
+        "hot_article": _serialize_hot_article(hot_art),
+    }
+
+
+def build_hot_of_day(db: Session, *, now: datetime | None = None) -> dict[str, Any]:
+    """
+    Shared editorial lead for **every** subscriber (not profile-filtered).
+
+    Among **on-radar** topics (``selected``), pick the topic with the highest article count
+    in the primary trend window. Tie-break: higher ``urgency_score``, then lower ``topic_id``.
+
+    Guardrails:
+    - Today's pick is locked in SiteConfig so preview/send/admin all show the same lead.
+    - Topics used as hot in the last ``trend_window_days`` are skipped so the lead rotates.
+    - If every eligible topic was used recently, fall back to the highest-count topic.
+
+    **Hot article**: the most recently *ingested* article on the chosen topic in the window.
     """
     merged = merge_pipeline_settings(db)
     tw = merged.trend_window_days
-    now = datetime.now(UTC)
-    recent_start = now - timedelta(days=tw)
-    ct = _article_coverage_time()
+    when = now or datetime.now(UTC)
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=UTC)
+    else:
+        when = when.astimezone(UTC)
+    today = _hot_day_iso(when)
+    recent_start = when - timedelta(days=tw)
 
     topics: list[Topic] = (
         db.query(Topic)
@@ -292,62 +430,51 @@ def build_hot_of_day(db: Session) -> dict[str, Any]:
     if not topics:
         return empty
 
+    by_id = {t.id: t for t in topics}
     topic_ids = [t.id for t in topics]
-    recent_c = _window_counts(db, topic_ids, recent_start, now)
+    recent_c = _window_counts(db, topic_ids, recent_start, when)
+    history = load_hot_of_day_history(db)
+
+    locked = next((row for row in history if row["date"] == today), None)
+    if locked is not None:
+        locked_topic = by_id.get(int(locked["topic_id"]))
+        locked_n = recent_c.get(int(locked["topic_id"]), 0) if locked_topic else 0
+        if locked_topic is not None and locked_n > 0:
+            hot_art = _hot_article_for_topic(
+                db, locked_topic.id, recent_start=recent_start, now=when
+            )
+            if hot_art is not None:
+                return _hot_payload(
+                    tw=tw,
+                    topic=locked_topic,
+                    articles_in_window=locked_n,
+                    hot_art=hot_art,
+                )
 
     max_n = max(recent_c.values(), default=0)
     if max_n == 0:
         return empty
 
-    hot_topic_row: Topic | None = None
-    for t in topics:
-        if recent_c.get(t.id, 0) == max_n:
-            hot_topic_row = t
-            break
+    skip_ids = _recent_hot_topic_ids(history, today=today, lookback_days=tw)
+    ranked = [t for t in topics if recent_c.get(t.id, 0) > 0]
+    ranked.sort(key=lambda t: (-recent_c.get(t.id, 0), -t.urgency_score, t.id))
+    rotated = [t for t in ranked if t.id not in skip_ids]
+    hot_topic_row = (rotated or ranked)[0]
 
-    if hot_topic_row is None:
-        return empty
-
-    hot_art = (
-        db.query(Article)
-        .options(joinedload(Article.source))
-        .filter(
-            Article.topic_id == hot_topic_row.id,
-            Article.archived_at.is_(None),
-            ct >= recent_start,
-            ct < now,
-        )
-        .order_by(Article.ingested_at.desc())
-        .first()
+    hot_art = _hot_article_for_topic(db, hot_topic_row.id, recent_start=recent_start, now=when)
+    persist_hot_of_day_pick(
+        db,
+        day=today,
+        topic_id=hot_topic_row.id,
+        article_id=hot_art.id if hot_art is not None else None,
+        now=when,
     )
-
-    hot_article_out: dict[str, Any] | None = None
-    if hot_art is not None:
-        img_u = (getattr(hot_art, "image_url", None) or "").strip()
-        hot_article_out = {
-            "id": hot_art.id,
-            "title": hot_art.title,
-            "url": hot_art.url,
-            "published_at": hot_art.published_at,
-            "ingested_at": hot_art.ingested_at,
-            "source_name": hot_art.source.name if hot_art.source else None,
-            "image_url": img_u or None,
-            "what_is_it": hot_art.what_is_it,
-            "why_it_matters": hot_art.why_it_matters,
-        }
-
-    return {
-        "trend_window_days": tw,
-        "hot_topic": {
-            "id": hot_topic_row.id,
-            "name": hot_topic_row.name,
-            "domain": topic_domain_short(hot_topic_row),
-            "subdomain": getattr(hot_topic_row, "subdomain", None) or "",
-            "urgency_score": hot_topic_row.urgency_score,
-        },
-        "articles_in_window": max_n,
-        "hot_article": hot_article_out,
-    }
+    return _hot_payload(
+        tw=tw,
+        topic=hot_topic_row,
+        articles_in_window=recent_c.get(hot_topic_row.id, 0),
+        hot_art=hot_art,
+    )
 
 
 def newsletter_topic_velocity_trend(db: Session, topic_id: int) -> Trend:

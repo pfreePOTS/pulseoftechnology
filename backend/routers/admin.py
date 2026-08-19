@@ -556,6 +556,20 @@ class ArticleStatsOut(BaseModel):
     archived: int
 
 
+class ArticleRequeueIn(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=1000)
+
+
+class ArticleRequeueOut(BaseModel):
+    requeued: int
+    ignored_ids: list[int]
+
+
+class RequeueProviderErrorsOut(BaseModel):
+    requeued: int
+    left_in_review: int
+
+
 class PipelineProgressOut(BaseModel):
     raw: int
     retry: int = 0
@@ -610,6 +624,65 @@ def article_pipeline_progress(
         total=total,
         max_per_pass=int(app_settings.article_pipeline_max_per_pass),
     )
+
+
+_REQUEUEABLE_STATUSES = frozenset({ArticleStatus.skipped, ArticleStatus.review, ArticleStatus.retry})
+
+
+@router.post("/articles/requeue", response_model=ArticleRequeueOut)
+def requeue_articles(
+    payload: ArticleRequeueIn,
+    db: Session = Depends(get_db),
+    _: AdminUser = Depends(require_admin),
+):
+    """Put skipped/review rows back on ``retry`` so the hourly AI pass picks them up."""
+    rows = db.query(Article).filter(Article.id.in_(payload.ids)).all()
+    found = {a.id: a for a in rows}
+    ignored = [i for i in payload.ids if i not in found or found[i].status not in _REQUEUEABLE_STATUSES]
+    requeued = 0
+    for article_id in payload.ids:
+        article = found.get(article_id)
+        if article is None or article.status not in _REQUEUEABLE_STATUSES:
+            continue
+        article.status = ArticleStatus.retry
+        article.review_attempts = 0
+        article.topic_id = None
+        requeued += 1
+    db.commit()
+    return ArticleRequeueOut(requeued=requeued, ignored_ids=ignored)
+
+
+@router.post("/articles/review/requeue-provider-errors", response_model=RequeueProviderErrorsOut)
+def requeue_provider_error_reviews(
+    db: Session = Depends(get_db),
+    _: AdminUser = Depends(require_admin),
+):
+    """Move Review rows that failed on LLM provider errors back to ``retry``.
+
+    Leaves genuine curator review (uncertain JSON / Review Needed) untouched.
+    Resets ``review_attempts`` so the next pipeline tick does not immediately
+    re-escalate to Review.
+    """
+    provider_q = db.query(Article).filter(
+        Article.status == ArticleStatus.review,
+        Article.archived_at.is_(None),
+        Article.review_reason.ilike("%llmapierror%"),
+    )
+    requeued = provider_q.update(
+        {
+            Article.status: ArticleStatus.retry,
+            Article.review_attempts: 0,
+        },
+        synchronize_session=False,
+    )
+    db.commit()
+    left = (
+        db.query(func.count(Article.id))
+        .filter(Article.status == ArticleStatus.review, Article.archived_at.is_(None))
+        .scalar()
+        or 0
+    )
+    return RequeueProviderErrorsOut(requeued=int(requeued or 0), left_in_review=int(left))
 
 
 @router.get("/articles", response_model=list[ArticleListItem])
@@ -756,6 +829,7 @@ def review_article(
     if payload.action == "retry":
         _record_classification_feedback(db, article, action="retry", notes=notes)
         article.status = ArticleStatus.retry
+        article.review_attempts = 0
         article.topic_id = None
         article.review_notes = notes
         db.commit()
@@ -2292,7 +2366,7 @@ def test_prompt_lab_request(
     if not is_llm_configured():
         raise HTTPException(
             status_code=400,
-            detail="Configure DEEPSEEK_API_KEY and/or ANTHROPIC_API_KEY",
+            detail="Configure DEEPSEEK_API_KEY, ANTHROPIC_API_KEY, and/or OPENAI_API_KEY",
         )
     try:
         result = chat_completion_result(

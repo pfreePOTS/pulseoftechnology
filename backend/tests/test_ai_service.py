@@ -758,7 +758,10 @@ class TestProcessRawArticles:
 
         boom = ai_service.llm_client.LLMAPIError("provider 503")
 
-        with patch.object(ai_service, "evaluate_article", side_effect=boom):
+        with (
+            patch.object(ai_service, "evaluate_article", side_effect=boom),
+            patch("backend.services.optimizer_service.record_agent_run") as ra,
+        ):
             for expected_attempt in range(1, ai_service._LLM_API_ERROR_RETRY_CAP):
                 ai_service.process_raw_articles(db_session)
                 db_session.refresh(article)
@@ -772,6 +775,13 @@ class TestProcessRawArticles:
         assert article.status == ArticleStatus.review
         assert article.topic_id is None
         assert article.review_attempts == ai_service._LLM_API_ERROR_RETRY_CAP
+        assert ra.call_count == ai_service._LLM_API_ERROR_RETRY_CAP
+        first = ra.call_args_list[0].kwargs
+        assert first["agent_name"] == "pipeline"
+        assert first["is_success"] is False
+        assert first["fallback_used"] is True
+        assert first["article_id"] == article.id
+        assert first["failure_detail"] and "provider 503" in first["failure_detail"]
 
     def test_retry_rows_are_processed_before_fresh_raw_rows(self, db_session):
         """A `retry` row queued earlier in the day should not sit behind a fresh

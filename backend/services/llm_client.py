@@ -1,10 +1,12 @@
 """
-LLM completions: **DeepSeek** (OpenAI-compatible) as primary; **Anthropic Claude** optional fallback.
+LLM completions: DeepSeek primary, then Anthropic Claude, then OpenAI chat.
 
-If ``DEEPSEEK_API_KEY`` is set, calls go to DeepSeek first. On failure, if ``ANTHROPIC_API_KEY`` is set,
-requests are retried against Claude using a tier derived from the requested model label.
+If ``DEEPSEEK_API_KEY`` is set, calls go to DeepSeek first. On failure:
+1. Anthropic Claude (when ``ANTHROPIC_API_KEY`` is set)
+2. OpenAI chat (when ``OPENAI_API_KEY`` is set) — last-resort backup model
 
-If only ``ANTHROPIC_API_KEY`` is set (no DeepSeek key), Anthropic is used directly.
+Billing failures (402 / insufficient credit) skip same-provider retries and open a
+short circuit so the next articles go straight to the backup.
 """
 
 from __future__ import annotations
@@ -48,9 +50,48 @@ def _anthropic_configured() -> bool:
     return bool((settings.anthropic_api_key or "").strip())
 
 
+def _openai_chat_configured() -> bool:
+    return bool((settings.openai_api_key or "").strip())
+
+
 def is_llm_configured() -> bool:
-    """At least one of DeepSeek or Anthropic credentials present."""
-    return _deepseek_configured() or _anthropic_configured()
+    """At least one chat provider credential is present."""
+    return _deepseek_configured() or _anthropic_configured() or _openai_chat_configured()
+
+
+_DEEPSEEK_BILLING_COOLDOWN_S = 15 * 60
+_deepseek_circuit_until = 0.0
+
+
+def reset_provider_circuits() -> None:
+    """Test helper — clear DeepSeek billing skip window."""
+    global _deepseek_circuit_until
+    _deepseek_circuit_until = 0.0
+
+
+def _is_billing_error(exc: BaseException) -> bool:
+    code = getattr(exc, "status_code", None)
+    if code == 402:
+        return True
+    msg = str(exc).lower()
+    return (
+        "insufficient balance" in msg
+        or "credit balance is too low" in msg
+        or "credit balance too low" in msg
+    )
+
+
+def _trip_deepseek_circuit() -> None:
+    global _deepseek_circuit_until
+    _deepseek_circuit_until = time.monotonic() + _DEEPSEEK_BILLING_COOLDOWN_S
+    logger.warning(
+        "DeepSeek billing failure — skipping DeepSeek for %ss and using backup models",
+        _DEEPSEEK_BILLING_COOLDOWN_S,
+    )
+
+
+def _deepseek_circuit_open() -> bool:
+    return time.monotonic() < _deepseek_circuit_until
 
 
 # Official V4 IDs + legacy aliases (until retirement). See DeepSeek API model list.
@@ -76,6 +117,7 @@ def resolved_model(requested_model: str | None = None) -> str:
 
 
 _oai: OpenAI | None = None
+_openai_chat: OpenAI | None = None
 _anthropic: anthropic.Anthropic | None = None
 
 
@@ -87,6 +129,15 @@ def _get_openai_client() -> OpenAI:
         base = (settings.deepseek_base_url or "https://api.deepseek.com").rstrip("/")
         _oai = OpenAI(api_key=settings.deepseek_api_key, base_url=base)
     return _oai
+
+
+def _get_openai_chat_client() -> OpenAI:
+    global _openai_chat
+    if _openai_chat is None:
+        if not _openai_chat_configured():
+            raise RuntimeError("OPENAI_API_KEY is not configured")
+        _openai_chat = OpenAI(api_key=settings.openai_api_key)
+    return _openai_chat
 
 
 def _get_anthropic_client() -> anthropic.Anthropic:
@@ -182,7 +233,7 @@ def _complete_deepseek(
     try:
         resp = client.chat.completions.create(**kwargs)
     except OpenAIError as e:
-        if json_response:
+        if json_response and not _is_billing_error(e):
             logger.info(
                 "DeepSeek request with json_object failed (%s); retrying without JSON mode.", e
             )
@@ -223,6 +274,45 @@ def _complete_deepseek(
     return text, tokens
 
 
+def _openai_chat_model() -> str:
+    return (settings.openai_chat_model or "").strip() or "gpt-4o-mini"
+
+
+def _complete_openai_chat(
+    requested_model: str,
+    *,
+    system: str,
+    user: str,
+    max_tokens: int,
+    json_response: bool = False,
+) -> tuple[str, str, int | None]:
+    model = _openai_chat_model()
+    _ = requested_model
+    client = _get_openai_chat_client()
+    kwargs: dict = dict(
+        model=model,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        max_tokens=max_tokens,
+    )
+    if json_response:
+        kwargs["response_format"] = {"type": "json_object"}
+    try:
+        resp = client.chat.completions.create(**kwargs)
+    except OpenAIError as e:
+        if json_response and not _is_billing_error(e):
+            kwargs.pop("response_format", None)
+            resp = client.chat.completions.create(**kwargs)
+        else:
+            raise
+    tokens = _deepseek_usage_total_tokens(resp)
+    ch = getattr(resp.choices[0].message, "content", None)
+    text = _strip_code_fences(str(ch)) if ch is not None else ""
+    return text, model, tokens
+
+
 def _complete_anthropic(
     requested_model: str, *, system: str, user: str, max_tokens: int
 ) -> tuple[str, str, int | None]:
@@ -255,11 +345,12 @@ def chat_completion_result(
     (Anthropic fallback ignores it — those models don't think by default here).
     """
     if not is_llm_configured():
-        raise RuntimeError("Configure DEEPSEEK_API_KEY and/or ANTHROPIC_API_KEY")
+        raise RuntimeError("Configure DEEPSEEK_API_KEY, ANTHROPIC_API_KEY, and/or OPENAI_API_KEY")
 
     started = time.perf_counter()
+    errors: list[str] = []
 
-    if _deepseek_configured():
+    if _deepseek_configured() and not _deepseek_circuit_open():
         try:
             text, tok = _complete_deepseek(
                 requested_model,
@@ -276,35 +367,54 @@ def chat_completion_result(
             )
         except OpenAIError as e:
             logger.warning("DeepSeek request failed (%s)", e)
-            if not _anthropic_configured():
-                raise LLMAPIError(str(e)) from e
+            errors.append(f"DeepSeek: {e}")
+            if _is_billing_error(e):
+                _trip_deepseek_circuit()
+    elif _deepseek_configured() and _deepseek_circuit_open():
+        logger.info("DeepSeek circuit open — using backup model")
+
+    if _anthropic_configured():
+        if _deepseek_configured():
             logger.info(
                 "Falling back to Anthropic Claude (requested_route=%r)", requested_model or ""
             )
-            try:
-                text, mid, tok = _complete_anthropic(
-                    requested_model, system=system, user=user, max_tokens=max_tokens
-                )
-                latency_ms = int((time.perf_counter() - started) * 1000)
-                return ChatCompletionResult(
-                    text=text, model_id=mid, latency_ms=latency_ms, total_tokens=tok
-                )
-            except anthropic.APIError as ae:
-                raise LLMAPIError(f"DeepSeek failed; Anthropic fallback failed: {ae}") from ae
+        try:
+            text, mid, tok = _complete_anthropic(
+                requested_model, system=system, user=user, max_tokens=max_tokens
+            )
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            return ChatCompletionResult(
+                text=text, model_id=mid, latency_ms=latency_ms, total_tokens=tok
+            )
+        except anthropic.APIError as ae:
+            logger.warning("Anthropic fallback failed (%s)", ae)
+            errors.append(f"Anthropic: {ae}")
 
-    if not _anthropic_configured():
-        raise RuntimeError("No Anthropic credentials for LLM invocation")
+    if _openai_chat_configured():
+        logger.info(
+            "Falling back to OpenAI chat model %s (requested_route=%r)",
+            _openai_chat_model(),
+            requested_model or "",
+        )
+        try:
+            text, mid, tok = _complete_openai_chat(
+                requested_model,
+                system=system,
+                user=user,
+                max_tokens=max_tokens,
+                json_response=json_response,
+            )
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            return ChatCompletionResult(
+                text=text, model_id=mid, latency_ms=latency_ms, total_tokens=tok
+            )
+        except OpenAIError as oe:
+            logger.warning("OpenAI chat fallback failed (%s)", oe)
+            errors.append(f"OpenAI: {oe}")
 
-    try:
-        text, mid, tok = _complete_anthropic(
-            requested_model, system=system, user=user, max_tokens=max_tokens
-        )
-        latency_ms = int((time.perf_counter() - started) * 1000)
-        return ChatCompletionResult(
-            text=text, model_id=mid, latency_ms=latency_ms, total_tokens=tok
-        )
-    except anthropic.APIError as e:
-        raise LLMAPIError(str(e)) from e
+    if errors:
+        raise LLMAPIError("; ".join(errors))
+    raise RuntimeError("No LLM credentials for chat completion")
 
 
 def chat_completion(

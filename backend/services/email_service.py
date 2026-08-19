@@ -2267,12 +2267,18 @@ def generate_newsletter_preview(
         )
 
     promoted = assemble_promoted_content(dummy, db, topics)
+    try:
+        preview_hot = build_hot_of_day(db)
+    except Exception:
+        logger.debug("build_hot_of_day failed for newsletter preview", exc_info=True)
+        preview_hot = {"hot_topic": None, "hot_article": None}
     html_body = _build_html(
         dummy,
         topics,
         db=db,
         promoted_content=promoted,
         merged_pipeline=merged,
+        hot_of_day=preview_hot,
     )
     return _inject_preview_assembly_banner(
         html_body,

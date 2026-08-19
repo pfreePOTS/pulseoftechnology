@@ -1,5 +1,6 @@
-# Backend service — set Railway service root directory to `backend/` (this folder).
-# See repository `railway/README.md` for variables and Postgres wiring.
+# Backend service — Railway root directory MUST be `backend/` (this folder).
+# If root is the monorepo, Railway falls back to Railpack and the API crashes
+# (`from .config` relative import). See `railway/README.md`.
 
 [build]
 builder = "DOCKERFILE"

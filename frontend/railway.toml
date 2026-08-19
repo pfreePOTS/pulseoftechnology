@@ -1,5 +1,6 @@
-# Frontend service — set Railway service root directory to `frontend/` (this folder).
-# See repository `railway/README.md`. Build args NEXT_PUBLIC_* must be configured in Railway.
+# Frontend service — Railway root directory MUST be `frontend/` (this folder).
+# If root is the monorepo, Railway falls back to Railpack. See `railway/README.md`.
+# Build args NEXT_PUBLIC_* must be configured in Railway.
 
 [build]
 builder = "DOCKERFILE"

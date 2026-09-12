@@ -9,7 +9,7 @@ from sqlalchemy import and_ as db_and
 from sqlalchemy import or_ as db_or
 from sqlalchemy.orm import Session
 
-from ..models.article import Article
+from ..models.article import Article, ArticleStatus
 from .pipeline_settings import merge_pipeline_settings
 
 logger = logging.getLogger(__name__)
@@ -106,5 +106,38 @@ def archive_old_articles(db: Session) -> int:
             "Archived %d article(s) older than %d-day retention",
             len(stale),
             merged.article_retention_days,
+        )
+    return len(stale)
+
+
+def expire_stale_review_articles(db: Session) -> int:
+    """
+    Soft-expire review-queue rows older than the active evidence window.
+
+    Stale review items become ``skipped`` and get ``archived_at`` so Collection
+    and the Review page (``archive=active``) no longer show them. No LLM rerun.
+    """
+    merged = merge_pipeline_settings(db)
+    if not merged.article_archive_enabled:
+        return 0
+
+    evidence_days = merged.trend_window_days + merged.trend_prior_window_days
+    cutoff = datetime.now(UTC) - timedelta(days=evidence_days)
+    candidates = db.query(Article).filter(Article.status == ArticleStatus.review).all()
+    stale = [article for article in candidates if article_coverage_datetime(article) < cutoff]
+    now = datetime.now(UTC)
+    note = f"Expired from review after {evidence_days}-day evidence window."
+    for article in stale:
+        article.status = ArticleStatus.skipped
+        if article.archived_at is None:
+            article.archived_at = now
+        existing = (article.review_notes or "").rstrip()
+        article.review_notes = f"{existing}\n{note}" if existing else note
+    if stale:
+        db.commit()
+        logger.info(
+            "Expired %d review article(s) older than %d-day evidence window",
+            len(stale),
+            evidence_days,
         )
     return len(stale)

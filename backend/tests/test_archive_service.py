@@ -7,11 +7,21 @@ from unittest.mock import patch
 from backend.models.article import Article, ArticleStatus
 from backend.models.source import Source, SourceType
 from backend.models.topic import Topic
-from backend.services.archive_service import archive_outside_active_evidence_window
+from backend.services.archive_service import (
+    archive_outside_active_evidence_window,
+    expire_stale_review_articles,
+)
 from backend.tests.domain_fixtures import make_topic
 
 
-def _seed_article(db_session, *, age_days: int, topic: Topic | None = None) -> Article:
+def _seed_article(
+    db_session,
+    *,
+    age_days: int,
+    topic: Topic | None = None,
+    status: ArticleStatus = ArticleStatus.processed,
+    url_suffix: str = "",
+) -> Article:
     source = db_session.query(Source).first()
     if source is None:
         source = Source(name="Test", url="https://example.com/rss", type=SourceType.rss)
@@ -21,12 +31,12 @@ def _seed_article(db_session, *, age_days: int, topic: Topic | None = None) -> A
     article = Article(
         source_id=source.id,
         topic_id=topic.id if topic else None,
-        title=f"Article {age_days}",
-        url=f"https://example.com/{age_days}",
+        title=f"Article {age_days}{url_suffix}",
+        url=f"https://example.com/{age_days}{url_suffix}",
         content="Technology article",
         published_at=when,
         ingested_at=when,
-        status=ArticleStatus.processed,
+        status=status,
     )
     db_session.add(article)
     db_session.commit()
@@ -103,3 +113,51 @@ def test_archive_outside_active_evidence_window_prefers_published_date_over_fres
     db_session.refresh(article)
     assert archived == 1
     assert article.archived_at is not None
+
+
+def test_expire_stale_review_skips_old_and_keeps_recent(db_session):
+    old = _seed_article(
+        db_session, age_days=15, status=ArticleStatus.review, url_suffix="-review-old"
+    )
+    recent = _seed_article(
+        db_session, age_days=2, status=ArticleStatus.review, url_suffix="-review-recent"
+    )
+    processed = _seed_article(db_session, age_days=20, url_suffix="-processed")
+
+    settings = SimpleNamespace(
+        article_archive_enabled=True,
+        trend_window_days=7,
+        trend_prior_window_days=7,
+    )
+    with patch("backend.services.archive_service.merge_pipeline_settings", return_value=settings):
+        expired = expire_stale_review_articles(db_session)
+
+    db_session.refresh(old)
+    db_session.refresh(recent)
+    db_session.refresh(processed)
+    assert expired == 1
+    assert old.status == ArticleStatus.skipped
+    assert old.archived_at is not None
+    assert old.review_notes and "evidence window" in old.review_notes.lower()
+    assert recent.status == ArticleStatus.review
+    assert recent.archived_at is None
+    assert processed.status == ArticleStatus.processed
+    assert processed.archived_at is None
+
+
+def test_expire_stale_review_noop_when_archive_disabled(db_session):
+    old = _seed_article(
+        db_session, age_days=20, status=ArticleStatus.review, url_suffix="-disabled"
+    )
+    settings = SimpleNamespace(
+        article_archive_enabled=False,
+        trend_window_days=7,
+        trend_prior_window_days=7,
+    )
+    with patch("backend.services.archive_service.merge_pipeline_settings", return_value=settings):
+        expired = expire_stale_review_articles(db_session)
+
+    db_session.refresh(old)
+    assert expired == 0
+    assert old.status == ArticleStatus.review
+    assert old.archived_at is None

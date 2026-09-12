@@ -177,10 +177,6 @@ export default function ResearchCollectionPage() {
     }
   }
 
-  const requeueable = articles.filter(
-    (row) => row.status === "skipped" || row.status === "review",
-  );
-
   async function requeueRows(ids: number[], confirmLabel: string) {
     if (ids.length === 0) return;
     const ok = window.confirm(confirmLabel);
@@ -283,21 +279,6 @@ export default function ResearchCollectionPage() {
           >
             Refresh list
           </button>
-          {filter === "skipped" && requeueable.length > 0 ? (
-            <button
-              type="button"
-              onClick={() =>
-                void requeueRows(
-                  requeueable.map((row) => row.id),
-                  `Send ${requeueable.length} visible skipped ${requeueable.length === 1 ? "article" : "articles"} back to the AI retry queue? Most skipped rows were judged non-tech and will likely skip again.`,
-                )
-              }
-              disabled={requeueBusy}
-              className="rounded-lg border border-gray-600 bg-gray-900 px-3 py-2 text-sm font-semibold text-gray-100 hover:bg-gray-800 disabled:opacity-50"
-            >
-              {requeueBusy ? "Requeuing…" : "Requeue visible skipped"}
-            </button>
-          ) : null}
         </div>
         {jobToast ? (
           <p className="mt-2 text-sm text-gray-400" role="status">

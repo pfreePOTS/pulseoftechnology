@@ -250,7 +250,7 @@ If Postgres logs **`FATAL: role "pulse" does not exist`**, a client is connectin
 
 ### Scheduler and scaling
 
-Background jobs (RSS ingestion, signal scorer, newsletter) run **inside the FastAPI process** via APScheduler. Running **multiple API replicas** would duplicate scheduled work unless you move jobs to a dedicated worker or add distributed locking.
+Background jobs (RSS ingestion, article archive, prompt optimizer, signal scorer, newsletter) run **inside the FastAPI process** via APScheduler. The archive job also expires `review` articles older than the evidence window (`skipped` + `archived_at`). The prompt optimizer rejects pending proposals older than 14 days before deciding whether to skip. Running **multiple API replicas** would duplicate scheduled work unless you move jobs to a dedicated worker or add distributed locking.
 
 ### Admin authentication
 

@@ -49,6 +49,7 @@ def _archive_job() -> None:
     from .services.archive_service import (
         archive_old_articles,
         archive_outside_active_evidence_window,
+        expire_stale_review_articles,
     )
 
     db = SessionLocal()
@@ -59,6 +60,9 @@ def _archive_job() -> None:
         evidence_n = archive_outside_active_evidence_window(db)
         if evidence_n:
             logger.info("Evidence archive job: archived %d row(s)", evidence_n)
+        review_n = expire_stale_review_articles(db)
+        if review_n:
+            logger.info("Review expiry job: expired %d review row(s)", review_n)
     except Exception:
         logger.exception("Unhandled error in article archive job")
     finally:

@@ -653,7 +653,7 @@ def test_newsletter_header_banner_promotes_pulse_of_technology():
     assert "PEOPLE | TECHNOLOGY | PROGRESS</p>" not in banner
     assert "pots_logo_new.png" in banner
     assert 'width="140"' in banner or "max-width:140px" in banner
-    assert "font-size:34px" in banner
+    assert "font-size:38px" in banner
     # Split accent: Technology in brand red (not a single flat black title string only).
     assert "color:#E91D24" in banner or "color: #E91D24" in banner
     assert "The Pulse of Technology</p>" not in banner

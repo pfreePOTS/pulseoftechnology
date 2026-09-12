@@ -343,7 +343,7 @@ def _build_newsletter_header_banner_html() -> str:
     return f"""
 <tr>
   <td style="background:#F4F8FA;padding:28px 32px 24px;text-align:center;border-bottom:1px solid #E5E7EB;">
-    <p style="margin:0;font-size:34px;font-weight:700;line-height:1.15;letter-spacing:-0.02em;
+    <p style="margin:0;font-size:38px;font-weight:700;line-height:1.15;letter-spacing:-0.02em;
               color:#111827;font-family:{_FF};">
       The Pulse of <span style="color:#E91D24;">Technology</span>
     </p>
@@ -412,10 +412,10 @@ def _build_welcome_rollup_html(
     open_esc = html.escape(open_line)
     detail_esc = html.escape(" ".join(detail_parts))
     return f"""
-            <p style="margin:0 0 10px;font-size:14px;color:#4A5F6D;font-family:{_FF};line-height:1.65;">
+            <p style="margin:0 0 10px;font-size:16px;color:#4A5F6D;font-family:{_FF};line-height:1.65;">
               {open_esc}
             </p>
-            <p style="margin:0 0 14px;font-size:14px;color:#4A5F6D;font-family:{_FF};line-height:1.65;">
+            <p style="margin:0 0 14px;font-size:16px;color:#4A5F6D;font-family:{_FF};line-height:1.65;">
               {detail_esc}
             </p>"""
 
@@ -613,10 +613,10 @@ def _trend_indicator_html(trend: str) -> str:
         sym, label, bg, fg = "&#8595;", "Cooling coverage", "#FFFBEB", "#92400E"
     else:
         sym, label, bg, fg = "&#8594;", "Steady coverage", "#F3F4F6", "#374151"
-    return f"""<span style="display:inline-block;background:{bg};color:{fg};font-size:10px;
+    return f"""<span style="display:inline-block;background:{bg};color:{fg};font-size:12px;
                  font-weight:700;letter-spacing:0.07em;text-transform:uppercase;border-radius:4px;
                  padding:5px 12px;font-family:{_FF};vertical-align:middle;white-space:nowrap;">
-      Trending&nbsp;<span style="font-size:13px;font-weight:800;line-height:1;" aria-hidden="true">{sym}</span>
+      Trending&nbsp;<span style="font-size:15px;font-weight:800;line-height:1;" aria-hidden="true">{sym}</span>
       &nbsp;{html.escape(label)}
     </span>"""
 
@@ -627,8 +627,8 @@ def _briefing_subsection(title: str, body: str) -> str:
         return ""
     return f"""
     <div style="margin:0 0 22px;">
-      <p style="margin:0 0 8px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6B7280;font-family:{_FF};">{html.escape(title)}</p>
-      <p style="margin:0;font-size:14px;color:#111827;line-height:1.72;font-family:{_FF};">{html.escape(b)}</p>
+      <p style="margin:0 0 8px;font-size:13px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6B7280;font-family:{_FF};">{html.escape(title)}</p>
+      <p style="margin:0;font-size:16px;color:#111827;line-height:1.72;font-family:{_FF};">{html.escape(b)}</p>
     </div>"""
 
 
@@ -646,8 +646,8 @@ def _industry_lens_block(topic: Topic, subscriber: Subscriber | None) -> str:
     inner = html.escape(" ".join(lines))
     return f"""
     <div style="margin:4px 0 8px;padding:14px 16px;background:#FAFAFA;border-radius:6px;border:1px solid #E5E7EB;">
-      <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#6B7280;font-family:{_FF};">Your industries</p>
-      <p style="margin:0;font-size:13px;color:#374151;line-height:1.65;font-family:{_FF};">{inner}</p>
+      <p style="margin:0 0 6px;font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#6B7280;font-family:{_FF};">Your industries</p>
+      <p style="margin:0;font-size:15px;color:#374151;line-height:1.65;font-family:{_FF};">{inner}</p>
     </div>"""
 
 
@@ -756,9 +756,9 @@ _EMAIL_TEMPLATE = """\
           <td style="background:#FFFFFF;padding:12px 24px;border-bottom:1px solid #E5E7EB;">
             <table width="100%" cellpadding="0" cellspacing="0">
               <tr>
-                <td style="color:#4A5F6D;font-size:12px;font-family:{ff};">{date}</td>
+                <td style="color:#4A5F6D;font-size:14px;font-family:{ff};">{date}</td>
                 <td align="right">
-                  <a href="{read_online_url}" style="color:#019E7C;font-size:12px;font-family:{ff};
+                  <a href="{read_online_url}" style="color:#019E7C;font-size:14px;font-family:{ff};
                      text-decoration:none;font-weight:600;">Read online &rarr;</a>
                 </td>
               </tr>
@@ -772,11 +772,11 @@ _EMAIL_TEMPLATE = """\
         <!-- 3 Greeting -->
         <tr>
           <td style="padding:16px 32px 24px;">
-            <p style="margin:0 0 10px;font-size:18px;font-weight:700;color:#111827;font-family:{ff};">
+            <p style="margin:0 0 10px;font-size:20px;font-weight:700;color:#111827;font-family:{ff};">
               Good morning, {first_name}.
             </p>
             {welcome_rollup_html}
-            <p style="margin:0;font-size:13px;font-family:{ff};line-height:1.65;">
+            <p style="margin:0;font-size:15px;font-family:{ff};line-height:1.65;">
               <span style="color:#4A5F6D;">Share:</span>
               <a href="{share_x_url}" style="color:#019E7C;text-decoration:none;font-weight:600;">X</a>
               <span style="color:#9CA3AF;"> &middot; </span>
@@ -793,7 +793,7 @@ _EMAIL_TEMPLATE = """\
         <tr>
           <td style="padding:0 32px 8px;">
             <hr style="border:none;border-top:1px solid #E5E7EB;margin:0 0 12px;">
-            <p style="margin:0 0 16px;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
+            <p style="margin:0 0 16px;font-size:12px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
                       color:#4A5F6D;font-family:{ff};">YOUR RADAR BRIEFING &middot; Top Stories</p>
             {top_stories_html}
           </td>
@@ -817,22 +817,22 @@ _EMAIL_TEMPLATE = """\
         <!-- 10 Footer -->
         <tr>
           <td style="background:#F4F8FA;padding:28px 32px;border-top:1px solid #E5E7EB;">
-            <p style="margin:0 0 10px;font-size:12px;font-weight:700;color:#111827;font-family:{ff};">Stay Connected</p>
-            <p style="margin:0 0 16px;font-size:12px;font-family:{ff};">
+            <p style="margin:0 0 10px;font-size:14px;font-weight:700;color:#111827;font-family:{ff};">Stay Connected</p>
+            <p style="margin:0 0 16px;font-size:14px;font-family:{ff};">
               <a href="{pulseone_linkedin_url}" style="color:#019E7C;text-decoration:none;">LinkedIn</a>
               <span style="color:#9CA3AF;"> &middot; </span>
               <a href="https://x.com/pulseone" style="color:#019E7C;text-decoration:none;">X</a>
             </p>
-            <p style="margin:0 0 12px;font-size:11px;color:#6B7280;line-height:1.6;font-family:{ff};">
+            <p style="margin:0 0 12px;font-size:13px;color:#6B7280;line-height:1.6;font-family:{ff};">
               You&rsquo;re receiving this because you subscribed to Pulse of Technology Daily.<br>
               Domains: {domains_label} &middot; Industry: {industry_label} &middot; Role: {role_label}
             </p>
-            <p style="margin:0 0 12px;font-size:11px;font-family:{ff};">
+            <p style="margin:0 0 12px;font-size:13px;font-family:{ff};">
               <a href="{manage_preferences_url}" style="color:#019E7C;text-decoration:none;">Manage preferences</a>
               <span style="color:#9CA3AF;"> &middot; </span>
               <a href="{unsubscribe_url}" style="color:#019E7C;text-decoration:none;">Unsubscribe</a>
             </p>
-            <p style="margin:0;font-size:11px;color:#6B7280;font-family:{ff};">&copy; 2026 PulseOne &middot; pulseone.com</p>
+            <p style="margin:0;font-size:13px;color:#6B7280;font-family:{ff};">&copy; 2026 PulseOne &middot; pulseone.com</p>
           </td>
         </tr>
 
@@ -921,7 +921,7 @@ def _build_top_stories_block(
         if first_art and (first_art.url or "").strip():
             u = html.escape(first_art.url.strip())
             read_more = (
-                f'<br><a href="{u}" style="color:#019E7C;font-weight:600;text-decoration:none;font-size:13px;">'
+                f'<br><a href="{u}" style="color:#019E7C;font-weight:600;text-decoration:none;font-size:15px;">'
                 f"Read more</a>"
             )
         lead_img = ""
@@ -938,15 +938,15 @@ def _build_top_stories_block(
         rows.append(
             f'<div style="margin:0 0 18px;font-family:{_FF};">'
             f"{lead_img}"
-            f'<span style="font-size:15px;font-weight:700;color:#111827;">{html.escape(t.name)}</span><br>'
-            f'<span style="font-size:13px;color:#4A5F6D;line-height:1.6;">{html.escape(summ)}{read_more}</span>'
+            f'<span style="font-size:17px;font-weight:700;color:#111827;">{html.escape(t.name)}</span><br>'
+            f'<span style="font-size:15px;color:#4A5F6D;line-height:1.6;">{html.escape(summ)}{read_more}</span>'
             f"</div>"
         )
     return (
         "\n".join(rows)
         if rows
         else (
-            f'<p style="margin:0;font-size:13px;color:#4A5F6D;font-family:{_FF};">No top stories this issue.</p>'
+            f'<p style="margin:0;font-size:15px;color:#4A5F6D;font-family:{_FF};">No top stories this issue.</p>'
         )
     )
 
@@ -964,7 +964,7 @@ def _build_hot_topic_lead_html(hot_topic: dict, hot_article: dict) -> str:
     domain_row = ""
     if dom_line:
         domain_row = (
-            f'<p style="margin:0 0 6px;font-size:11px;font-weight:600;color:#4A5F6D;font-family:{_FF};">'
+            f'<p style="margin:0 0 6px;font-size:13px;font-weight:600;color:#4A5F6D;font-family:{_FF};">'
             f"{dom_line}</p>"
         )
     title = html.escape(hot_article.get("title") or "Read article")
@@ -994,7 +994,7 @@ def _build_hot_topic_lead_html(hot_topic: dict, hot_article: dict) -> str:
             continue
         summary_rows.append(
             f"""
-          <p style="margin:10px 0 0;font-size:12px;line-height:1.6;color:#374151;font-family:{_FF};">
+          <p style="margin:10px 0 0;font-size:14px;line-height:1.6;color:#374151;font-family:{_FF};">
             <span style="font-weight:700;color:#111827;">{label}</span> {html.escape(body)}
           </p>"""
         )
@@ -1006,14 +1006,14 @@ def _build_hot_topic_lead_html(hot_topic: dict, hot_article: dict) -> str:
       <tr>
         <td style="padding:18px 20px;border-left:4px solid #E91D24;">
           {img_block}
-          <p style="margin:0 0 8px;font-size:10px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;
+          <p style="margin:0 0 8px;font-size:12px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;
                     color:#E91D24;font-family:{_FF};">Hot on your radar &mdash; today</p>
           {domain_row}
-          <p style="margin:0 0 10px;font-size:18px;font-weight:700;line-height:1.3;font-family:{_FF};">
+          <p style="margin:0 0 10px;font-size:20px;font-weight:700;line-height:1.3;font-family:{_FF};">
             <a href="{url}" style="color:#E91D24;text-decoration:none;">{title}</a>
           </p>
-          <p style="margin:0 0 4px;font-size:12px;color:#6B7280;font-family:{_FF};">{meta}</p>
-          <p style="margin:8px 0 0;font-size:12px;font-weight:600;font-family:{_FF};">
+          <p style="margin:0 0 4px;font-size:14px;color:#6B7280;font-family:{_FF};">{meta}</p>
+          <p style="margin:8px 0 0;font-size:14px;font-weight:600;font-family:{_FF};">
             <span style="color:#4A5F6D;">Topic: </span><span style="color:#111827;">{tname}</span>
           </p>
           {summary_block}
@@ -1049,8 +1049,8 @@ def _build_deep_dive_section(
     <table width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0;background:#F4F8FA;border-left:3px solid {badge_bg};border-radius:4px;">
       <tr>
         <td style="padding:12px 14px;font-family:{_FF};">
-          <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#111827;">Where to focus &mdash; for you as a {html.escape(role_display)}:</p>
-          <p style="margin:0;font-size:13px;color:#4A5F6D;line-height:1.6;">{html.escape(persona)}</p>
+          <p style="margin:0 0 6px;font-size:14px;font-weight:700;color:#111827;">Where to focus &mdash; for you as a {html.escape(role_display)}:</p>
+          <p style="margin:0;font-size:15px;color:#4A5F6D;line-height:1.6;">{html.escape(persona)}</p>
         </td>
       </tr>
     </table>"""
@@ -1063,14 +1063,14 @@ def _build_deep_dive_section(
         url = html.escape(a.url or "#")
         art_rows.append(
             f'<tr><td style="padding:4px 0;font-family:{_FF};">'
-            f'<span style="color:#9CA3AF;font-size:12px;font-weight:600;">{i}.</span> '
-            f'<a href="{url}" style="color:#019E7C;text-decoration:none;font-weight:600;font-size:13px;">{title}</a>'
+            f'<span style="color:#9CA3AF;font-size:14px;font-weight:600;">{i}.</span> '
+            f'<a href="{url}" style="color:#019E7C;text-decoration:none;font-weight:600;font-size:15px;">{title}</a>'
             f"</td></tr>"
         )
     arts_block = ""
     if art_rows:
         arts_block = f"""
-    <p style="margin:18px 0 8px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#4A5F6D;font-family:{_FF};">
+    <p style="margin:18px 0 8px;font-size:13px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#4A5F6D;font-family:{_FF};">
       Top reads (sources)
     </p>
     <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 4px;">
@@ -1097,11 +1097,11 @@ def _build_deep_dive_section(
 
     dig_deeper = f"""
     <p style="margin:18px 0 6px;font-family:{_FF};">
-      <a href="{explore_href}" style="color:#019E7C;text-decoration:none;font-weight:700;font-size:14px;">
+      <a href="{explore_href}" style="color:#019E7C;text-decoration:none;font-weight:700;font-size:16px;">
         Dig deeper on the PulseOne Radar &rarr;
       </a>
     </p>
-    <p style="margin:0 0 0;font-size:12px;color:#6B7280;line-height:1.5;font-family:{_FF};">
+    <p style="margin:0 0 0;font-size:14px;color:#6B7280;line-height:1.5;font-family:{_FF};">
       Open the live radar filtered to <strong style="color:#4A5F6D;">{html.escape(dom)}</strong> for charts, tracked stories, and more context.
     </p>"""
 
@@ -1110,17 +1110,17 @@ def _build_deep_dive_section(
         lead_title = html.escape((lead.title or "").strip())
         lead_url = html.escape((lead.url or "").strip() or "#")
         headline_html = f"""
-    <p style="margin:0 0 8px;font-size:20px;font-weight:700;color:#111827;font-family:{_FF};line-height:1.25;">
+    <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:#111827;font-family:{_FF};line-height:1.25;">
       <a href="{lead_url}" style="color:#111827;text-decoration:none;">{lead_title}</a>
     </p>"""
     else:
         headline_html = f"""
-    <p style="margin:0 0 8px;font-size:20px;font-weight:700;color:#111827;font-family:{_FF};line-height:1.25;">
+    <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:#111827;font-family:{_FF};line-height:1.25;">
       {html.escape(topic.name)}
     </p>"""
 
     context_html = f"""
-    <p style="margin:0 0 12px;font-size:12px;font-family:{_FF};line-height:1.5;">
+    <p style="margin:0 0 12px;font-size:14px;font-family:{_FF};line-height:1.5;">
       <span style="font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:{color};">{html.escape(dom.upper())}</span>
       <span style="color:#9CA3AF;"> &middot; </span>
       <span style="font-weight:600;color:#4A5F6D;">{html.escape(topic.name)}</span>
@@ -1135,7 +1135,7 @@ def _build_deep_dive_section(
     <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 18px;font-family:{_FF};">
       <tr>
         <td style="padding:0 10px 0 0;vertical-align:middle;width:1%;white-space:nowrap;">
-          <span style="display:inline-block;vertical-align:middle;background:{badge_bg};color:{badge_fg};font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;border-radius:4px;padding:4px 10px;">
+          <span style="display:inline-block;vertical-align:middle;background:{badge_bg};color:{badge_fg};font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;border-radius:4px;padding:4px 10px;">
             YOUR POSTURE: {posture}
           </span>
         </td>
@@ -1166,14 +1166,14 @@ def _build_quick_hits_block(topics: list[Topic]) -> str:
             sent = "Follow this theme on your radar for linked sources and updates."
         line = f"{t.name}: {sent}"
         items.append(
-            f'<p style="margin:0 0 8px;font-size:13px;color:#111827;font-family:{_FF};line-height:1.5;">'
+            f'<p style="margin:0 0 8px;font-size:15px;color:#111827;font-family:{_FF};line-height:1.5;">'
             f"{html.escape(line)}</p>"
         )
     inner = "\n".join(items)
     return f"""
 <tr>
   <td style="padding:24px 32px;">
-    <p style="margin:0 0 12px;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
+    <p style="margin:0 0 12px;font-size:12px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
               color:#4A5F6D;font-family:{_FF};">ALSO ON OUR RADAR</p>
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#F4F8FA;border-radius:8px;">
       <tr><td style="padding:16px 18px;">{inner}</td></tr>
@@ -1211,7 +1211,7 @@ def _build_promo_section(items: list[ContentItem]) -> str:
                 f'style="display:block;max-width:100%;height:auto;border-radius:6px;border:0;"></p>'
             )
         summ = (
-            f'<p style="margin:8px 0 0;font-size:13px;color:#4A5F6D;line-height:1.6;font-family:{_FF};">'
+            f'<p style="margin:8px 0 0;font-size:15px;color:#4A5F6D;line-height:1.6;font-family:{_FF};">'
             f"{html.escape(item.summary)}</p>"
             if item.summary
             else ""
@@ -1222,10 +1222,10 @@ def _build_promo_section(items: list[ContentItem]) -> str:
       <td style="padding:0 0 20px 0;">
         {img_html}
         <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#FEE2E2;
-                     font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
+                     font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
                      color:#E91D24;font-family:{_FF};">{html.escape(tlabel)}</span>
         <p style="margin:8px 0 0;font-family:{_FF};">
-          <a href="{html.escape(item.url)}" style="font-size:15px;font-weight:700;color:#111827;text-decoration:none;line-height:1.35;">
+          <a href="{html.escape(item.url)}" style="font-size:17px;font-weight:700;color:#111827;text-decoration:none;line-height:1.35;">
             {html.escape(item.title)}
           </a>
         </p>
@@ -1238,7 +1238,7 @@ def _build_promo_section(items: list[ContentItem]) -> str:
 <tr>
   <td style="padding:8px 32px 8px;">
     <hr style="border:none;border-top:1px solid #E5E7EB;margin:0 0 14px;">
-    <p style="margin:0 0 16px;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
+    <p style="margin:0 0 16px;font-size:12px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
               color:#E91D24;font-family:{_FF};">FROM PULSEONE &middot; Recommended Resources</p>
     <table width="100%" cellpadding="0" cellspacing="0">{body}</table>
   </td>
@@ -1251,11 +1251,11 @@ def _build_tip_block(top_topic_name: str) -> str:
     return f"""
 <tr>
   <td style="padding:8px 32px 8px;">
-    <p style="margin:0 0 12px;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
+    <p style="margin:0 0 12px;font-size:12px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
               color:#019E7C;font-family:{_FF};">PULSEONE TIP OF THE WEEK</p>
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#F4F8FA;border-left:3px solid #019E7C;border-radius:6px;">
       <tr>
-        <td style="padding:14px 16px;font-size:14px;color:#111827;line-height:1.6;font-family:{_FF};">
+        <td style="padding:14px 16px;font-size:16px;color:#111827;line-height:1.6;font-family:{_FF};">
           Is your organization prepared for {top}? Take our free 5-minute readiness assessment
           &rarr; <a href="https://pulseone.com" style="color:#019E7C;font-weight:600;text-decoration:none;">Get started</a>
         </td>
@@ -1276,29 +1276,29 @@ def _build_survey_block(base_url: str, email: str, newsletter_date: str) -> str:
 <tr>
   <td style="padding:24px 32px 16px;">
     <hr style="border:none;border-top:1px solid #E5E7EB;margin:0 0 20px;">
-    <p style="margin:0 0 8px;text-align:center;font-size:16px;font-weight:700;color:#111827;font-family:{_FF};">
+    <p style="margin:0 0 8px;text-align:center;font-size:18px;font-weight:700;color:#111827;font-family:{_FF};">
       Before you go &mdash; how relevant was today&rsquo;s briefing?
     </p>
-    <p style="margin:0 0 18px;text-align:center;font-size:13px;color:#4A5F6D;font-family:{_FF};">
+    <p style="margin:0 0 18px;text-align:center;font-size:15px;color:#4A5F6D;font-family:{_FF};">
       Your feedback helps us personalize future issues.
     </p>
     <table align="center" cellpadding="0" cellspacing="0" style="margin:0 auto;">
       <tr>
         <td style="padding:4px;">
           <a href="{u3}" style="display:inline-block;background:#019E7C;color:#FFFFFF;text-decoration:none;
-             font-size:13px;font-weight:600;font-family:{_FF};border-radius:6px;padding:10px 20px;">Highly Relevant</a>
+             font-size:15px;font-weight:600;font-family:{_FF};border-radius:6px;padding:10px 20px;">Highly Relevant</a>
         </td>
         <td style="padding:4px;">
           <a href="{u2}" style="display:inline-block;background:#F4F8FA;color:#111827;text-decoration:none;
-             font-size:13px;font-weight:600;font-family:{_FF};border-radius:6px;padding:10px 20px;border:1px solid #E5E7EB;">Somewhat Relevant</a>
+             font-size:15px;font-weight:600;font-family:{_FF};border-radius:6px;padding:10px 20px;border:1px solid #E5E7EB;">Somewhat Relevant</a>
         </td>
         <td style="padding:4px;">
           <a href="{u1}" style="display:inline-block;background:#F4F8FA;color:#111827;text-decoration:none;
-             font-size:13px;font-weight:600;font-family:{_FF};border-radius:6px;padding:10px 20px;border:1px solid #E5E7EB;">Not Relevant</a>
+             font-size:15px;font-weight:600;font-family:{_FF};border-radius:6px;padding:10px 20px;border:1px solid #E5E7EB;">Not Relevant</a>
         </td>
       </tr>
     </table>
-    <p style="margin:22px 0 0;text-align:center;font-size:14px;color:#4A5F6D;font-family:{_FF};">
+    <p style="margin:22px 0 0;text-align:center;font-size:16px;color:#4A5F6D;font-family:{_FF};">
       Thanks for reading. &mdash; The PulseOne Team
     </p>
   </td>

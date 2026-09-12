@@ -22,6 +22,9 @@ from .llm_client import chat_completion, is_llm_configured
 
 logger = logging.getLogger(__name__)
 
+PROPOSAL_PENDING_EXPIRE_DAYS = 14
+_EXPIRED_PROPOSAL_RATIONALE = "Expired unused after 14 days."
+
 # _parse() node_name → prompt_templates.agent_name
 _PARSE_NODE_TO_AGENT: dict[str, str] = {
     "gate": "gate",
@@ -199,12 +202,42 @@ def generate_prompt_improvement(db: Session, agent_name: str) -> PromptProposal 
     return proposal
 
 
+def _proposal_created_utc(created_at: datetime) -> datetime:
+    if created_at.tzinfo is None:
+        return created_at.replace(tzinfo=UTC)
+    return created_at.astimezone(UTC)
+
+
+def expire_stale_pending_proposals(
+    db: Session, *, older_than_days: int = PROPOSAL_PENDING_EXPIRE_DAYS
+) -> int:
+    """Reject pending prompt proposals that have sat untouched past ``older_than_days``."""
+    cutoff = datetime.now(UTC) - timedelta(days=older_than_days)
+    pending = db.query(PromptProposal).filter(PromptProposal.status == "pending").all()
+    stale = [row for row in pending if _proposal_created_utc(row.created_at) < cutoff]
+    note = (
+        _EXPIRED_PROPOSAL_RATIONALE
+        if older_than_days == PROPOSAL_PENDING_EXPIRE_DAYS
+        else f"Expired unused after {older_than_days} days."
+    )
+    for row in stale:
+        row.status = "rejected"
+        existing = (row.rationale or "").rstrip()
+        row.rationale = f"{existing}\n{note}" if existing else note
+    if stale:
+        db.commit()
+        logger.info("Prompt optimizer: expired %d stale pending proposal(s)", len(stale))
+    return len(stale)
+
+
 def run_daily_prompt_optimizer_job() -> None:
     """
-    Scheduled entrypoint: skip if any proposal is pending; else analyze and maybe generate one.
+    Scheduled entrypoint: expire stale pending proposals, then skip if any remain
+    pending; else analyze and maybe generate one.
     """
     db = SessionLocal()
     try:
+        expire_stale_pending_proposals(db)
         pending_n = db.query(PromptProposal).filter(PromptProposal.status == "pending").count()
         if pending_n > 0:
             logger.info("Prompt optimizer: skipping — %d pending proposal(s)", pending_n)

@@ -691,6 +691,8 @@ def test_build_html_header_omits_hot_headline_and_includes_story_rollup():
     assert "Pulse of Technology" in pre_greeting
     assert "Pulse of Technology Daily" not in pre_greeting
     assert "Microsoft agent story" in post_greeting
+    assert 'width="750"' in html
+    assert "max-width:750px" in html
     assert "Hot on your radar" in html
     assert "Second story" in html
     assert "pots_logo_new.png" in html

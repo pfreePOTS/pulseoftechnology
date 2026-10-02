@@ -747,8 +747,8 @@ _EMAIL_TEMPLATE = """\
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#F3F4F6;">
   <tr>
     <td align="center" style="padding:24px 16px 40px;">
-      <table width="600" cellpadding="0" cellspacing="0"
-             style="max-width:600px;width:100%;background:#FFFFFF;border-radius:8px;
+      <table width="750" cellpadding="0" cellspacing="0"
+             style="max-width:750px;width:100%;background:#FFFFFF;border-radius:8px;
                     overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);">
 
         <!-- 1 Utility header -->
@@ -931,8 +931,8 @@ def _build_top_stories_block(
                 f'<table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 12px;border-radius:8px;overflow:hidden;">'
                 f'<tr><td style="padding:0;line-height:0;background:#E5E7EB;">'
                 f'<a href="{html.escape(first_art.url or "#")}" style="text-decoration:none;">'
-                f'<img src="{html.escape(src)}" width="536" alt="" '
-                f'style="display:block;width:100%;max-width:536px;height:auto;border:0;" />'
+                f'<img src="{html.escape(src)}" width="670" alt="" '
+                f'style="display:block;width:100%;max-width:670px;height:auto;border:0;" />'
                 f"</a></td></tr></table>"
             )
         rows.append(
@@ -983,7 +983,7 @@ def _build_hot_topic_lead_html(hot_topic: dict, hot_article: dict) -> str:
           <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 14px;border-radius:6px;overflow:hidden;">
             <tr><td style="padding:0;line-height:0;background:#E5E7EB;">
               <a href="{url}" style="text-decoration:none;">
-                <img src="{html.escape(img_raw)}" width="520" alt="" style="display:block;width:100%;max-width:100%;height:auto;border:0;" />
+                <img src="{html.escape(img_raw)}" width="650" alt="" style="display:block;width:100%;max-width:100%;height:auto;border:0;" />
               </a>
             </td></tr>
           </table>"""
@@ -1207,7 +1207,7 @@ def _build_promo_section(items: list[ContentItem]) -> str:
         if abs_img:
             img_html = (
                 f'<p style="margin:0 0 10px;">'
-                f'<img src="{html.escape(abs_img)}" width="560" alt="" '
+                f'<img src="{html.escape(abs_img)}" width="700" alt="" '
                 f'style="display:block;max-width:100%;height:auto;border-radius:6px;border:0;"></p>'
             )
         summ = (

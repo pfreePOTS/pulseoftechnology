@@ -187,7 +187,7 @@ export default function ApproachPage() {
                 </span>
               </h1>
               <p className="mx-auto max-w-[640px] font-sans text-lg leading-relaxed text-white/78">
-                Your success is our success. PulseOne is your &ldquo;get IT done&rdquo; people.
+                Your success is our success. PulseOne is your &ldquo;get IT done&rdquo; partner.
               </p>
             </div>
           </div>

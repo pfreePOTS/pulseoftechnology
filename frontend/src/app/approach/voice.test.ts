@@ -23,6 +23,8 @@ const BANNED_PHRASES = [
   "thought leader",
   "world-class",
   "world class",
+  // Retired hero closer. The line is "get IT done" partner.
+  "get IT done&rdquo; people",
 ];
 
 /**

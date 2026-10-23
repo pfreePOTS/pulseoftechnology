@@ -44,6 +44,7 @@ Validated against current `dev` when the tracker was created (2026-08-05). Kept 
 
 | ID | Summary | Severity | Status | Closed | Evidence |
 |----|---------|----------|--------|--------|----------|
+| PULSE-036 | Radar Industry dropdown shifts left when an industry is selected | Minor | Fixed | 2026-10-23 | "Clear filters" stays mounted (`invisible` until a filter is set) so the right-aligned cluster width does not change. `frontend/src/components/RadarSection.test.tsx`. Local `/radar`: Industry left edge stayed 889px for All Industries and Financial Services. |
 | PULSE-035 | Staging boot crashes: SQLAlchemy 2.1 loads `psycopg` v3 for bare `postgresql://` and `psycopg` is not installed | Blocking | Fixed | 2026-10-22 | Pin `sqlalchemy>=2.0.0,<2.1` in `backend/requirements.txt`. `tests/test_sqlalchemy_postgres_driver.py` |
 | PULSE-033 | Ingest classify/cluster empty DeepSeek JSON (`deepseek-v4-pro` thinking ate `max_tokens`) | Major | Fixed | 2026-08-18 | `_call_result` forces `disable_thinking=True` on every `json_response` call (ingest nodes + topic_persona, subdomain_topic, industry_positioning, trend_pick, topic_summary, signal). `tests/test_pipeline_disable_thinking.py` |
 | PULSE-030 | Document Marketplace Content Library seed for Staging/prod | Minor | Fixed | 2026-08-13 | README + `docs/operational-runbook.md` + `railway/README.md`; `seed_local_dev` includes `seed_marketplace_offers` |

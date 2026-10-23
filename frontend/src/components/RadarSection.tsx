@@ -153,18 +153,26 @@ export default function RadarSection({
                 </select>
               </div>
 
-              {(selectedIndustry || selectedDomain) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedIndustry("");
-                    setSelectedDomain("");
-                  }}
-                  className="text-xs font-medium text-gray-500 hover:text-gray-700 underline"
-                >
-                  Clear filters
-                </button>
-              )}
+              {/* Always mounted so the right-aligned cluster keeps a constant width.
+                  Mounting this only after a selection shifts Industry left. */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedIndustry("");
+                  setSelectedDomain("");
+                }}
+                disabled={!selectedIndustry && !selectedDomain}
+                aria-hidden={selectedIndustry || selectedDomain ? undefined : true}
+                tabIndex={selectedIndustry || selectedDomain ? 0 : -1}
+                className={
+                  "shrink-0 text-xs font-medium underline " +
+                  (selectedIndustry || selectedDomain
+                    ? "text-gray-500 hover:text-gray-700"
+                    : "invisible")
+                }
+              >
+                Clear filters
+              </button>
 
               {/* Label toggle */}
               <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-pulse-teal">

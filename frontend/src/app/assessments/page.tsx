@@ -133,7 +133,7 @@ const ASSESSMENT_FAQ: FaqItem[] = [
   {
     question: "How long does an assessment take?",
     answer:
-      "Most people finish in one sitting. Each assessment is organised into three sections, and you can complete it alone or walk through it with your team if the answers span several people. Scored results are produced per section as soon as you finish.",
+      "Most people finish in one sitting. Each assessment is organised into multiple sections, and you can complete it alone or walk through it with your team if the answers span several people. Scored results are produced per section as soon as you finish.",
   },
   {
     question: "What is a cyber insurance readiness assessment?",
@@ -214,7 +214,7 @@ export default function AssessmentsPage() {
               How do our IT assessments work?
             </h2>
             <p className="mb-10 max-w-[700px] font-sans text-base leading-relaxed text-[#646464]">
-              Each assessment follows a consistent three-section structure designed to give you a clear, scored
+              Each assessment follows a multi-section structure designed to give you a clear, scored
               picture of where your organization stands. Browse our collection of pre-made online IT assessments
               below.
             </p>
@@ -232,9 +232,9 @@ export default function AssessmentsPage() {
                 </div>
                 <div className="border-t-[3px] border-pulse-teal px-5 pb-6 pt-5">
                   <p className="mb-3 font-sans text-2xl font-bold leading-none text-pulse-teal/35">01</p>
-                  <h3 className="mb-3 font-sans text-[15px] font-bold text-[#1a1a1a]">Three-Section Structure</h3>
+                  <h3 className="mb-3 font-sans text-[15px] font-bold text-[#1a1a1a]">Multi-Section Structure</h3>
                   <p className="font-sans text-[13.5px] leading-relaxed text-[#646464]">
-                    Every assessment is organized into three scored sections. Each section targets a distinct
+                    Assessments are organized into multiple scored sections. Each section targets a distinct
                     dimension of your technology environment, so you can see exactly where you&apos;re strong and where
                     gaps exist.
                   </p>

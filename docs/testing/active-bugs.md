@@ -44,6 +44,7 @@ Validated against current `dev` when the tracker was created (2026-08-05). Kept 
 
 | ID | Summary | Severity | Status | Closed | Evidence |
 |----|---------|----------|--------|--------|----------|
+| PULSE-038 | Assessments page says every assessment has three sections | Minor | Fixed | 2026-10-23 | Intro, first card, and FAQ on `frontend/src/app/assessments/page.tsx` now say multi-section / multiple sections. Banned in `frontend/src/app/approach/voice.test.ts`. |
 | PULSE-037 | Approach hero calls PulseOne “get IT done” people instead of partner | Minor | Fixed | 2026-10-23 | Hero subline in `frontend/src/app/approach/page.tsx`. Banned phrase `get IT done&rdquo; people` in `frontend/src/app/approach/voice.test.ts`. |
 | PULSE-036 | Radar Industry dropdown shifts left when an industry is selected | Minor | Fixed | 2026-10-23 | "Clear filters" stays mounted (`invisible` until a filter is set) so the right-aligned cluster width does not change. `frontend/src/components/RadarSection.test.tsx`. Local `/radar`: Industry left edge stayed 889px for All Industries and Financial Services. |
 | PULSE-035 | Staging boot crashes: SQLAlchemy 2.1 loads `psycopg` v3 for bare `postgresql://` and `psycopg` is not installed | Blocking | Fixed | 2026-10-22 | Pin `sqlalchemy>=2.0.0,<2.1` in `backend/requirements.txt`. `tests/test_sqlalchemy_postgres_driver.py` |

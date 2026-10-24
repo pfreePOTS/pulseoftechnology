@@ -25,6 +25,10 @@ const BANNED_PHRASES = [
   "world class",
   // Retired hero closer. The line is "get IT done" partner.
   "get IT done&rdquo; people",
+  // Assessments vary in section count. Do not claim a fixed three.
+  "Three-Section",
+  "three-section",
+  "three sections",
 ];
 
 /**

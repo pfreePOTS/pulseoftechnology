@@ -4,7 +4,7 @@
 
 **Goal:** Make this Next.js app able to replace the WordPress site on pulseone.com without dropping the URLs Google already knows, while leaving DNS, the HubSpot blog, and the 82 apex blog posts untouched.
 
-**Status (2026-10-31):** Tasks 2, 3, 4, and 5 are implemented on the `dev` branch and verified at http://localhost:3100. Task 1 (the redirect table) waits until those pages are approved. This is not on Railway staging, and it is not committed.
+**Status (2026-10-31):** Tasks 1 through 5 are implemented on `dev`. The redirect table is in `frontend/src/lib/legacyRedirects.ts` and spread from `frontend/next.config.ts`. Staging must set `NEXT_PUBLIC_ROBOTS_INDEX=false` at frontend image build time. DNS, `NEXT_PUBLIC_SITE_URL=https://pulseone.com`, and the 82 apex blog posts stay untouched.
 
 **Architecture:** One redirect table in `frontend/src/lib/legacyRedirects.ts` is the only list of old paths. `next.config.ts` spreads it. City pages and the privacy page are new indexable routes that give the highest-value old URLs a real destination. The homepage document title picks up "Managed IT"; the designed hero H1 stays. A `NEXT_PUBLIC_ROBOTS_INDEX=false` switch noindexes any host that is not the live cutover. Canonicals stay on `NEXT_PUBLIC_SITE_URL` and must not be set to `https://pulseone.com` until that host actually serves this app.
 

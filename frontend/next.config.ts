@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 
+import { LEGACY_REDIRECTS } from "./src/lib/legacyRedirects";
+
 /** Dev: proxy `/__pulse_api/*` → Compose backend URL so credentialed fetches stay same-origin with the Next app (cookies, Playwright/Chromium reliability). Production: omit `BACKEND_PROXY_TARGET`. */
 const backendProxyTarget = process.env.BACKEND_PROXY_TARGET?.trim();
 
@@ -17,13 +19,7 @@ const nextConfig: NextConfig = {
     proxyTimeout: Number(process.env.NEXT_PROXY_TIMEOUT_MS ?? 180_000),
   },
   async redirects() {
-    return [
-      {
-        source: "/services/managed-it-services",
-        destination: "/services/managed-business-technology",
-        permanent: true,
-      },
-    ];
+    return [...LEGACY_REDIRECTS];
   },
   async rewrites() {
     if (!backendProxyTarget) return [];

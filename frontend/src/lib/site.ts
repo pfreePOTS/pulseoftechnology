@@ -20,6 +20,12 @@ export const FOUNDING_YEAR = "2002";
 export const SITE_DESCRIPTION =
   "Managed business technology, security, and remote multi-site support for small and mid-market organizations. Advisory plus hands-on delivery from PulseOne since 2002.";
 
+/** Document title for `/`. Keeps the managed-IT head term beside the broader positioning. */
+export const HOME_TITLE = "Managed IT Services and Business Technology | PulseOne";
+
+export const HOME_DESCRIPTION =
+  "Managed IT services, security, and business technology advisory for small and mid-market organizations. PulseOne has done this work since 2002.";
+
 /** Offices as listed in the global footer. */
 export const OFFICE_LOCATIONS = [
   "Ventura, CA",

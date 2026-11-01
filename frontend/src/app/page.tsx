@@ -9,7 +9,7 @@ import ExecutiveIntakeForm from "@/components/ExecutiveIntakeForm";
 import SubscribeWizard from "@/components/SubscribeWizard";
 import GlobalFooter from "@/components/GlobalFooter";
 import { API_BASE } from "@/lib/api";
-import { SITE_DESCRIPTION } from "@/lib/site";
+import { HOME_DESCRIPTION, HOME_TITLE } from "@/lib/site";
 
 /**
  * The home page owns the brand's primary commercial term. Other routes target
@@ -17,9 +17,9 @@ import { SITE_DESCRIPTION } from "@/lib/site";
  */
 export const metadata: Metadata = {
   title: {
-    absolute: "Managed Business Technology and Advisory | PulseOne",
+    absolute: HOME_TITLE,
   },
-  description: SITE_DESCRIPTION,
+  description: HOME_DESCRIPTION,
   alternates: { canonical: "/" },
 };
 

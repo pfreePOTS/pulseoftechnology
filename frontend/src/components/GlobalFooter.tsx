@@ -74,15 +74,20 @@ export default function GlobalFooter() {
               <Link href="/industries" className="hover:text-pulse-teal">
                 Industries We Serve
               </Link>
-              <a href="#" className="hover:text-pulse-teal">
+              <a
+                href="https://na.myconnectwise.net/support/index.htm?Company=PULSEONE"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-pulse-teal"
+              >
                 Client Login
               </a>
               <Link href="/contact" className="hover:text-pulse-teal">
                 Let&apos;s Talk
               </Link>
-              <a href="#" className="hover:text-pulse-teal">
+              <Link href="/privacy" className="hover:text-pulse-teal">
                 Privacy Policy
-              </a>
+              </Link>
             </div>
           </div>
         </div>

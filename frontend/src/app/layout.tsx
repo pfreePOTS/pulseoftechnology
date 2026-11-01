@@ -4,6 +4,7 @@ import "./globals.css";
 
 import JsonLd from "@/components/JsonLd";
 import { organizationSchema, websiteSchema } from "@/lib/schema";
+import { indexingEnabled } from "@/lib/indexing";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 
 const ibmPlexSans = IBM_Plex_Sans({
@@ -37,11 +38,13 @@ export const metadata: Metadata = {
     title: "Managed Business Technology and Advisory for Small and Mid-Market Organizations",
     description: SITE_DESCRIPTION,
   },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: { index: true, follow: true, "max-image-preview": "large" },
-  },
+  robots: indexingEnabled()
+    ? {
+        index: true,
+        follow: true,
+        googleBot: { index: true, follow: true, "max-image-preview": "large" },
+      }
+    : { index: false, follow: false },
 };
 
 export default function RootLayout({

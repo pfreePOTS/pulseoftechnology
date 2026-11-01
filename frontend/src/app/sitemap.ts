@@ -1,5 +1,7 @@
 import type { MetadataRoute } from "next";
 
+import { LOCATIONS, locationPath } from "@/lib/locations";
+import { PRIVACY_PATH } from "@/lib/privacyPolicy";
 import { SERVICES, servicePath } from "@/lib/services";
 import { absoluteUrl } from "@/lib/site";
 
@@ -23,6 +25,7 @@ const STATIC_ROUTES: Entry[] = [
   { path: "/radar", priority: 0.7, changeFrequency: "daily" },
   { path: "/everyone", priority: 0.6, changeFrequency: "daily" },
   { path: "/contact", priority: 0.5, changeFrequency: "yearly" },
+  { path: PRIVACY_PATH, priority: 0.3, changeFrequency: "yearly" },
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -34,7 +37,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
     changeFrequency: "monthly",
   }));
 
-  return [...STATIC_ROUTES, ...serviceRoutes].map(
+  const locationRoutes: Entry[] = LOCATIONS.map((location) => ({
+    path: locationPath(location.slug),
+    priority: 0.6,
+    changeFrequency: "monthly",
+  }));
+
+  return [...STATIC_ROUTES, ...serviceRoutes, ...locationRoutes].map(
     ({ path, priority, changeFrequency }) => ({
       url: absoluteUrl(path),
       lastModified,

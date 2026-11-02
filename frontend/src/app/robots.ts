@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 
+import { indexingEnabled } from "@/lib/indexing";
 import { PRIVATE_PATHS, SITE_URL, absoluteUrl } from "@/lib/site";
 
 /**
@@ -28,6 +29,10 @@ const AI_CRAWLERS = [
 const DISALLOW = [...PRIVATE_PATHS, "/api/"];
 
 export default function robots(): MetadataRoute.Robots {
+  if (!indexingEnabled()) {
+    return { rules: [{ userAgent: "*", disallow: "/" }] };
+  }
+
   return {
     rules: [
       { userAgent: "*", allow: "/", disallow: DISALLOW },

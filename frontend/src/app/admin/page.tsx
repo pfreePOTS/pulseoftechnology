@@ -755,6 +755,32 @@ function TrendDiscoveryInner() {
     setSelectedIds(new Set(displayedTopics.map((t) => t.id)));
   }
 
+  function removeTopicFromView(id: number) {
+    setTopics((prev) => prev.filter((t) => t.id !== id));
+    setSelectedTopicId((cur) => (cur === id ? null : cur));
+    setSelectedIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setExpandedRows((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setTopicArticles((prev) => {
+      if (prev[id] === undefined) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    articlesLoadedRef.current.delete(id);
+    articleFetchInflight.current.delete(id);
+    setTopicArticlesLoadingId((cur) => (cur === id ? null : cur));
+  }
+
   async function approveTopic(id: number) {
     setApprovingId(id);
     setError(null);
@@ -766,13 +792,7 @@ function TrendDiscoveryInner() {
         setError(await res.text().catch(() => res.statusText));
         return;
       }
-      setSelectedTopicId((cur) => (cur === id ? null : cur));
-      await loadTopics();
-      setSelectedIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
+      removeTopicFromView(id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Approve failed");
     } finally {
@@ -791,13 +811,7 @@ function TrendDiscoveryInner() {
         setError(await res.text().catch(() => res.statusText));
         return;
       }
-      setSelectedTopicId((cur) => (cur === id ? null : cur));
-      await loadTopics();
-      setSelectedIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
+      removeTopicFromView(id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Watch failed");
     } finally {
@@ -816,8 +830,7 @@ function TrendDiscoveryInner() {
         setError(await res.text().catch(() => res.statusText));
         return;
       }
-      setSelectedTopicId((cur) => (cur === id ? null : cur));
-      await loadTopics();
+      removeTopicFromView(id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Remove from watchlist failed");
     } finally {
@@ -842,8 +855,7 @@ function TrendDiscoveryInner() {
         setError(await res.text().catch(() => res.statusText));
         return;
       }
-      setSelectedTopicId((cur) => (cur === id ? null : cur));
-      await loadTopics();
+      removeTopicFromView(id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Demote failed");
     } finally {

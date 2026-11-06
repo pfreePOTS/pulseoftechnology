@@ -287,7 +287,7 @@ function TopicClusterCell({
           disabled={rowBusy}
           onClick={() => void onSuggestSubdomain(row.id)}
           className="text-[10px] font-medium text-cyan-400/90 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
-          title="Optional: re-run sub-domain from this topic’s articles if auto-fill after ingest missed it (or to retry after API issues). Normal flow: Process raw articles fills sub-domains when DEEPSEEK_API_KEY is set."
+          title="Optional: re-run sub-domain from this topic’s articles if auto-fill after ingest missed it (or to retry after a failed pass). Normal flow: Process raw articles fills sub-domains."
         >
           {rowBusy ? "…" : "Refresh sub-domain"}
         </button>
@@ -426,7 +426,7 @@ function TrendPickBadge({ action }: { action: string | null | undefined }) {
   return (
     <span
       className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${cls}`}
-      title="Suggestion: Watch (track), Radar (pipeline), or Remove — from Claude Haiku using topic + recent articles"
+      title="Suggestion: Watch (track), Radar (pipeline), or Remove, using the topic and recent articles"
     >
       {label}
     </span>
@@ -1057,8 +1057,7 @@ function TrendDiscoveryInner() {
           <strong className="text-gray-300">filled automatically</strong> when articles are processed (ingestion); use{" "}
           <span className="text-gray-300">Refresh sub-domain</span> or <span className="text-gray-300">AI sub-domains (group)</span>{" "}
           only if you need a manual retry. If rows stay under <span className="text-gray-300">General</span>, run{" "}
-          <span className="text-gray-300">System Jobs → Process Raw Articles</span> (or RSS Ingestion); labeling needs{" "}
-          <span className="text-gray-300">DEEPSEEK_API_KEY</span>.{" "}
+          <span className="text-gray-300">System Jobs → Process Raw Articles</span> (or RSS Ingestion).{" "}
           <strong className="text-gray-300">Velocity</strong> counts articles in the rolling window using{" "}
           <strong className="text-gray-300">coverage time</strong> — publish date when available, otherwise when Pulse
           stored the RSS row (UTC). That keeps old RSS backlog out of current velocity and the{" "}
@@ -1069,7 +1068,7 @@ function TrendDiscoveryInner() {
           <strong className="text-gray-300">Acceleration</strong> is velocity divided by
           the prior window&apos;s count.{" "}
           <strong className="text-gray-300">Suggestion</strong> is <strong className="text-gray-300">Watch</strong> /{" "}
-          <strong className="text-gray-300">Radar</strong> / <strong className="text-gray-300">Remove</strong> from Claude Haiku
+          <strong className="text-gray-300">Radar</strong> / <strong className="text-gray-300">Remove</strong>{" "}
           (topic status + recent article blurbs). It auto-fills after RSS ingestion and in the daily signal job for topics
           that do not have one yet; use <span className="text-gray-300">AI analyze</span> to refresh a row. High-velocity
           topics also get scored via a separate threshold job. Per-industry adoption is in Analysis.{" "}
@@ -1378,7 +1377,7 @@ function TrendDiscoveryInner() {
                             <button
                               type="button"
                               disabled={rowBusy}
-                              title="Re-run DeepSeek trend pick: fills Suggestion (Watch/Radar/Remove) and italic rationale. Needs DEEPSEEK_API_KEY."
+                              title="Re-run the trend pick: fills Suggestion (Watch/Radar/Remove) and the italic rationale."
                               onClick={() => void analyzeTopicTrend(row.id)}
                               className={`${topicToolbarBtn} border-indigo-500/40 text-indigo-200 hover:border-indigo-400`}
                             >
@@ -1558,7 +1557,7 @@ function TrendDiscoveryInner() {
                             <button
                               type="button"
                               disabled={rowBusy}
-                              title="Re-run DeepSeek trend pick: fills Suggestion (Watch/Radar/Remove) and italic rationale. Needs DEEPSEEK_API_KEY."
+                              title="Re-run the trend pick: fills Suggestion (Watch/Radar/Remove) and the italic rationale."
                               onClick={() => void analyzeTopicTrend(row.id)}
                               className={`${topicToolbarBtn} border-indigo-500/40 text-indigo-200 hover:border-indigo-400`}
                             >
@@ -1766,7 +1765,7 @@ function TrendDiscoveryInner() {
                           <button
                             type="button"
                             disabled={rowBusy}
-                            title="Re-run DeepSeek trend pick: fills Suggestion (Watch/Radar/Remove) and italic rationale. Needs DEEPSEEK_API_KEY."
+                            title="Re-run the trend pick: fills Suggestion (Watch/Radar/Remove) and the italic rationale."
                             onClick={() => void analyzeTopicTrend(row.id)}
                             className={`${topicToolbarBtn} border-indigo-500/40 text-indigo-200 hover:border-indigo-400`}
                           >

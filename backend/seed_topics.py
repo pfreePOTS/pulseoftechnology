@@ -1,8 +1,8 @@
 """
 Seed the topics table with the core PulseOne radar domains.
 
-Re-runnable: if a topic already exists its industry_positions are updated
-so you can tweak the data without wiping the database.
+Re-runnable: existing topics keep their industry analysis, scores, summary, and publish
+state; only missing industry columns are backfilled (PULSE-041).
 
 Each topic receives all 20 ``INDUSTRY_GRID_LABELS`` sectors: legacy aliases in ``CORE_TOPICS``
 (e.g. ``Finance & Banking``) normalize to canonical names; any missing sectors get placeholders
@@ -639,17 +639,15 @@ def seed() -> None:
             slug = str(entry["domain_slug"])
             domain_id = _domain_id(db, slug)
             existing = existing_topics.get(entry["name"])
-            positions = _industry_positions_for_seed(entry, domain_id)
             if existing:
+                # Keep curator/AI analysis, scores, summary, and publish state; only fill gaps.
                 existing.domain_id = domain_id
-                existing.industry_positions = positions
-                existing.urgency_score = entry["urgency_score"]
-                existing.adoption_state = entry["adoption_state"]
-                existing.is_published = True
-                if entry.get("summary"):
-                    existing.summary = entry["summary"]
-                updated += 1
+                filled = fill_missing_industry_grid_rows(existing, existing.industry_positions)
+                if filled != existing.industry_positions:
+                    existing.industry_positions = filled
+                    updated += 1
             else:
+                positions = _industry_positions_for_seed(entry, domain_id)
                 topic = Topic(
                     name=entry["name"],
                     domain_id=domain_id,

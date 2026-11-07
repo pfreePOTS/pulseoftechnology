@@ -11,7 +11,7 @@ import {
 
 import { adminFetch, API_BASE } from "@/lib/api";
 import { domainBadgeClass } from "@/lib/domains";
-import { INDUSTRY_OPTIONS } from "@/lib/industryGrid";
+import { type IndustryCellSource, INDUSTRY_OPTIONS, isPlaceholderCell } from "@/lib/industryGrid";
 
 /** Re-export for callers that imported from this module */
 export { INDUSTRY_OPTIONS };
@@ -47,6 +47,7 @@ interface IndustryPosition {
   phase_rationale?: string;
   remediation?: string;
   impact_approved?: boolean;
+  source?: IndustryCellSource;
 }
 
 interface TopicRow {
@@ -66,11 +67,56 @@ interface TopicRow {
   first_evidence_at?: string | null;
   /** Whole days since promoted to on-radar (server-computed). */
   days_on_radar?: number | null;
+  /** Set while an Industry Positioning run holds this topic. */
+  industry_analysis_started_at?: string | null;
+  industry_analyzed_at?: string | null;
+  /** Consecutive failed or incomplete runs; the hourly sweep stops at 3. */
+  industry_analysis_attempts?: number;
+  industry_analysis_error?: string | null;
+}
+
+const ANALYSIS_CLAIM_MS = 15 * 60 * 1000;
+const ANALYSIS_MAX_ATTEMPTS = 3;
+
+function industryAnalysisStatus(
+  topic: TopicRow,
+  positions: Record<string, IndustryPosition> | undefined,
+): { label: string; className: string; title: string } {
+  const pending = INDUSTRY_OPTIONS.filter((ind) => isPlaceholderCell(positions?.[ind])).length;
+  const done = INDUSTRY_OPTIONS.length - pending;
+  const started = topic.industry_analysis_started_at
+    ? Date.parse(topic.industry_analysis_started_at)
+    : NaN;
+  const error = topic.industry_analysis_error ?? "";
+  if (Number.isFinite(started) && Date.now() - started < ANALYSIS_CLAIM_MS) {
+    return { label: "Analyzing…", className: "text-sky-300", title: "Industry AI is running for this topic." };
+  }
+  if (pending === 0) {
+    return {
+      label: "Analyzed",
+      className: "text-teal-300",
+      title: topic.industry_analyzed_at
+        ? `Last industry analysis ${formatAdminTimestamp(new Date(topic.industry_analyzed_at))}`
+        : "Every industry has analysis.",
+    };
+  }
+  if ((topic.industry_analysis_attempts ?? 0) >= ANALYSIS_MAX_ATTEMPTS) {
+    return {
+      label: "Analysis failed",
+      className: "text-red-400",
+      title: `${error || "Industry AI failed 3 times."} Run AI Suggest (all topics) to retry.`,
+    };
+  }
+  return {
+    label: done === 0 ? "Not analyzed" : `${done} of ${INDUSTRY_OPTIONS.length} analyzed`,
+    className: "text-amber-300",
+    title: error || "Queued for industry AI (runs on approve and hourly).",
+  };
 }
 
 function daysOnRadarTitle(topic: TopicRow): string {
   if (topic.selected_at) {
-    return `On radar since ${topic.selected_at}`;
+    return `Selected since ${topic.selected_at}`;
   }
   if (topic.first_evidence_at) {
     return `Promotion date was not recorded; using first linked article (${topic.first_evidence_at}) as an approximate start`;
@@ -210,6 +256,7 @@ function defaultIndustryRow(): IndustryPosition {
     impact_score: 5,
     risk_level: 5,
     impact_approved: true,
+    source: "manual",
   };
 }
 
@@ -247,6 +294,19 @@ function IndustryDetailPanel({
   const remediation = row?.remediation?.trim();
   const emptyHint =
     "No text stored for this section yet. Run “AI Suggest (all topics)” to regenerate structured detail from the latest prompt.";
+
+  if (isPlaceholderCell(row)) {
+    return (
+      <div className="rounded-lg border border-amber-900/50 bg-amber-950/20 px-3 py-2.5 text-sm text-amber-100/90">
+        <p className="font-medium">Not analyzed yet</p>
+        <p className="mt-1.5 text-xs leading-relaxed text-gray-400">
+          Industry AI fills this cell automatically when the topic is approved and on the hourly run. Until then it
+          stays off the public radar and out of newsletters. To write it yourself, close this panel and use{" "}
+          <span className="text-gray-300">Edit</span> on the cell.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 text-sm">
@@ -467,7 +527,7 @@ export default function AnalysisPage() {
         const next: Record<string, IndustryPosition> = {};
         for (const [ind, pos] of Object.entries(row)) {
           const p = pos!;
-          if (p.impact_approved !== approved) {
+          if (p.impact_approved !== approved && !(approved && isPlaceholderCell(p))) {
             next[ind] = { ...p, impact_approved: approved };
             didChange = true;
           } else {
@@ -491,7 +551,7 @@ export default function AnalysisPage() {
         const out = { ...prev };
         for (const t of topics) {
           const row = prev[t.id]?.[industry];
-          if (!row || row.impact_approved === approved) continue;
+          if (!row || row.impact_approved === approved || (approved && isPlaceholderCell(row))) continue;
           any = true;
           touched.push(t.id);
           out[t.id] = { ...prev[t.id], [industry]: { ...row, impact_approved: approved } };
@@ -1116,6 +1176,7 @@ export default function AnalysisPage() {
 
                   {topics.map((topic) => {
                     const domainClass = domainBadgeClass(topic.domain);
+                    const status = industryAnalysisStatus(topic, drafts[topic.id]);
                     return (
                       <Fragment key={topic.id}>
                         <div className="sticky left-0 z-30 flex flex-col justify-center gap-1 border-b border-r border-gray-800 bg-gray-950 px-2 py-2">
@@ -1132,14 +1193,17 @@ export default function AnalysisPage() {
                               title={daysOnRadarTitle(topic)}
                             >
                               {typeof topic.days_on_radar === "number"
-                                ? `${topic.days_on_radar}d on radar`
-                                : "— on radar"}
+                                ? `${topic.days_on_radar}d selected`
+                                : "— selected"}
                             </span>
                           </div>
+                          <span className={`text-[10px] font-medium ${status.className}`} title={status.title}>
+                            {status.label}
+                          </span>
                           <div className="mt-1 flex flex-wrap gap-1">
                             <button
                               type="button"
-                              title="Check Radar for every industry cell in this row that already exists"
+                              title="Check Radar for every analyzed industry cell in this row"
                               onClick={() => setRowRadarApproved(topic.id, true)}
                               className="rounded border border-[#019E7C]/50 bg-[#019E7C]/10 px-1.5 py-0.5 text-[9px] font-medium text-teal-200/90 hover:bg-[#019E7C]/20"
                             >
@@ -1166,6 +1230,27 @@ export default function AnalysisPage() {
                               : ADOPTION_STATES[0];
                           const heat = impactHeatClass(impact);
                           const borderAdopt = ADOPTION_BORDER[state] ?? "border-l-gray-600";
+
+                          if (has && isPlaceholderCell(row)) {
+                            return (
+                              <div
+                                key={`${topic.id}-${industry}`}
+                                className="flex min-h-[88px] flex-col items-center justify-center gap-1.5 border-b border-dashed border-gray-800 bg-gray-950/80 p-1"
+                              >
+                                <span className="text-[10px] font-medium uppercase tracking-wide text-gray-500">
+                                  Not analyzed
+                                </span>
+                                <button
+                                  type="button"
+                                  title="Write this cell by hand (AI runs will keep your edits)"
+                                  onClick={() => updateCell(topic.id, industry, { source: "manual" })}
+                                  className="rounded border border-gray-700 px-1.5 py-0.5 text-[10px] text-gray-500 hover:border-gray-500 hover:text-gray-300"
+                                >
+                                  Edit
+                                </button>
+                              </div>
+                            );
+                          }
 
                           if (!has) {
                             return (

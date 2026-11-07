@@ -1,5 +1,5 @@
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -85,6 +85,23 @@ def _signal_job() -> None:
         execute_full_signal_flow(db)
     except Exception:
         logger.exception("Unhandled error in signal scorer job")
+    finally:
+        db.close()
+
+
+def _industry_analysis_job() -> None:
+    """Hourly: Industry Positioning for on-radar topics that still have placeholder cells."""
+    from .services.industry_analysis import run_industry_analysis_sweep
+    from .services.llm_client import is_llm_configured
+
+    if not is_llm_configured():
+        logger.debug("[job] industry_analysis skipped reason=no_llm")
+        return
+    db = SessionLocal()
+    try:
+        run_industry_analysis_sweep(db)
+    except Exception:
+        logger.exception("Unhandled error in industry analysis job")
     finally:
         db.close()
 
@@ -176,6 +193,14 @@ def start_scheduler() -> None:
         next_run_time=datetime.now(UTC),
     )
     scheduler.add_job(
+        _industry_analysis_job,
+        trigger="interval",
+        hours=1,
+        id="industry_analysis",
+        replace_existing=True,
+        next_run_time=datetime.now(UTC) + timedelta(minutes=5),
+    )
+    scheduler.add_job(
         _archive_job,
         trigger=CronTrigger(hour=5, minute=0, timezone="UTC"),
         id="article_archiver",
@@ -197,7 +222,7 @@ def start_scheduler() -> None:
     schedule_hubspot_batch_job()
     scheduler.start()
     logger.info(
-        "Scheduler started — ingestion hourly · archive 05:00 UTC · prompt optimizer 02:00 UTC · "
+        "Scheduler started — ingestion hourly · industry analysis hourly · archive 05:00 UTC · prompt optimizer 02:00 UTC · "
         "signals 06:00 UTC · newsletter from settings · HubSpot reconcile from env (if key)"
     )
 

@@ -144,6 +144,35 @@ export const INDUSTRY_DESCRIPTIONS: Record<IndustryOption, string> = {
     "Client-data security, AI productivity gains in delivery work, and demonstrating SOC 2 / ISO posture as a sales enabler.",
 };
 
+/** Who wrote an Analysis grid cell (mirrors `backend/services/industry_cells.py`). */
+export type IndustryCellSource = "placeholder" | "ai" | "manual";
+
+interface IndustryCellLike {
+  source?: IndustryCellSource | string;
+  industry_impact?: string;
+  rationale?: string;
+  impact_approved?: boolean;
+}
+
+const LEGACY_PLACEHOLDER_RATIONALE =
+  "Included so this topic appears across all industries on the radar.";
+
+/** Backfill cell that was never analyzed. Rows saved before `source` existed are matched by their copy. */
+export function isPlaceholderCell(row: IndustryCellLike | null | undefined): boolean {
+  if (!row) return true;
+  if (row.source === "placeholder") return true;
+  if (row.source === "ai" || row.source === "manual") return false;
+  return (
+    (row.industry_impact ?? "").trim().startsWith("Placeholder —") ||
+    (row.rationale ?? "").trim().startsWith(LEGACY_PLACEHOLDER_RATIONALE)
+  );
+}
+
+/** Analyzed and not unchecked — the cells that may plot on the radar. */
+export function isLiveIndustryCell(row: IndustryCellLike | null | undefined): boolean {
+  return !!row && !isPlaceholderCell(row) && row.impact_approved !== false;
+}
+
 export function industryDescription(name: string): string {
   return (INDUSTRY_DESCRIPTIONS as Record<string, string>)[name] ?? "";
 }

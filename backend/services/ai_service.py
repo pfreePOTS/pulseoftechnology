@@ -33,6 +33,7 @@ from ..models.topic import Topic
 from . import llm_client
 from .archive_service import archive_outside_active_evidence_window
 from .domain_registry import get_domain_by_slug, render_classify_system_prompt, resolve_domain
+from .industry_cells import PLACEHOLDER_TEXT, SOURCE_AI, SOURCE_PLACEHOLDER
 from .tracked_article_filter import (
     article_has_general_pulse_tech_signal,
     article_passes_pulse_tech_deep,
@@ -494,7 +495,9 @@ def _prefer_richer_industry_row(a: dict[str, Any], b: dict[str, Any]) -> dict[st
     return b if ib > ia else a
 
 
-def _normalize_industry_suggestions_payload(result: dict[str, Any]) -> dict[str, Any]:
+def _normalize_industry_suggestions_payload(
+    result: dict[str, Any], *, warn_missing: bool = True
+) -> dict[str, Any]:
     """Merge alias keys and dedupe; ensures JSON keys match the Analysis grid."""
     raw_sug = result.get("industry_suggestions")
     if not isinstance(raw_sug, dict):
@@ -512,7 +515,7 @@ def _normalize_industry_suggestions_payload(result: dict[str, Any]) -> dict[str,
         else:
             merged[canon] = row
     missing = [x for x in INDUSTRY_GRID_LABELS if x not in merged]
-    if missing:
+    if missing and warn_missing:
         logger.warning(
             "[industry_positions] AI omitted %d industries (will not overwrite existing drafts): %s",
             len(missing),
@@ -538,21 +541,9 @@ def _default_industry_row_for_topic(topic: Topic) -> dict[str, Any]:
         "urgency_score": u,
         "risk_level": 5.0,
         "adoption_state": _topic_adoption_state_str(topic),
-        "rationale": (
-            "Included so this topic appears across all industries on the radar. "
-            "Adjust impact, risk, and adoption per sector as needed."
-        ),
-        "industry_impact": (
-            "Placeholder — run AI Suggest on this topic to generate sector-specific impact analysis."
-        ),
-        "scoring_rationale": (
-            "Placeholder — scores match topic-level urgency until you refine per industry."
-        ),
-        "phase_rationale": "Placeholder — adoption stage matches topic default until you refine.",
-        "remediation": (
-            "Review impact and risk for this sector, then set program priorities accordingly."
-        ),
-        "impact_approved": True,
+        **PLACEHOLDER_TEXT,
+        "source": SOURCE_PLACEHOLDER,
+        "impact_approved": False,
     }
 
 
@@ -2171,7 +2162,13 @@ def suggest_industry_positions(topic_id: int, db: Session) -> dict[str, Any]:
     if topic is None:
         raise ValueError(f"Topic {topic_id} not found")
 
-    articles = db.query(Article).filter(Article.topic_id == topic_id).limit(8).all()
+    articles = (
+        db.query(Article)
+        .filter(Article.topic_id == topic_id)
+        .order_by(Article.published_at.desc().nullslast(), Article.ingested_at.desc())
+        .limit(8)
+        .all()
+    )
 
     article_blurbs = "\n\n".join(
         f"Article {i + 1}: {a.title}\n{a.content or '(no content)'}" for i, a in enumerate(articles)
@@ -2189,16 +2186,20 @@ def suggest_industry_positions(topic_id: int, db: Session) -> dict[str, Any]:
 
     merged_suggestions: dict[str, Any] = {}
     labels = INDUSTRY_GRID_LABELS
-    for i in range(0, len(labels), _INDUSTRY_SUGGEST_BATCH_SIZE):
-        batch = tuple(labels[i : i + _INDUSTRY_SUGGEST_BATCH_SIZE])
-        system = _industry_positioning_system_for_batch(db, batch)
-        cr = _call_result(
-            get_active_model(db, "industry_positioning"),
-            system,
-            user_message,
-            max_tokens=8192,
-            json_response=True,
+    model = get_active_model(db, "industry_positioning")
+    systems = [
+        _industry_positioning_system_for_batch(
+            db, tuple(labels[i : i + _INDUSTRY_SUGGEST_BATCH_SIZE])
         )
+        for i in range(0, len(labels), _INDUSTRY_SUGGEST_BATCH_SIZE)
+    ]
+    with ThreadPoolExecutor(max_workers=len(systems)) as pool:
+        futures = [
+            pool.submit(_call_result, model, system, user_message, 8192, json_response=True)
+            for system in systems
+        ]
+        call_results = [f.result() for f in futures]
+    for cr in call_results:
         result = _parse(
             cr.text,
             "industry_positions",
@@ -2212,7 +2213,7 @@ def suggest_industry_positions(topic_id: int, db: Session) -> dict[str, Any]:
                 "This often means the model output was truncated — retry once. "
                 "If it persists, shorten linked article bodies or run AI Suggest per topic."
             )
-        result = _normalize_industry_suggestions_payload(result)
+        result = _normalize_industry_suggestions_payload(result, warn_missing=False)
         sug = result.get("industry_suggestions")
         if not isinstance(sug, dict):
             raise ValueError("AI response missing industry_suggestions object")
@@ -2225,6 +2226,8 @@ def suggest_industry_positions(topic_id: int, db: Session) -> dict[str, Any]:
         for _ind, row in suggestions.items():
             if not isinstance(row, dict):
                 continue
+            row["source"] = SOURCE_AI
+            row["impact_approved"] = True
             if "impact_score" not in row and row.get("score") is not None:
                 row["impact_score"] = float(row["score"])
             if "risk_level" not in row:

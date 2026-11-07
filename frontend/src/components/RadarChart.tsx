@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { domainColor, domainShortLabel, domainSlug, type TopicDomainRef } from "@/lib/domains";
-import { industryColor, INDUSTRY_COLORS, INDUSTRY_OPTIONS } from "@/lib/industryGrid";
+import {
+  industryColor,
+  INDUSTRY_COLORS,
+  INDUSTRY_OPTIONS,
+  type IndustryCellSource,
+  isLiveIndustryCell,
+} from "@/lib/industryGrid";
 import { clampRadarRationaleParagraph, structureRationale } from "@/lib/sentences";
 import { scrollToSubscribe } from "@/lib/subscribeNavigation";
 
@@ -27,6 +33,8 @@ export interface IndustryPosition {
   phase_rationale?: string;
   /** When false, this industry row is hidden on the public radar until approved in Impact workbench */
   impact_approved?: boolean;
+  /** `placeholder` rows were never analyzed and never plot */
+  source?: IndustryCellSource;
 }
 
 export interface RadarTopic {
@@ -306,7 +314,7 @@ function buildPlotPoints(topics: RadarTopic[]): PlotPoint[] {
   for (const topic of topics) {
     const positions = topic.industry_positions;
     if (positions && Object.keys(positions).length > 0) {
-      const visible = Object.entries(positions).filter(([, pos]) => pos.impact_approved !== false);
+      const visible = Object.entries(positions).filter(([, pos]) => isLiveIndustryCell(pos));
       if (visible.length === 0) {
         points.push({
           key: String(topic.id),
@@ -388,7 +396,7 @@ export function topicRankScore(topic: RadarTopic): number {
   let max = 0;
   let anyApproved = false;
   for (const row of Object.values(pos)) {
-    if (!row || row.impact_approved === false) continue;
+    if (!isLiveIndustryCell(row)) continue;
     anyApproved = true;
     const imp = resolveRowImpact(row as IndustryPosition, topic.urgency_score);
     max = Math.max(max, imp);
@@ -410,7 +418,7 @@ function topicApprovedIndustries(topic: RadarTopic): { name: string; color: stri
   if (!pos || Object.keys(pos).length === 0) return [];
   const rows: { name: string; color: string; impact: number }[] = [];
   for (const [industry, row] of Object.entries(pos)) {
-    if (!row || row.impact_approved === false) continue;
+    if (!isLiveIndustryCell(row)) continue;
     const imp = resolveRowImpact(row as IndustryPosition, topic.urgency_score);
     rows.push({ name: industry, color: industryColor(industry), impact: imp });
   }
@@ -423,7 +431,7 @@ function sidebarScoreLabel(topic: RadarTopic): string {
   const pos = topic.industry_positions;
   if (!pos || Object.keys(pos).length === 0) return "topic urgency";
   for (const row of Object.values(pos)) {
-    if (row && row.impact_approved !== false) return "max impact";
+    if (isLiveIndustryCell(row)) return "max impact";
   }
   return "topic urgency";
 }

@@ -261,6 +261,19 @@ def test_sweep_picks_pending_topics_oldest_first(db_session):
     assert [t.id for t in due] == [older.id, newer.id]
 
 
+def test_sweep_includes_published_topics_that_are_not_selected(db_session):
+    from backend.services.industry_analysis import topics_due_for_industry_analysis
+
+    public = _selected_topic(
+        db_session, name="Published but watched", status=TopicStatus.watched, is_published=True
+    )
+    public.industry_positions = _grid_with(public, {})
+    db_session.commit()
+
+    due = topics_due_for_industry_analysis(db_session)
+    assert [t.id for t in due] == [public.id]
+
+
 def test_approve_queues_first_pass_analysis(client, db_session):
     topic = make_topic(
         db_session,

@@ -21,7 +21,7 @@ from fastapi import (
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
-from sqlalchemy import and_, case, func
+from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from ..admin_permissions import INVITABLE_PAGE_SLUGS, normalize_login_email
@@ -1319,18 +1319,21 @@ def _run_analysis_industry_suggest_all_job(job_id: str | None = None) -> None:
         rows = [
             (r.id, r.name)
             for r in db.query(Topic.id, Topic.name)
-            .filter(Topic.status == TopicStatus.selected)
+            .filter(or_(Topic.status == TopicStatus.selected, Topic.is_published.is_(True)))
             .order_by(Topic.id)
             .all()
         ]
         total = len(rows)
         logger.info(
-            "Analysis industry suggest-all job %s started: %s selected topic(s)",
+            "Analysis industry suggest-all job %s started: %s selected or published topic(s)",
             jid,
             total,
         )
         if total == 0:
-            logger.info("Analysis industry suggest-all job %s complete: no selected topics", jid)
+            logger.info(
+                "Analysis industry suggest-all job %s complete: no selected or published topics",
+                jid,
+            )
             return
         for idx, (tid, topic_name) in enumerate(rows, start=1):
             logger.info(

@@ -1,4 +1,4 @@
-"""Automatic Industry Positioning runs for on-radar (selected) topics.
+"""Automatic Industry Positioning runs for on-radar (selected or published) topics.
 
 Triggered when a topic is selected/approved, by the hourly sweep, and by the Analysis
 "AI Suggest (all topics)" button. Progress lives on the topic row, so a restart only
@@ -112,12 +112,12 @@ def analyze_topic_industries(topic_id: int, db: Session) -> bool:
 def topics_due_for_industry_analysis(
     db: Session, *, limit: int = SWEEP_LIMIT, now: datetime | None = None
 ) -> list[Topic]:
-    """Selected topics with pending cells, under the retry cap and not claimed; oldest first."""
+    """Selected or published topics with pending cells, under the retry cap and not claimed."""
     now = now or datetime.now(UTC)
     rows = (
         db.query(Topic)
         .filter(
-            Topic.status == TopicStatus.selected,
+            or_(Topic.status == TopicStatus.selected, Topic.is_published.is_(True)),
             Topic.industry_analysis_attempts < MAX_ATTEMPTS,
         )
         .all()

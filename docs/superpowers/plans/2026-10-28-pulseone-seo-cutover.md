@@ -4,7 +4,7 @@
 
 **Goal:** Make this Next.js app able to replace the WordPress site on pulseone.com without dropping the URLs Google already knows, while leaving DNS, the HubSpot blog, and the 82 apex blog posts untouched.
 
-**Status (2026-10-31):** Tasks 1 through 5 are implemented on `dev`. The redirect table is in `frontend/src/lib/legacyRedirects.ts` and spread from `frontend/next.config.ts`. Staging must set `NEXT_PUBLIC_ROBOTS_INDEX=false` at frontend image build time. DNS, `NEXT_PUBLIC_SITE_URL=https://pulseone.com`, and the 82 apex blog posts stay untouched.
+**Status (2026-11-08):** Tasks 1 through 5 are live on Railway production. `NEXT_PUBLIC_SITE_URL=https://pulseone.com` and `NEXT_PUBLIC_ROBOTS_INDEX=false` are set until DNS cutover. The 82 apex WordPress posts are mapped in `frontend/src/lib/apexBlogRedirects.ts` (see `docs/testing/seo-url-coverage.md`). DNS and a Search Console export check remain before cutover.
 
 **Architecture:** One redirect table in `frontend/src/lib/legacyRedirects.ts` is the only list of old paths. `next.config.ts` spreads it. City pages and the privacy page are new indexable routes that give the highest-value old URLs a real destination. The homepage document title picks up "Managed IT"; the designed hero H1 stays. A `NEXT_PUBLIC_ROBOTS_INDEX=false` switch noindexes any host that is not the live cutover. Canonicals stay on `NEXT_PUBLIC_SITE_URL` and must not be set to `https://pulseone.com` until that host actually serves this app.
 
@@ -598,13 +598,16 @@ Railway staging: set `NEXT_PUBLIC_ROBOTS_INDEX=false` in the frontend service an
 
 ---
 
-## Out of scope until a later plan
+## Cutover gates remaining
 
-Do not start DNS cutover when this plan is done. These still have to happen first:
+Do not start DNS cutover until:
 
-- A redirect map for the 82 WordPress posts at the apex (Tech Talk and the rest), onto the matching HubSpot URL when one exists.
-- Search Console coverage export, then a check that every indexed URL is either in `LEGACY_REDIRECTS` or on the accepted-drop list below.
-- Accepted drops, left as 404s after cutover: `/thrive`, `/thrive-login`, `/thrive-registration`, `/thrive-special-access`, `/courses`, `/profile`, `/profile-2`, `/profile-3`, `/reset-password`, `/reset-password-2`, `/registration-2`, `/grow-with-confidence`, `/hubspot-blog-post-test`, `/framework_process`, `/appointment-confirmation`, `/upcoming-events`.
+- [x] Redirect map for the 82 WordPress posts at the apex (`apexBlogRedirects.ts` + coverage doc).
+- [ ] Search Console coverage export: confirm every indexed URL is in `LEGACY_REDIRECTS`, app-native, or on the accepted-drop / noise list in `docs/testing/seo-url-coverage.md`.
+- [ ] DNS records for `pulseone.com` / `www` at the registrar (Railway custom domains already created).
+- [ ] After DNS is green: remove `NEXT_PUBLIC_ROBOTS_INDEX` from production frontend and redeploy.
+
+Accepted drops, left as 404s after cutover: `/thrive`, `/thrive-login`, `/thrive-registration`, `/thrive-special-access`, `/courses`, `/profile`, `/profile-2`, `/profile-3`, `/reset-password`, `/reset-password-2`, `/registration-2`, `/grow-with-confidence`, `/hubspot-blog-post-test`, `/framework_process`, `/appointment-confirmation`, `/upcoming-events`.
 
 ## Self-review
 

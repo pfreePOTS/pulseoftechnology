@@ -31,9 +31,31 @@ describe("legacy redirects", () => {
       expect(rule.source).not.toBe(rule.destination);
       const known =
         DESTINATIONS.has(rule.destination) ||
-        rule.destination.startsWith("/service-offers/");
+        rule.destination.startsWith("/service-offers/") ||
+        rule.destination.startsWith("https://blog.pulseone.com/");
       expect(known).toBe(true);
     }
+  });
+
+  it("maps every published apex WordPress post", async () => {
+    const { default: posts } = await import("./apexWordpressPosts.fixture.json");
+    const sources = new Set(LEGACY_REDIRECTS.map((rule) => rule.source));
+    expect(posts).toHaveLength(82);
+    for (const path of posts) {
+      expect(sources.has(path)).toBe(true);
+    }
+  });
+
+  it("sends a known HubSpot twin and an orphan to the blog host", () => {
+    const to = Object.fromEntries(LEGACY_REDIRECTS.map((rule) => [rule.source, rule.destination]));
+    expect(to["/7-best-practices-for-layered-cybersecurity"]).toBe(
+      "https://blog.pulseone.com/7-best-practices-for-layered-cybersecurity",
+    );
+    expect(to["/tech-talk-best-practices-for-implementing-layered-cybersecurity"]).toBe(
+      "https://blog.pulseone.com/7-best-practices-for-layered-cybersecurity",
+    );
+    expect(to["/fortinet"]).toBe("/approach");
+    expect(to["/tech-talk-with-it-glue"]).toBe("https://blog.pulseone.com");
   });
 
   it("redirects legacy PulseOne landing PDFs into service-offers", () => {

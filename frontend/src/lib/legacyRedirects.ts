@@ -1,3 +1,5 @@
+import { APEX_BLOG_REDIRECTS } from "./apexBlogRedirects";
+
 export type LegacyRedirect = {
   source: string;
   destination: string;
@@ -8,7 +10,7 @@ function to(sources: string[], destination: string): LegacyRedirect[] {
   return sources.map((source) => ({ source, destination, permanent: true }));
 }
 
-/** WordPress paths on pulseone.com. Apex blog posts are intentionally absent. */
+/** WordPress paths on pulseone.com, including apex posts mapped in apexBlogRedirects. */
 export const LEGACY_REDIRECTS: readonly LegacyRedirect[] = [
   ...to(
     [
@@ -69,6 +71,7 @@ export const LEGACY_REDIRECTS: readonly LegacyRedirect[] = [
   ...to(["/philadelphia"], "/locations/philadelphia"),
   ...to(["/privacy-policy"], "/privacy"),
   ...to(["/blog"], "https://blog.pulseone.com"),
+  ...APEX_BLOG_REDIRECTS,
   // Former marketplace landing PDF paths (PulseOne_XX_landing.pdf) → /service-offers/<title-slug>.pdf
   ...[
     ["01", "security-baseline-assessment-for-microsoft-365"],

@@ -1204,17 +1204,21 @@ def _build_promo_section(items: list[ContentItem]) -> str:
     blocks = []
     for item in items[:3]:
         tlabel = _TYPE_LABELS.get(item.type, item.type.replace("_", " ").title())
+        link_href = html.escape(_absolute_public_url(item.url))
+        link_attrs = f'href="{link_href}" target="_blank" rel="noopener noreferrer"'
         img_html = ""
         abs_img = _absolute_public_url(getattr(item, "image_url", None))
         if abs_img:
             img_html = (
                 f'<p style="margin:0 0 10px;">'
-                f'<img src="{html.escape(abs_img)}" width="700" alt="" '
-                f'style="display:block;max-width:100%;height:auto;border-radius:6px;border:0;"></p>'
+                f"<a {link_attrs} style=\"text-decoration:none;border:0;\">"
+                f'<img src="{html.escape(abs_img)}" width="700" alt="{html.escape(item.title)}" '
+                f'style="display:block;max-width:100%;height:auto;border-radius:6px;border:0;"></a></p>'
             )
         summ = (
             f'<p style="margin:8px 0 0;font-size:15px;color:#4A5F6D;line-height:1.6;font-family:{_FF};">'
-            f"{html.escape(item.summary)}</p>"
+            f"<a {link_attrs} style=\"color:#4A5F6D;text-decoration:none;\">"
+            f"{html.escape(item.summary)}</a></p>"
             if item.summary
             else ""
         )
@@ -1223,11 +1227,11 @@ def _build_promo_section(items: list[ContentItem]) -> str:
     <tr>
       <td style="padding:0 0 20px 0;">
         {img_html}
-        <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#FEE2E2;
+        <a {link_attrs} style="display:inline-block;padding:2px 8px;border-radius:4px;background:#FEE2E2;
                      font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
-                     color:#E91D24;font-family:{_FF};">{html.escape(tlabel)}</span>
+                     color:#E91D24;font-family:{_FF};text-decoration:none;">{html.escape(tlabel)}</a>
         <p style="margin:8px 0 0;font-family:{_FF};">
-          <a href="{html.escape(item.url)}" style="font-size:17px;font-weight:700;color:#111827;text-decoration:none;line-height:1.35;">
+          <a {link_attrs} style="font-size:17px;font-weight:700;color:#111827;text-decoration:none;line-height:1.35;">
             {html.escape(item.title)}
           </a>
         </p>

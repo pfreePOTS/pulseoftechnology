@@ -67,6 +67,7 @@ def _topic(domain: str = "AI", urgency: float = 8.0, name: str = "GPT-5 Launch")
         domain=domain,
         urgency_score=urgency,
         summary=f"{name}: a major development.",
+        industry_positions=None,
     )
 
 
@@ -354,6 +355,121 @@ def test_finance_banking_alias_matches_financial_services_grid_and_ranks_first()
 
     teaser = email_service._subscriber_industry_teaser(fs_security, sub)
     assert "Core banking outages" in teaser
+
+
+def _merged_pipeline():
+    return SimpleNamespace(
+        newsletter_top_ingest_hours=24,
+        newsletter_deep_dive_ingest_hours=72,
+        newsletter_article_lookback_days=4,
+    )
+
+
+def test_explicit_domain_is_not_refilled_from_other_pillars(monkeypatch):
+    """A Security pick stays on Security topics even when fewer than the minimum."""
+    monkeypatch.setattr(
+        email_service,
+        "_newsletter_first_article_via_chain",
+        lambda *args, **kwargs: SimpleNamespace(
+            id=1,
+            title="Story",
+            tags=["general"],
+            what_is_it="",
+            why_it_matters="",
+            persona_impacts=None,
+            content="",
+            subdomain="",
+        ),
+    )
+    topics = [
+        _topic("Security", 4.0, "Sec A"),
+        _topic("Security", 3.0, "Sec B"),
+    ]
+    topics += [_topic("AI", 9.0 - (i * 0.1), f"AI Hot {i}") for i in range(6)]
+    sub = _sub(domains=["Security"], industries=[])
+    pool, tier = email_service._resolve_newsletter_topic_pool(
+        subscriber=sub,
+        all_approved=topics,
+        db=MagicMock(),
+        merged_pipeline=_merged_pipeline(),
+    )
+    assert {t.name for t in pool} == {"Sec A", "Sec B"}
+    assert tier in {"domains_fresh_articles", "domains_only"}
+
+
+def test_explicit_industry_is_not_refilled_with_unrelated_topics(monkeypatch):
+    monkeypatch.setattr(
+        email_service,
+        "_newsletter_first_article_via_chain",
+        lambda *args, **kwargs: SimpleNamespace(
+            id=1,
+            title="Story",
+            tags=["general"],
+            what_is_it="",
+            why_it_matters="",
+            persona_impacts=None,
+            content="",
+            subdomain="",
+        ),
+    )
+    healthcare = SimpleNamespace(
+        id=10,
+        name="Hospital AI",
+        urgency_score=3.0,
+        domain="AI",
+        industry_positions={
+            "Healthcare": {"industry_impact": "Hospitals need a reviewed access plan."},
+        },
+    )
+    others = [_topic("AI", 9.0 - i, f"Generic AI {i}") for i in range(6)]
+    sub = _sub(domains=None, industries=["Healthcare"])
+    pool, _tier = email_service._resolve_newsletter_topic_pool(
+        subscriber=sub,
+        all_approved=[healthcare, *others],
+        db=MagicMock(),
+        merged_pipeline=_merged_pipeline(),
+    )
+    assert [t.name for t in pool] == ["Hospital AI"]
+
+
+def test_role_tags_rank_matching_topics_ahead_of_higher_urgency(monkeypatch):
+    def article_for(topic, *_args, **_kwargs):
+        if "Identity" in topic.name:
+            return SimpleNamespace(
+                id=topic.id,
+                title="Zero trust identity rollout",
+                tags=["identity", "security"],
+                what_is_it="Identity controls.",
+                why_it_matters="",
+                persona_impacts=None,
+                content="",
+                subdomain="identity",
+            )
+        return SimpleNamespace(
+            id=topic.id,
+            title="Seasonal brand campaign",
+            tags=["marketing", "brand"],
+            what_is_it="Campaign results.",
+            why_it_matters="",
+            persona_impacts=None,
+            content="",
+            subdomain="brand",
+        )
+
+    monkeypatch.setattr(email_service, "_newsletter_first_article_via_chain", article_for)
+    identity = _topic("Security", 2.0, "Identity program")
+    identity.id = 1
+    brand = _topic("AI", 9.0, "Brand campaign")
+    brand.id = 2
+    role = SimpleNamespace(name="CISO", tags=["Zero Trust", "Identity", "Threat"])
+    sub = _sub(domains=None, industries=[], roles=[role])
+    pool, _tier = email_service._resolve_newsletter_topic_pool(
+        subscriber=sub,
+        all_approved=[brand, identity],
+        db=MagicMock(),
+        merged_pipeline=_merged_pipeline(),
+    )
+    assert [t.name for t in pool][:1] == ["Identity program"]
 
 
 def test_assemble_newsletter_topics_with_tier_reports_skip_label():
@@ -962,18 +1078,6 @@ def test_promo_section_labels_landing_page_as_get_more_information():
     assert "Get More Information" in html
     assert "Landing Page" not in html
 
-def test_promo_section_resolves_relative_pdf_url(monkeypatch):
-    monkeypatch.setattr(email_service.settings, "public_site_url", "https://pulseone.com")
-    item = SimpleNamespace(
-        title="Intune Assessment",
-        url="/marketplace-offers/PulseOne_05_landing.pdf",
-        type="landing_page",
-        summary="Short summary",
-        image_url=None,
-    )
-    html = email_service._build_promo_section([item])
-    assert 'href="https://pulseone.com/marketplace-offers/PulseOne_05_landing.pdf"' in html
-    assert 'target="_blank" rel="noopener noreferrer"' in html
 
 def test_promo_section_links_image_badge_title_and_summary_in_new_tab():
     item = _content("Endpoint Management Assessment", ["Marketplace", "Security"])
@@ -986,3 +1090,17 @@ def test_promo_section_links_image_badge_title_and_summary_in_new_tab():
     assert "Get More Information</a>" in html
     assert f'<a {href} {open_new} style="font-size:17px;font-weight:700;' in html
     assert f'<a {href} {open_new} style="color:#4A5F6D;text-decoration:none;">' in html
+
+
+def test_promo_section_resolves_relative_pdf_url(monkeypatch):
+    monkeypatch.setattr(email_service.settings, "public_site_url", "https://pulseone.com")
+    item = SimpleNamespace(
+        title="Intune Assessment",
+        url="/marketplace-offers/PulseOne_05_landing.pdf",
+        type="landing_page",
+        summary="Short summary",
+        image_url=None,
+    )
+    html = email_service._build_promo_section([item])
+    assert 'href="https://pulseone.com/marketplace-offers/PulseOne_05_landing.pdf"' in html
+    assert 'target="_blank" rel="noopener noreferrer"' in html

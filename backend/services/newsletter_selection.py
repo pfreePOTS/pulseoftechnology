@@ -11,8 +11,9 @@ Selection is **content- and persona-driven**, not template-driven:
   produced during AI processing. That is the primary signal for "CFO vs CTO" relevance.
   Articles still in ingest (no ``what_is_it`` yet) or with only raw ``content`` remain
   eligible so new links show up in briefings.
-- ``article.tags`` are thematic (compliance, EU, …), not domain pillars — they are **not**
-  intersected with Role.tags (that was a previous bug).
+- ``article.tags`` are thematic words, not a copy of the role-chip list. Role tags add a
+  ranking bonus (with a few aliases such as "zero trust" / identity) and never hard-drop
+  a story on their own. Exact tag intersection was a previous bug.
 
 Tuning: adjust weights below as you add roles and more articles per topic.
 """
@@ -21,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -62,6 +64,99 @@ class NewsletterArticleContext:
     """Exact Role.name values from DB; must match keys in article.persona_impacts when present."""
     topic_urgency: float
     reference_time: datetime
+    role_tags: tuple[str, ...] | None = None
+    """Role-profile chips (Strategy, Zero Trust, …). Ranking bonus only."""
+
+
+# Role chips and article tags use different words. Aliases let "Zero Trust" meet "identity".
+_ROLE_TAG_ALIASES: dict[str, set[str]] = {
+    "zero trust": {"zero trust", "identity", "security"},
+    "identity": {"identity", "zero trust", "security"},
+    "threat": {"threat", "security"},
+    "security": {"security", "threat", "identity"},
+    "governance": {"governance", "compliance"},
+    "compliance": {"compliance", "regulation", "audit", "governance"},
+    "regulation": {"regulation", "compliance"},
+    "audit": {"audit", "compliance"},
+    "finance": {"finance", "cost", "investment"},
+    "cost": {"cost", "finance"},
+    "investment": {"investment", "finance"},
+    "forecasting": {"forecasting", "finance"},
+    "risk": {"risk"},
+    "ai": {"ai", "automation"},
+    "automation": {"automation", "ai", "process"},
+    "cloud": {"cloud", "platform"},
+    "platform": {"platform", "cloud", "architecture"},
+    "architecture": {"architecture", "platform", "engineering"},
+    "engineering": {"engineering", "architecture"},
+    "open source": {"open source"},
+    "supply chain": {"supply chain", "operations"},
+    "operations": {"operations", "process", "efficiency"},
+    "process": {"process", "operations", "automation"},
+    "efficiency": {"efficiency", "operations"},
+    "workforce": {"workforce"},
+    "marketing": {"marketing", "brand", "customer"},
+    "brand": {"brand", "marketing"},
+    "customer": {"customer", "marketing"},
+    "analytics": {"analytics", "data"},
+    "data": {"data", "analytics"},
+    "personalization": {"personalization", "customer"},
+    "strategy": {"strategy", "growth", "leadership"},
+    "innovation": {"innovation", "growth"},
+    "m&a": {"m&a", "growth"},
+    "leadership": {"leadership", "strategy"},
+    "growth": {"growth", "strategy"},
+}
+
+WEIGHT_ROLE_TAG = 48.0
+WEIGHT_ROLE_TAG_CAP = 144.0
+
+
+def role_tags_from_roles(role_objs: Sequence[object] | None) -> list[str]:
+    """Unique role-profile chips, original spelling, first-seen order."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for role in role_objs or []:
+        for raw in getattr(role, "tags", None) or []:
+            text = str(raw).strip()
+            key = text.lower()
+            if text and key not in seen:
+                seen.add(key)
+                out.append(text)
+    return out
+
+
+def role_tag_match_score(
+    article: Article | object | None, role_tags: Sequence[str] | None
+) -> float:
+    """Boost when article tags, title, or subdomain overlap the subscriber's role chips."""
+    if article is None or not role_tags:
+        return 0.0
+    raw_tags = getattr(article, "tags", None)
+    tag_list = raw_tags if isinstance(raw_tags, list) else []
+    blob = " ".join(
+        [
+            str(getattr(article, "title", "") or ""),
+            str(getattr(article, "subdomain", "") or ""),
+            str(getattr(article, "what_is_it", "") or ""),
+            " ".join(str(t) for t in tag_list),
+        ]
+    ).lower()
+    tokens = set(re.findall(r"[a-z0-9]+(?:[&-][a-z0-9]+)?", blob))
+    hits = 0.0
+    counted: set[str] = set()
+    for raw in role_tags:
+        key = str(raw).strip().lower()
+        if not key:
+            continue
+        for alias in _ROLE_TAG_ALIASES.get(key, {key}):
+            if alias in counted:
+                continue
+            matched = alias in blob if (" " in alias or "&" in alias) else alias in tokens
+            if matched:
+                counted.add(alias)
+                hits += 1.0
+    return min(WEIGHT_ROLE_TAG_CAP, hits * WEIGHT_ROLE_TAG)
 
 
 def _persona_line_for_role(article: Article, role_name: str | None) -> str:
@@ -126,6 +221,7 @@ def score_article_for_newsletter(article: Article, ctx: NewsletterArticleContext
     """
     persona = _best_persona_line_for_roles(article, ctx.role_names)
     persona_pts = min(WEIGHT_PERSONA_CAP, len(persona) * WEIGHT_PERSONA_CHARS)
+    persona_pts += role_tag_match_score(article, ctx.role_tags)
 
     why = (article.why_it_matters or "").strip()
     why_pts = min(WEIGHT_WHY_CAP, len(why) * WEIGHT_WHY_CHARS)
@@ -149,6 +245,7 @@ def select_articles_for_newsletter_topic(
     article_ingested_after: datetime | None = None,
     limit: int = DEEP_DIVE_ARTICLE_LIMIT,
     reference_time: datetime | None = None,
+    role_tags: Sequence[str] | None = None,
 ) -> list[Article]:
     """
     Return up to ``limit`` articles for a topic, ranked for the given job title(s).
@@ -161,6 +258,7 @@ def select_articles_for_newsletter_topic(
         role_names=role_names,
         topic_urgency=float(topic.urgency_score or 0.0),
         reference_time=ref,
+        role_tags=tuple(role_tags) if role_tags else None,
     )
 
     q = db.query(Article).filter(
@@ -429,6 +527,27 @@ def newsletter_subscriber_profile_topic_rank(
     return best
 
 
+def _best_role_tag_score(
+    db: Session,
+    topic: Topic,
+    role_tags: Sequence[str],
+    article_after: datetime | None,
+) -> float:
+    """Highest role-chip overlap among recent articles on this topic."""
+    q = db.query(Article).filter(
+        Article.topic_id == topic.id,
+        Article.archived_at.is_(None),
+    )
+    if article_after is not None:
+        q = q.filter(Article.ingested_at >= article_after)
+    best = 0.0
+    for article in q.order_by(Article.ingested_at.desc()).limit(40).all():
+        if title_contains_hangul(getattr(article, "title", None)):
+            continue
+        best = max(best, role_tag_match_score(article, role_tags))
+    return best
+
+
 def sort_topics_for_newsletter_profile(
     db: Session,
     topics: Sequence[Topic],
@@ -446,6 +565,7 @@ def sort_topics_for_newsletter_profile(
     """
     names = [(getattr(r, "name", None) or "").strip() for r in role_objs]
     role_names = [n for n in names if n] or None
+    role_tags = role_tags_from_roles(role_objs)
     now = reference_time or datetime.now(UTC)
 
     ranked: list[tuple[float, float, int, Topic]] = []
@@ -458,6 +578,8 @@ def sort_topics_for_newsletter_profile(
             article_after=article_after,
             reference_time=now,
         )
+        if role_tags:
+            score += _best_role_tag_score(db, t, role_tags, article_after)
         urg = float(t.urgency_score or 0.0)
         tid = getattr(t, "id", 0)
         ranked.append((score, urg, int(tid) if tid is not None else 0, t))

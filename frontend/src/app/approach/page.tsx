@@ -303,7 +303,7 @@ export default function ApproachPage() {
                   key={p.name}
                   className="rounded-[10px] border border-[#e0e0e0] bg-white px-6 py-7 transition-colors hover:border-pulse-teal hover:shadow-[0_6px_20px_rgba(0,0,0,0.08)]"
                 >
-                  <div className="mb-4 flex h-[48px] items-center justify-center rounded-md border border-[#e8e8e8] bg-white px-2">
+                  <div className="mb-4 flex h-[48px] items-center">
                     <Image
                       src={p.logoSrc}
                       alt={p.logoAlt}

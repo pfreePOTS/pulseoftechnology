@@ -21,7 +21,7 @@ from fastapi import (
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
-from sqlalchemy import and_, case, func
+from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from ..admin_permissions import INVITABLE_PAGE_SLUGS, normalize_login_email
@@ -73,6 +73,8 @@ from ..services.hubspot_sync import (
     sync_subscriber_to_hubspot,
     test_hubspot_connection,
 )
+from ..services.industry_analysis import analyze_topic_industries, pending_industry_labels
+from ..services.industry_cells import apply_curator_edits
 from ..services.ingestion import (
     backfill_missing_article_images,
     run_all_sources,
@@ -626,7 +628,9 @@ def article_pipeline_progress(
     )
 
 
-_REQUEUEABLE_STATUSES = frozenset({ArticleStatus.skipped, ArticleStatus.review, ArticleStatus.retry})
+_REQUEUEABLE_STATUSES = frozenset(
+    {ArticleStatus.skipped, ArticleStatus.review, ArticleStatus.retry}
+)
 
 
 @router.post("/articles/requeue", response_model=ArticleRequeueOut)
@@ -638,7 +642,9 @@ def requeue_articles(
     """Put skipped/review rows back on ``retry`` so the hourly AI pass picks them up."""
     rows = db.query(Article).filter(Article.id.in_(payload.ids)).all()
     found = {a.id: a for a in rows}
-    ignored = [i for i in payload.ids if i not in found or found[i].status not in _REQUEUEABLE_STATUSES]
+    ignored = [
+        i for i in payload.ids if i not in found or found[i].status not in _REQUEUEABLE_STATUSES
+    ]
     requeued = 0
     for article_id in payload.ids:
         article = found.get(article_id)
@@ -1018,6 +1024,10 @@ class TopicOut(BaseModel):
     selected_at: datetime | None = None
     # When set (list/detail only): earliest linked article time — used if selected_at is missing (legacy rows).
     first_evidence_at: datetime | None = None
+    industry_analysis_started_at: datetime | None = None
+    industry_analyzed_at: datetime | None = None
+    industry_analysis_attempts: int = 0
+    industry_analysis_error: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -1062,7 +1072,17 @@ def _topic_to_out(db: Session, topic: Topic) -> TopicOut:
         latest_article_at=None,
         selected_at=topic.selected_at,
         first_evidence_at=None,
+        **_industry_analysis_fields(topic),
     )
+
+
+def _industry_analysis_fields(topic: Topic) -> dict:
+    return {
+        "industry_analysis_started_at": topic.industry_analysis_started_at,
+        "industry_analyzed_at": topic.industry_analyzed_at,
+        "industry_analysis_attempts": topic.industry_analysis_attempts or 0,
+        "industry_analysis_error": topic.industry_analysis_error,
+    }
 
 
 class TopicDetail(TopicOut):
@@ -1238,6 +1258,7 @@ def list_topics(
                 first_evidence_at=first_evidence_map.get(t.id)
                 if t.status == TopicStatus.selected and t.selected_at is None
                 else None,
+                **_industry_analysis_fields(t),
             )
         )
     return result
@@ -1265,6 +1286,27 @@ def trending_hot_of_day(
     return build_hot_of_day(db)
 
 
+def _run_topic_industry_analysis_job(topic_id: int) -> None:
+    db = SessionLocal()
+    try:
+        analyze_topic_industries(topic_id, db)
+    finally:
+        db.close()
+
+
+def queue_topic_industry_analysis(topic: Topic) -> None:
+    """Start the first-pass industry analysis for a newly on-radar topic in the background."""
+    if not pending_industry_labels(topic):
+        return
+    if not is_llm_configured():
+        logger.info(
+            "[industry_analysis] topic id=%s not queued — no LLM configured; hourly sweep will retry",
+            topic.id,
+        )
+        return
+    _spawn_long_admin_job(partial(_run_topic_industry_analysis_job, topic.id))
+
+
 def _run_analysis_industry_suggest_all_job(job_id: str | None = None) -> None:
     """Background: AI industry grid for every on-radar topic; persists to DB."""
     jid = job_id or uuid.uuid4().hex[:8]
@@ -1277,18 +1319,21 @@ def _run_analysis_industry_suggest_all_job(job_id: str | None = None) -> None:
         rows = [
             (r.id, r.name)
             for r in db.query(Topic.id, Topic.name)
-            .filter(Topic.status == TopicStatus.selected)
+            .filter(or_(Topic.status == TopicStatus.selected, Topic.is_published.is_(True)))
             .order_by(Topic.id)
             .all()
         ]
         total = len(rows)
         logger.info(
-            "Analysis industry suggest-all job %s started: %s selected topic(s)",
+            "Analysis industry suggest-all job %s started: %s selected or published topic(s)",
             jid,
             total,
         )
         if total == 0:
-            logger.info("Analysis industry suggest-all job %s complete: no selected topics", jid)
+            logger.info(
+                "Analysis industry suggest-all job %s complete: no selected or published topics",
+                jid,
+            )
             return
         for idx, (tid, topic_name) in enumerate(rows, start=1):
             logger.info(
@@ -1299,31 +1344,9 @@ def _run_analysis_industry_suggest_all_job(job_id: str | None = None) -> None:
                 tid,
                 topic_name,
             )
-            try:
-                result = suggest_industry_positions(tid, db)
-                sug = result.get("industry_suggestions")
-                if not isinstance(sug, dict):
-                    skipped += 1
-                    logger.warning(
-                        "Analysis industry suggest-all job %s skipped topic id=%s: "
-                        "industry_suggestions missing or invalid",
-                        jid,
-                        tid,
-                    )
-                    continue
-                topic = db.query(Topic).filter(Topic.id == tid).first()
-                if topic is None:
-                    skipped += 1
-                    logger.warning(
-                        "Analysis industry suggest-all job %s skipped topic id=%s: topic disappeared",
-                        jid,
-                        tid,
-                    )
-                    continue
-                topic.industry_positions = sug
-                db.commit()
+            processed += 1
+            if analyze_topic_industries(tid, db):
                 persisted += 1
-                processed += 1
                 logger.info(
                     "Analysis industry suggest-all job %s persisted topic id=%s (%s/%s)",
                     jid,
@@ -1331,16 +1354,19 @@ def _run_analysis_industry_suggest_all_job(job_id: str | None = None) -> None:
                     idx,
                     total,
                 )
-            except Exception:
-                failed += 1
-                logger.exception(
-                    "Analysis industry suggest-all job %s failed for topic id=%s (%s/%s)",
+            else:
+                topic = db.get(Topic, tid)
+                if topic is not None and topic.industry_analysis_error:
+                    failed += 1
+                else:
+                    skipped += 1
+                logger.warning(
+                    "Analysis industry suggest-all job %s did not fully analyze topic id=%s (%s/%s)",
                     jid,
                     tid,
                     idx,
                     total,
                 )
-                db.rollback()
         logger.info(
             "Analysis industry suggest-all job %s complete: total=%s processed=%s persisted=%s "
             "skipped=%s failed=%s",
@@ -1456,7 +1482,10 @@ def analysis_industry_suggest_all_background(
     return {
         "status": "queued",
         "job_id": job_id,
-        "message": "Industry AI suggest-all started in the background. Refresh the page later to load results.",
+        "message": (
+            "Industry AI suggest-all started in the background (about a minute per topic). "
+            "Hand-edited cells are kept. Refresh the page later to load results."
+        ),
     }
 
 
@@ -1550,6 +1579,7 @@ def get_topic(
         latest_article_at=latest_article_at,
         selected_at=topic.selected_at,
         first_evidence_at=first_evidence_at,
+        **_industry_analysis_fields(topic),
         articles=articles,
     )
 
@@ -1574,7 +1604,9 @@ def update_topic(
     if payload.adoption_state is not None:
         topic.adoption_state = payload.adoption_state
     if payload.industry_positions is not None:
-        topic.industry_positions = payload.industry_positions
+        topic.industry_positions = apply_curator_edits(
+            topic.industry_positions, payload.industry_positions
+        )
     if payload.subdomain is not None:
         topic.subdomain = payload.subdomain.strip()
 
@@ -1789,6 +1821,7 @@ def select_topic(
         raise HTTPException(status_code=409, detail="Only watched topics can be selected")
     if topic.status == TopicStatus.watched:
         topic.selected_at = datetime.now(UTC)
+        topic.industry_analysis_attempts = 0
     topic.status = TopicStatus.selected
     db.query(Article).filter(Article.topic_id == topic_id).update(
         {"status": "published"}, synchronize_session=False
@@ -1800,6 +1833,7 @@ def select_topic(
     except Exception:
         logger.exception("ensure_topic_industry_grid_complete failed after select_topic")
     db.refresh(topic)
+    queue_topic_industry_analysis(topic)
     return _topic_to_out(db, topic)
 
 
@@ -1853,6 +1887,7 @@ def approve_topic(
 
         topic.status = TopicStatus.selected
         topic.selected_at = datetime.now(UTC)
+        topic.industry_analysis_attempts = 0
         db.query(Article).filter(Article.topic_id == topic_id).update(
             {"status": "published"}, synchronize_session=False
         )
@@ -1867,6 +1902,7 @@ def approve_topic(
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}") from e
 
+    queue_topic_industry_analysis(topic)
     return _topic_to_out(db, topic)
 
 

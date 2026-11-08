@@ -70,6 +70,18 @@ class Topic(Base):
     selected_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
+    # Industry Positioning run state. started_at doubles as a claim so two runs never overlap.
+    industry_analysis_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    industry_analyzed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    # Consecutive failed or incomplete runs; the hourly sweep stops retrying at the cap.
+    industry_analysis_attempts: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    industry_analysis_error: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     # Daily newsletter deep-dive copy (optional). Keys: what_is_it, what_changed, why_it_matters, what_to_do
     newsletter_briefing: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
 

@@ -31,6 +31,7 @@ from ..models.article import Article
 from ..models.role import Role
 from ..models.topic import Topic
 from .article_language import title_contains_hangul
+from .industry_cells import live_industry_positions
 
 logger = logging.getLogger(__name__)
 
@@ -371,8 +372,8 @@ def recommended_path_topic_base_rank(
     score = float(topic.urgency_score or 0.0)
     ind_l = (industry or "").strip().lower()
     if ind_l:
-        ip = topic.industry_positions
-        if isinstance(ip, dict):
+        ip = live_industry_positions(topic.industry_positions)
+        if ip:
             for key in ip.keys():
                 if ind_l in str(key).lower():
                     score += 2.0

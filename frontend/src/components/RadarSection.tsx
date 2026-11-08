@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { filterByRadarDomainSlug, normalizeRadarDomainSlug } from "@/lib/domains";
+import { isLiveIndustryCell } from "@/lib/industryGrid";
 import { useIsClient } from "@/lib/useIsClient";
 import { useDomains } from "@/lib/useDomains";
 import RadarChart, { type RadarTopic, INDUSTRY_COLORS } from "./RadarChart";
@@ -47,14 +48,11 @@ export default function RadarSection({
     }
 
     if (selectedIndustry) {
-      // Keep only topics that have a position for this industry,
+      // Keep only topics with an analyzed, approved position for this industry,
       // and trim industry_positions to just that industry so the chart
       // renders only those points.
       result = result
-        .filter(
-          (t) =>
-            t.industry_positions && selectedIndustry in t.industry_positions,
-        )
+        .filter((t) => isLiveIndustryCell(t.industry_positions?.[selectedIndustry]))
         .map((t) => ({
           ...t,
           industry_positions: {

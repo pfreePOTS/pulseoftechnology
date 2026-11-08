@@ -23,7 +23,7 @@ There are **12** distinct Anthropic-backed agents (different system prompts / ro
 | 4 | **Cluster** | Sonnet | Pick existing topic name or suggest new | same chain |
 | 5 | **Summarize** | Sonnet | `what_is_it`, `why_it_matters`, `persona_impacts` | same chain |
 | 6 | **Subdomain label** | Haiku | Short editorial subdomain string for a topic | `fill_missing_topic_subdomains`, admin suggest-subdomain |
-| 7 | **Industry positioning** | Haiku | Full 20-industry grid (impact, risk, phase, rationales) | Admin `suggest-industry-positions`, AI Suggest on Analysis |
+| 7 | **Industry positioning** | Haiku | Full 20-industry grid (impact, risk, phase, rationales); two 10-industry batches in parallel | Automatic on select/approve, hourly `industry_analysis` sweep for topics with placeholder cells (`services/industry_analysis.py`), Admin `suggest-industry-positions`, AI Suggest on Analysis |
 | 8 | **Trend pick** | Haiku | `watch` / `radar` / `remove` for Trend Discovery | `signal_service` (`upsert_pending_trend_signal`, `run_signal_scorer` when thresholds pass) |
 | 9 | **Topic executive summary** | Sonnet | Topic-level summary + why it matters | Admin generate-summary endpoint |
 | 10 | **Positioning insights** | Haiku | Per-topic trend label + note (velocity windows) | `trend_service.build_positioning_insights` (API for admin/insights) |
@@ -65,6 +65,8 @@ flowchart TB
   PROC --> SUB[Agent 6 subdomain optional]
 
   SCH[Daily / hourly jobs] --> SIG[run_signal_scorer]
+  SCH --> IAS[Hourly industry_analysis sweep]
+  IAS --> IND
   SIG -->|high velocity| TP[8 Trend pick Haiku]
   REF[refresh_all_signals] --> UPS[upsert_pending_trend_signal]
   UPS --> TP

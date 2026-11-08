@@ -74,9 +74,15 @@ The dump omits **`alembic_version`** so the target keeps whatever revision migra
 
 Development remains **`docker compose up`** with the existing `Dockerfile` (hot reload).
 
-## 7. Deploy `staging` branch
+## 7. Deploy branches
 
-Connect the GitHub integration to branch **`staging`** for both services (Railway Project → Settings → branch filter), then push commits to `staging` to trigger deploys.
+Promote in this order only: **`dev` → `staging` → `production`**.
+
+- Merge **`dev` into `staging`**. Railway deploys the `staging` branch on that push.
+- Promote **`staging` into `production` only when asked.** Do not merge or push `production` as part of a staging deploy.
+- Do not merge **`dev` into `production`**. Production only receives commits that are already on `staging`.
+
+The production Railway services track the `production` branch and deploy when that branch changes. The decision to update the branch is manual.
 
 ## 8. First console admin (no CSV / no invites yet)
 

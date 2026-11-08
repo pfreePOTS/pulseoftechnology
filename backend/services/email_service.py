@@ -35,6 +35,7 @@ from ..models.role import Role
 from ..models.subscriber import Subscriber
 from ..models.topic import Topic, TopicStatus
 from .domain_registry import CORE_DOMAIN_DEFS, slugify_domain
+from .industry_cells import live_industry_positions
 from .newsletter_selection import (
     article_has_persona_for_roles,
     article_industry_bonus,
@@ -635,9 +636,10 @@ def _briefing_subsection(title: str, body: str) -> str:
 def _industry_lens_block(topic: Topic, subscriber: Subscriber | None) -> str:
     if subscriber is None or not isinstance(topic.industry_positions, dict):
         return ""
+    live = live_industry_positions(topic.industry_positions)
     lines: list[str] = []
     for ind in getattr(subscriber, "industries", None) or []:
-        pos = topic.industry_positions.get(ind)
+        pos = live.get(ind)
         blurb = _industry_position_narrative(pos)
         if blurb:
             lines.append(f"{ind}: {_clamp_brief_sentences(blurb, 2)}")
@@ -1678,10 +1680,11 @@ def _subscriber_industry_match_labels(industries: list[str]) -> list[str]:
 
 
 def _industry_positions_lookup(ip: dict, industries: list[str]) -> object | None:
-    """Return the first industry_positions value matching wizard or canonical labels."""
+    """Return the first analyzed, radar-approved cell matching wizard or canonical labels."""
     match_labels = _subscriber_industry_match_labels(industries)
     if not match_labels:
         return None
+    ip = live_industry_positions(ip)
     by_lower = {str(k).strip().lower(): v for k, v in ip.items() if k is not None}
     for ind in match_labels:
         hit = by_lower.get(ind.strip().lower())

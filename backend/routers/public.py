@@ -30,6 +30,7 @@ from ..services.ai_service import (
 from ..services.domain_registry import pickable_domains, validate_subscriber_domain_slugs
 from ..services.email_service import send_contact_form_notification
 from ..services.hubspot_sync import sync_subscriber_to_hubspot
+from ..services.industry_cells import live_industry_positions
 from ..services.newsletter_selection import (
     RECOMMENDED_PATH_ARTICLE_LOOKBACK,
     article_has_persona_for_roles,
@@ -120,7 +121,7 @@ def _serialize_topic_public(topic: Topic) -> TopicPublic:
         adoption_state=topic.adoption_state.value
         if hasattr(topic.adoption_state, "value")
         else str(topic.adoption_state),
-        industry_positions=topic.industry_positions,
+        industry_positions=live_industry_positions(topic.industry_positions),
     )
 
 
@@ -868,8 +869,8 @@ def _topic_industry_aligned_from_metadata(topic: Topic, industry: str) -> bool:
         return False
     if industry_radar_bonus(topic, needle) > 0:
         return True
-    ip = getattr(topic, "industry_positions", None)
-    if isinstance(ip, dict):
+    ip = live_industry_positions(getattr(topic, "industry_positions", None))
+    if ip:
         il = needle.lower()
         for key in ip.keys():
             if il in str(key).lower():
@@ -956,8 +957,8 @@ def _watch_article_industry_hit(topic: Topic, article: Article, industry: str) -
         return False
     if article_industry_bonus(article, needle) > 0:
         return True
-    ip = topic.industry_positions
-    if isinstance(ip, dict):
+    ip = live_industry_positions(topic.industry_positions)
+    if ip:
         il = needle.lower()
         for key in ip.keys():
             if il in str(key).lower():

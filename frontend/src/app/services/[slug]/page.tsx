@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -7,7 +8,7 @@ import GlobalFooter from "@/components/GlobalFooter";
 import GlobalHeader from "@/components/GlobalHeader";
 import JsonLd from "@/components/JsonLd";
 import { breadcrumbSchema, serviceSchema } from "@/lib/schema";
-import { SERVICES, getService, servicePath } from "@/lib/services";
+import { SERVICES, getService, serviceHeroImage, servicePath } from "@/lib/services";
 
 type Params = { slug: string };
 
@@ -25,6 +26,7 @@ export async function generateMetadata({
   if (!service) return {};
 
   const path = servicePath(service.slug);
+  const hero = serviceHeroImage(service.slug);
   return {
     title: service.metaTitle,
     description: service.metaDescription,
@@ -34,11 +36,13 @@ export async function generateMetadata({
       url: path,
       title: service.metaTitle,
       description: service.metaDescription,
+      images: [{ url: hero, alt: service.name }],
     },
     twitter: {
       card: "summary_large_image",
       title: service.metaTitle,
       description: service.metaDescription,
+      images: [hero],
     },
   };
 }
@@ -74,12 +78,20 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
       />
 
       <main className="flex flex-1 flex-col bg-white">
-        <section className="relative overflow-hidden border-b-[3px] border-pulse-teal bg-dark-bg px-6 py-[88px]">
+        <section className="relative flex min-h-[560px] items-center overflow-hidden border-b-[3px] border-pulse-teal bg-dark-bg">
+          <Image
+            src={serviceHeroImage(service.slug)}
+            alt=""
+            fill
+            priority
+            sizes="100vw"
+            className="object-cover object-[70%_center]"
+          />
           <div
-            className="pointer-events-none absolute -top-24 -right-24 size-[420px] rounded-full bg-[radial-gradient(circle,rgba(213,23,30,0.12)_0%,transparent_70%)]"
+            className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[rgba(10,10,15,0.85)] via-[rgba(10,10,15,0.6)] to-[rgba(10,10,15,0.25)]"
             aria-hidden
           />
-          <div className="relative z-[1] mx-auto max-w-[1200px]">
+          <div className="relative z-[1] mx-auto w-full max-w-[1200px] px-6 py-16">
             <nav aria-label="Breadcrumb" className="mb-6">
               <ol className="flex flex-wrap items-center gap-2 font-sans text-[13px] text-white/45">
                 <li>

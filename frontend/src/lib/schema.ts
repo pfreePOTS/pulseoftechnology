@@ -152,3 +152,31 @@ export function contactPageSchema(): Record<string, unknown> {
     about: { "@id": ORGANIZATION_ID },
   };
 }
+
+/** Local office landing pages. Phone and city come from the live location record. */
+export function localBusinessSchema(input: {
+  name: string;
+  description: string;
+  path: string;
+  telephone: string;
+  areaServed: string;
+  image?: string;
+}): Record<string, unknown> {
+  const digits = input.telephone.replace(/\D/g, "");
+  const e164 =
+    digits.length === 11 && digits.startsWith("1") ? `+${digits}` : `+1${digits}`;
+
+  return {
+    "@context": "https://schema.org",
+    "@type": "ProfessionalService",
+    "@id": absoluteUrl(`${input.path}#localbusiness`),
+    name: input.name,
+    description: input.description,
+    url: absoluteUrl(input.path),
+    telephone: e164,
+    image: input.image ? absoluteUrl(input.image) : absoluteUrl("/pulseone_logo_official.png"),
+    areaServed: input.areaServed,
+    parentOrganization: { "@id": ORGANIZATION_ID },
+    provider: { "@id": ORGANIZATION_ID },
+  };
+}

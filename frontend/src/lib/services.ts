@@ -483,3 +483,7 @@ export function getService(slug: string): ServiceContent | undefined {
 export function servicePath(slug: string): string {
   return `/services/${slug}`;
 }
+
+export function serviceHeroImage(slug: string): string {
+  return `/images/services/${slug}.jpg`;
+}

@@ -37,7 +37,8 @@ Railway assigns **`PORT`** — `backend/Dockerfile.prod` already binds Uvicorn t
 |---------|------|---------|
 | `NEXT_PUBLIC_API_URL` | **Build-time** — add under “Build” variables in Railway so the Dockerfile `ARG` is filled | Browser-facing API URL, e.g. `https://your-backend.up.railway.app`. |
 | `SERVER_API_URL` | **Build-time** | SSR/server-side fetches inside the container URL to the backend (same public URL unless you introduce private networking). |
-| `NEXT_PUBLIC_ROBOTS_INDEX` | **Build-time** | Set to `false` on staging so that host stays out of search results. Leave unset on the production cutover. |
+| `NEXT_PUBLIC_ROBOTS_INDEX` | **Build-time** | Set to `false` on staging, and on production until DNS points at this app. Leave unset once `pulseone.com` serves production. |
+| `NEXT_PUBLIC_SITE_URL` | **Build-time** | Canonical origin for metadata, sitemap, and JSON-LD. Set to `https://pulseone.com` on production before cutover. |
 
 At **runtime**, Railway **`PORT`** is consumed by Next standalone (`server.js`).
 

@@ -7,8 +7,10 @@ Compliance, Infrastructure) so newsletter assembly can rotate offers with topics
 from __future__ import annotations
 
 MARKETPLACE_TAG = "Marketplace"
+# Legacy contact CTA — marketplace rows now link to on-site PDFs (see ``offer_landing_pdf_path``).
 CTA_URL = "https://pulseone.com/contact-us/"
 IMAGE_DIR = "/marketplace-offers"
+PDF_DIR = "/marketplace-offers"
 
 # asset_id, title, summary, focus short_labels (+ optional role-friendly tags)
 MARKETPLACE_OFFERS: list[dict[str, object]] = [
@@ -224,6 +226,12 @@ MARKETPLACE_OFFERS: list[dict[str, object]] = [
 
 def offer_image_path(asset_id: str) -> str:
     return f"{IMAGE_DIR}/PulseOne_{asset_id}_promo_1280x720.png"
+
+
+def offer_landing_pdf_path(asset_id: str) -> str:
+    """Public path for the offer one-pager — host file at ``frontend/public{path}``."""
+    aid = str(asset_id).strip().zfill(2)
+    return f"{PDF_DIR}/PulseOne_{aid}_landing.pdf"
 
 
 def offer_tags(raw_tags: list[str]) -> list[str]:

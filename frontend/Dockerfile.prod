@@ -18,6 +18,10 @@ ENV SERVER_API_URL=${SERVER_API_URL}
 # Staging sets this to false. Leave unset for the live pulseone.com cutover.
 ARG NEXT_PUBLIC_ROBOTS_INDEX
 ENV NEXT_PUBLIC_ROBOTS_INDEX=${NEXT_PUBLIC_ROBOTS_INDEX}
+# Canonicals, sitemap, robots Host, and JSON-LD. Set to https://pulseone.com
+# on the production cutover deploy. Leave unset locally.
+ARG NEXT_PUBLIC_SITE_URL
+ENV NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
 
 RUN npm run build
 

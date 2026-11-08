@@ -961,3 +961,28 @@ def test_promo_section_labels_landing_page_as_get_more_information():
     html = email_service._build_promo_section([item])
     assert "Get More Information" in html
     assert "Landing Page" not in html
+
+def test_promo_section_resolves_relative_pdf_url(monkeypatch):
+    monkeypatch.setattr(email_service.settings, "public_site_url", "https://pulseone.com")
+    item = SimpleNamespace(
+        title="Intune Assessment",
+        url="/marketplace-offers/PulseOne_05_landing.pdf",
+        type="landing_page",
+        summary="Short summary",
+        image_url=None,
+    )
+    html = email_service._build_promo_section([item])
+    assert 'href="https://pulseone.com/marketplace-offers/PulseOne_05_landing.pdf"' in html
+    assert 'target="_blank" rel="noopener noreferrer"' in html
+
+def test_promo_section_links_image_badge_title_and_summary_in_new_tab():
+    item = _content("Endpoint Management Assessment", ["Marketplace", "Security"])
+    html = email_service._build_promo_section([item])
+    open_new = 'target="_blank" rel="noopener noreferrer"'
+    href = 'href="https://pulseone.com/contact-us/"'
+    assert html.count(href) >= 4  # image, badge, title, summary
+    assert html.count(open_new) >= 4
+    assert f'<a {href} {open_new} style="text-decoration:none;border:0;">' in html
+    assert "Get More Information</a>" in html
+    assert f'<a {href} {open_new} style="font-size:17px;font-weight:700;' in html
+    assert f'<a {href} {open_new} style="color:#4A5F6D;text-decoration:none;">' in html

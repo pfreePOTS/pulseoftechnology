@@ -6,11 +6,13 @@ Compliance, Infrastructure) so newsletter assembly can rotate offers with topics
 
 from __future__ import annotations
 
+import re
+
 MARKETPLACE_TAG = "Marketplace"
 # Legacy contact CTA — marketplace rows now link to on-site PDFs (see ``offer_landing_pdf_path``).
 CTA_URL = "https://pulseone.com/contact-us/"
 IMAGE_DIR = "/marketplace-offers"
-PDF_DIR = "/marketplace-offers"
+PDF_DIR = "/service-offers"
 
 # asset_id, title, summary, focus short_labels (+ optional role-friendly tags)
 MARKETPLACE_OFFERS: list[dict[str, object]] = [
@@ -228,10 +230,34 @@ def offer_image_path(asset_id: str) -> str:
     return f"{IMAGE_DIR}/PulseOne_{asset_id}_promo_1280x720.png"
 
 
+def offer_pdf_filename(title: str) -> str:
+    """URL-friendly PDF basename from the Content Library title (kebab-case)."""
+    s = (title or "").strip().lower().replace("&", " and ")
+    s = re.sub(r"[^a-z0-9]+", "-", s)
+    s = re.sub(r"-{2,}", "-", s).strip("-")
+    return f"{s or 'offer'}.pdf"
+
+
+def offer_title_for_asset_id(asset_id: str) -> str | None:
+    aid = str(asset_id).strip().zfill(2)
+    for offer in MARKETPLACE_OFFERS:
+        if str(offer["asset_id"]).strip().zfill(2) == aid:
+            return str(offer["title"])
+    return None
+
+
 def offer_landing_pdf_path(asset_id: str) -> str:
     """Public path for the offer one-pager — host file at ``frontend/public{path}``."""
+    title = offer_title_for_asset_id(asset_id)
+    if not title:
+        raise KeyError(f"Unknown marketplace asset_id={asset_id!r}")
+    return f"{PDF_DIR}/{offer_pdf_filename(title)}"
+
+
+def legacy_landing_pdf_path(asset_id: str) -> str:
+    """Previous ``/marketplace-offers/PulseOne_XX_landing.pdf`` path (for redirects)."""
     aid = str(asset_id).strip().zfill(2)
-    return f"{PDF_DIR}/PulseOne_{aid}_landing.pdf"
+    return f"/marketplace-offers/PulseOne_{aid}_landing.pdf"
 
 
 def offer_tags(raw_tags: list[str]) -> list[str]:

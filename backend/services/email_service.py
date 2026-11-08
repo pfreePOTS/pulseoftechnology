@@ -16,7 +16,6 @@ import json
 import logging
 import re
 import time
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -37,8 +36,9 @@ from ..models.topic import Topic, TopicStatus
 from .domain_registry import CORE_DOMAIN_DEFS, slugify_domain
 from .industry_cells import live_industry_positions
 from .newsletter_selection import (
-    article_has_persona_for_roles,
     article_industry_bonus,
+    role_tag_match_score,
+    role_tags_from_roles,
     select_articles_for_newsletter_topic,
     sort_topics_for_newsletter_profile,
 )
@@ -698,6 +698,7 @@ def _select_articles_for_topic(
         db,
         role_names,
         article_ingested_after=article_ingested_after,
+        role_tags=role_tags_from_roles(role_objs),
     )
 
 
@@ -889,9 +890,11 @@ def _build_top_stories_block(
     include_lead_image: bool = True,
 ) -> str:
     role_names: list[str] | None = None
+    role_tags: list[str] = []
     if role_objs:
         names = [(getattr(r, "name", None) or "").strip() for r in role_objs]
         role_names = [n for n in names if n] or None
+        role_tags = role_tags_from_roles(role_objs)
     chain = (
         _newsletter_article_pick_cutoffs(ingest_cutoffs) if ingest_cutoffs is not None else [None]
     )
@@ -906,6 +909,7 @@ def _build_top_stories_block(
                     role_names,
                     article_ingested_after=cutoff,
                     limit=1,
+                    role_tags=role_tags,
                 )
                 if arts:
                     first_art = arts[0]
@@ -1211,13 +1215,13 @@ def _build_promo_section(items: list[ContentItem]) -> str:
         if abs_img:
             img_html = (
                 f'<p style="margin:0 0 10px;">'
-                f"<a {link_attrs} style=\"text-decoration:none;border:0;\">"
+                f'<a {link_attrs} style="text-decoration:none;border:0;">'
                 f'<img src="{html.escape(abs_img)}" width="700" alt="{html.escape(item.title)}" '
                 f'style="display:block;max-width:100%;height:auto;border-radius:6px;border:0;"></a></p>'
             )
         summ = (
             f'<p style="margin:8px 0 0;font-size:15px;color:#4A5F6D;line-height:1.6;font-family:{_FF};">'
-            f"<a {link_attrs} style=\"color:#4A5F6D;text-decoration:none;\">"
+            f'<a {link_attrs} style="color:#4A5F6D;text-decoration:none;">'
             f"{html.escape(item.summary)}</a></p>"
             if item.summary
             else ""
@@ -1719,6 +1723,7 @@ def _newsletter_first_article_via_chain(
     db: Session,
     role_names: list[str] | None,
     ingest: NewsletterArticleIngestCutoffs,
+    role_tags: list[str] | None = None,
 ) -> Article | None:
     for cutoff in _newsletter_article_pick_cutoffs(ingest):
         arts = select_articles_for_newsletter_topic(
@@ -1727,6 +1732,7 @@ def _newsletter_first_article_via_chain(
             role_names,
             article_ingested_after=cutoff,
             limit=1,
+            role_tags=role_tags,
         )
         if arts:
             return arts[0]
@@ -1751,50 +1757,39 @@ def _order_newsletter_pool_industry_first(
     subscriber: Subscriber | object,
     role_names: list[str] | None,
     ingest: NewsletterArticleIngestCutoffs,
+    role_tags: list[str] | None = None,
 ) -> list[Topic]:
-    """Within an assembled pool, surface industry-aligned themes before generic urgency fill.
+    """Surface industry matches, then role-chip overlap, then urgency.
 
-    Domain-only / fresh-domain tiers (PULSE-019) can still include high-urgency AI topics;
-    this keeps Insurance (etc.) hits ahead of them when present in the pool.
+    Domain-only tiers (PULSE-019) can still include high-urgency topics from the
+    chosen pillars. Industry hits stay ahead of those. Role chips break ties and
+    also reorder a pool that has no industry pick.
     """
     industries = _subscriber_industry_labels(subscriber)
-    if not industries or not pool:
+    tags = list(role_tags or [])
+    if not pool:
+        return []
+    if not industries and not tags:
         return _sort_topics_by_urgency_desc(pool)
 
-    aligned: list[Topic] = []
-    rest: list[Topic] = []
+    ranked: list[tuple[int, float, float, Topic]] = []
     for topic in pool:
-        if _topic_has_industry_grid_hit(topic, industries):
-            aligned.append(topic)
-            continue
-        art = _newsletter_first_article_via_chain(topic, db, role_names, ingest)
-        if art is not None and _industry_signals_for_article(topic, art, industries):
-            aligned.append(topic)
-        else:
-            rest.append(topic)
-    return _sort_topics_by_urgency_desc(aligned) + _sort_topics_by_urgency_desc(rest)
-
-
-def _assemble_topics_strict_profile(
-    cohort: list[Topic],
-    *,
-    db: Session,
-    subscriber: Subscriber | object,
-    role_names: list[str] | None,
-    ingest: NewsletterArticleIngestCutoffs,
-) -> list[Topic]:
-    industries = _subscriber_industry_labels(subscriber)
-    pool: list[Topic] = []
-    for topic in cohort:
-        art = _newsletter_first_article_via_chain(topic, db, role_names, ingest)
-        if art is None:
-            continue
-        if industries and not _industry_signals_for_article(topic, art, industries):
-            continue
-        if not article_has_persona_for_roles(art, role_names):
-            continue
-        pool.append(topic)
-    return pool
+        aligned = bool(industries) and _topic_has_industry_grid_hit(topic, industries)
+        art = None
+        if tags or (industries and not aligned):
+            art = _newsletter_first_article_via_chain(topic, db, role_names, ingest, tags or None)
+        if (
+            industries
+            and not aligned
+            and art is not None
+            and _industry_signals_for_article(topic, art, industries)
+        ):
+            aligned = True
+        role_score = role_tag_match_score(art, tags) if tags else 0.0
+        urgency = float(getattr(topic, "urgency_score", 0.0) or 0.0)
+        ranked.append((1 if aligned else 0, role_score, urgency, topic))
+    ranked.sort(key=lambda row: (row[0], row[1], row[2]), reverse=True)
+    return [row[3] for row in ranked]
 
 
 def _assemble_topics_industry_domains(
@@ -1867,102 +1862,109 @@ def _resolve_newsletter_topic_pool(
     role_objs = _resolve_subscriber_roles(subscriber, db)
     names = [(getattr(r, "name", None) or "").strip() for r in role_objs]
     role_names = [n for n in names if n] or None
+    role_tags = role_tags_from_roles(role_objs)
+    has_domains = _domain_allow_for_newsletter(subscriber) is not None
+    industries = _subscriber_industry_labels(subscriber)
 
-    tier_specs: list[tuple[str, Callable[[], list[Topic]]]] = [
-        (
-            "industry_domains_persona_fresh",
-            lambda: _assemble_topics_strict_profile(
-                cohort_dom,
-                db=db,
-                subscriber=subscriber,
-                role_names=role_names,
-                ingest=ingest,
-            ),
-        ),
-        (
-            "industry_domains_fresh",
-            lambda: _assemble_topics_industry_domains(
-                cohort_dom,
-                db=db,
-                subscriber=subscriber,
-                role_names=role_names,
-                ingest=ingest,
-            ),
-        ),
-        (
-            "domains_fresh_articles",
-            lambda: _assemble_topics_fresh_domains(
-                cohort_dom,
-                db=db,
-                role_names=role_names,
-                ingest=ingest,
-            ),
-        ),
-        ("domains_only", lambda: list(cohort_dom)),
-        (
-            "cross_domain_industry_fresh",
-            lambda: _assemble_topics_cross_domain_industry(
-                approved,
-                db=db,
-                subscriber=subscriber,
-                role_names=role_names,
-                ingest=ingest,
-            ),
-        ),
-        ("all_pipeline_topics", lambda: list(approved)),
-    ]
-
-    best_pick: tuple[int, list[Topic], str] | None = None
-    for idx, (label, lazy_fn) in enumerate(tier_specs):
-        pool = lazy_fn()
-        if len(pool) >= min_topics:
-            logger.info(
-                "Newsletter topic assembly: tier=%s count=%d (≥ min %d) email=%s",
-                label,
-                len(pool),
-                min_topics,
-                getattr(subscriber, "email", "?"),
-            )
-            return (
-                _order_newsletter_pool_industry_first(
-                    pool,
-                    db=db,
-                    subscriber=subscriber,
-                    role_names=role_names,
-                    ingest=ingest,
-                ),
-                label,
-            )
-        if pool:
-            if (
-                best_pick is None
-                or len(pool) > len(best_pick[1])
-                or (len(pool) == len(best_pick[1]) and idx < best_pick[0])
-            ):
-                best_pick = (idx, pool, label)
-
-    if best_pick:
-        _, plist, lbl = best_pick
-        logger.warning(
-            "Newsletter topic assembly below min tier=%s count=%d wanted≥%d email=%s "
-            "(use best-available pool)",
-            lbl,
-            len(plist),
-            min_topics,
-            getattr(subscriber, "email", "?"),
-        )
-        return (
-            _order_newsletter_pool_industry_first(
-                plist,
-                db=db,
-                subscriber=subscriber,
-                role_names=role_names,
-                ingest=ingest,
-            ),
-            lbl,
+    def industry_fresh() -> list[Topic]:
+        return _assemble_topics_industry_domains(
+            cohort_dom,
+            db=db,
+            subscriber=subscriber,
+            role_names=role_names,
+            ingest=ingest,
         )
 
-    return [], "empty"
+    def domain_fresh() -> list[Topic]:
+        return _assemble_topics_fresh_domains(
+            cohort_dom,
+            db=db,
+            role_names=role_names,
+            ingest=ingest,
+        )
+
+    def domain_only() -> list[Topic]:
+        return list(cohort_dom)
+
+    def cross_industry() -> list[Topic]:
+        return _assemble_topics_cross_domain_industry(
+            approved,
+            db=db,
+            subscriber=subscriber,
+            role_names=role_names,
+            ingest=ingest,
+        )
+
+    def everything() -> list[Topic]:
+        return list(approved)
+
+    chosen: tuple[list[Topic], str] | None = None
+    if has_domains and industries:
+        # Stay inside the industry+domain intersection. Widen only when that set is empty.
+        for label, lazy in (
+            ("industry_domains_fresh", industry_fresh),
+            ("domains_fresh_articles", domain_fresh),
+            ("domains_only", domain_only),
+            ("cross_domain_industry_fresh", cross_industry),
+            ("all_pipeline_topics", everything),
+        ):
+            pool = lazy()
+            if pool:
+                chosen = (pool, label)
+                break
+    elif has_domains:
+        for label, lazy in (
+            ("domains_fresh_articles", domain_fresh),
+            ("domains_only", domain_only),
+            ("all_pipeline_topics", everything),
+        ):
+            pool = lazy()
+            if pool:
+                chosen = (pool, label)
+                break
+    elif industries:
+        for label, lazy in (
+            ("industry_domains_fresh", industry_fresh),
+            ("cross_domain_industry_fresh", cross_industry),
+            ("all_pipeline_topics", everything),
+        ):
+            pool = lazy()
+            if pool:
+                chosen = (pool, label)
+                break
+    else:
+        # No domain or industry pick: keep a full briefing, then rank by role chips.
+        for label, lazy in (
+            ("domains_fresh_articles", domain_fresh),
+            ("domains_only", domain_only),
+            ("all_pipeline_topics", everything),
+        ):
+            pool = lazy()
+            if pool and (len(pool) >= min_topics or label == "all_pipeline_topics"):
+                chosen = (pool, label)
+                break
+
+    if not chosen:
+        return [], "empty"
+
+    pool, label = chosen
+    logger.info(
+        "Newsletter topic assembly: tier=%s count=%d email=%s",
+        label,
+        len(pool),
+        getattr(subscriber, "email", "?"),
+    )
+    return (
+        _order_newsletter_pool_industry_first(
+            pool,
+            db=db,
+            subscriber=subscriber,
+            role_names=role_names,
+            ingest=ingest,
+            role_tags=role_tags,
+        ),
+        label,
+    )
 
 
 _FOCUS_SHORT_BY_SLUG: dict[str, str] = {
@@ -2139,17 +2141,17 @@ def assemble_newsletter_topics(
     merged_pipeline: MergedPipelineSettings | None = None,
 ) -> list[Topic]:
     """
-    Narrow pipeline topics by subscriber wizard preferences, relaxing when ingest is sparse.
+    Narrow pipeline topics by subscriber wizard preferences.
 
-    - **Technology (domains)** from preferences narrows eligible themes first.
+    - Domain picks keep the cohort inside those pillars.
+    - Industry picks keep industry-matched themes; the ladder widens only when that
+      set is empty (not merely below ``NEWSLETTER_ASSEMBLY_MIN_TOPICS``).
+    - With neither pick, tiers still prefer a pool that clears the minimum topic
+      count before falling back to the full pipeline cohort.
+    - Role chips reorder topics and the article chosen inside each topic.
 
-    With ``merged_pipeline`` + ``db``, applies a ladder until at least
-    ``NEWSLETTER_ASSEMBLY_MIN_TOPICS`` qualifying topics emerge (Industry + persona + fresh
-    article → Industry + fresh → domains with any fresh ingest → domains only → industry
-    match across pillars → entire pipeline cohort). Prefer the strictest tier that clears
-    the minimum; otherwise the largest pool wins (preferring tighter tiers on ties).
-
-    ``skip_domain_filter=True`` skips domain narrowing **and** the ladder (preview / sandbox).
+    ``skip_domain_filter=True`` skips domain narrowing and the preference ladder.
+    The sandbox preview does not use that shortcut; it runs this same assembly.
 
     When ``merged_pipeline`` or ``db`` is omitted, behaves as legacy **domain-filter only**.
     """
@@ -2172,8 +2174,8 @@ def _inject_preview_assembly_banner(
     industries: list[str],
 ) -> str:
     """Admin-only strip so sandbox preview shows which preference ladder step won."""
-    dom_label = ", ".join(domains) if domains else "(none — full pool / skip domain filter)"
-    ind_label = ", ".join(industries) if industries else "(default Technology)"
+    dom_label = ", ".join(domains) if domains else "(all domains)"
+    ind_label = ", ".join(industries) if industries else "(all industries)"
     banner = f"""
 <table width="100%" cellpadding="0" cellspacing="0" data-assembly-tier="{html.escape(tier)}">
   <tr>
@@ -2210,8 +2212,10 @@ def generate_newsletter_preview(
     Uses up to 20 topics from the **same cohort as the scheduled newsletter**: watched or
     selected pipeline topics only (not ``is_published``-only rows).
 
-    When **no domain filters** are passed, topic filtering by domain / role tags is skipped
-    so the preview shows the full eligible pool (roles still drive persona lines in deep dives).
+    Domain picks keep the preview inside those pillars. Industry picks keep topics
+    whose analyzed industry grid (or article text) matches, and only widen when that
+    set is empty. Role chips reorder topics and the article chosen inside each topic.
+    An empty domain list means all pillars, not a skipped ladder.
 
     Injects an admin-only assembly-tier banner (not used on real sends).
     """
@@ -2223,14 +2227,13 @@ def generate_newsletter_preview(
 
     domain_list = list(domains) if domains else []
     industry_list = list(industries) if industries else []
-    skip_domain_topic_filter = len(domain_list) == 0
 
     dummy = Subscriber(
         id=-1,
         email="preview@pulseone.internal",
         first_name="Jane",
         last_name="Executive",
-        industries=industry_list if industry_list else ["Technology"],
+        industries=industry_list,
         domains=domain_list if domain_list else None,
         role_ids=role_ids if role_ids else None,
         is_active=True,
@@ -2250,8 +2253,8 @@ def generate_newsletter_preview(
         dummy,
         eligible,
         db,
-        skip_domain_filter=skip_domain_topic_filter,
-        merged_pipeline=None if skip_domain_topic_filter else merged,
+        skip_domain_filter=False,
+        merged_pipeline=merged,
     )
     topics = topics[:20]
 
@@ -2270,7 +2273,7 @@ def generate_newsletter_preview(
             tier=tier,
             topic_count=0,
             domains=domain_list,
-            industries=industry_list if industry_list else ["Technology"],
+            industries=industry_list,
         )
 
     promoted = assemble_promoted_content(dummy, db, topics)
@@ -2292,7 +2295,7 @@ def generate_newsletter_preview(
         tier=tier,
         topic_count=len(topics),
         domains=domain_list,
-        industries=industry_list if industry_list else ["Technology"],
+        industries=industry_list,
     )
 
 

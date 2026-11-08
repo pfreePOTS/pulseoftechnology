@@ -19,6 +19,8 @@ def _article(
     persona: dict | None = None,
     why: str = "Because it matters.",
     ingested: datetime | None = None,
+    tags: list[str] | None = None,
+    subdomain: str = "",
 ) -> SimpleNamespace:
     return SimpleNamespace(
         id=aid,
@@ -26,6 +28,9 @@ def _article(
         persona_impacts=persona,
         why_it_matters=why,
         what_is_it="x",
+        tags=tags,
+        subdomain=subdomain,
+        content="",
         ingested_at=ingested or datetime.now(UTC),
         published_at=None,
         archived_at=None,
@@ -51,6 +56,31 @@ def test_score_prefers_longer_persona_line_for_same_role():
     short = _article(persona={"CFO": "Short."}, aid=1)
     long = _article(persona={"CFO": "A" * 200}, aid=2)
     assert score_article_for_newsletter(long, ctx) > score_article_for_newsletter(short, ctx)
+
+
+def test_score_prefers_role_tag_overlap_when_persona_lines_match():
+    """Role chips (Zero Trust, Identity, …) should outrank an unrelated story."""
+    ref = datetime.now(UTC)
+    ctx = NewsletterArticleContext(
+        role_names=["CISO"],
+        topic_urgency=8.0,
+        reference_time=ref,
+        role_tags=("Zero Trust", "Identity", "Threat"),
+    )
+    line = "Same length impact line for this role."
+    match = _article(
+        aid=1,
+        title="Identity program expands zero trust controls",
+        persona={"CISO": line},
+        tags=["identity", "security"],
+    )
+    other = _article(
+        aid=2,
+        title="Brand campaign metrics for the quarter",
+        persona={"CISO": line},
+        tags=["marketing", "brand"],
+    )
+    assert score_article_for_newsletter(match, ctx) > score_article_for_newsletter(other, ctx)
 
 
 def test_score_penalizes_missing_persona_when_role_set():

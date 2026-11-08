@@ -963,7 +963,7 @@ export function recommendedCaseStudiesIntro(intake?: RecommendedPathCaseStudyInt
     return `How we would approach this kind of work in ${sectorLabel}, for situations like yours: “${short}”`;
   }
   if (sectorLabel) {
-    return `How we would approach this kind of work in ${sectorLabel}. These are illustrative examples, not past client stories.`;
+    return `How we would approach this kind of work in ${sectorLabel}.`;
   }
   if (stage) {
     const short =

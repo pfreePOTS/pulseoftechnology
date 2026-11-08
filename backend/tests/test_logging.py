@@ -36,22 +36,21 @@ def test_login_failure_logs_warning(client, caplog):
 
 
 def test_login_success_logs_info(client, caplog):
+    from backend.tests.conftest import login_as_admin
+
     with caplog.at_level(logging.INFO, logger="backend.routers.admin"):
-        r = client.post(
-            "/api/admin/login",
-            json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
-        )
+        r = login_as_admin(client)
     assert r.status_code == 200
+    assert any("[auth] mfa_challenge_sent" in rec.message for rec in caplog.records)
     assert any("[auth] login_success" in rec.message for rec in caplog.records)
     success = next(rec for rec in caplog.records if "[auth] login_success" in rec.message)
     assert "email=pulseoneadmin@pulseone.local" in success.message
 
 
 def test_logout_logs_info(client, caplog):
-    client.post(
-        "/api/admin/login",
-        json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
-    )
+    from backend.tests.conftest import login_as_admin
+
+    login_as_admin(client)
     with caplog.at_level(logging.INFO, logger="backend.routers.admin"):
         client.post("/api/admin/logout")
     assert any("[auth] logout" in rec.message for rec in caplog.records)

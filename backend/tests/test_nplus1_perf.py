@@ -49,10 +49,9 @@ def test_list_signals_does_not_n_plus_one(client, db_session):
     event.listen(engine, "before_cursor_execute", _count_selects)
     try:
         # Authenticate via the seeded admin user (see conftest.db_session).
-        login = client.post(
-            "/api/admin/login",
-            json={"email": "pulseoneadmin@pulseone.local", "password": "pulseadmin"},
-        )
+        from backend.tests.conftest import login_as_admin
+
+        login = login_as_admin(client)
         assert login.status_code == 200, login.text
         select_count = 0  # Reset so we only measure the /signals call.
         res = client.get("/api/admin/signals?status=pending")

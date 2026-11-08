@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 
 from ..config import settings
+from .conftest import login_as_admin
 from ..models.article import Article, ArticleStatus
 from ..models.classification_feedback import ClassificationFeedback
 from ..models.source import Source, SourceType
@@ -8,10 +9,7 @@ from ..models.topic import Topic
 
 
 def _login(client) -> None:
-    client.post(
-        "/api/admin/login",
-        json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
-    )
+    login_as_admin(client)
 
 
 def test_review_endpoint_approves_article_and_records_feedback(client, db_session):

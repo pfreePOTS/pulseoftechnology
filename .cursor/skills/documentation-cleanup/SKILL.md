@@ -27,7 +27,7 @@ Do **not** rewrite historical `docs/cursor-prompts/` or audit reports unless the
 ## Checklist
 
 1. **Commands** — Every `docker compose exec` example must use correct module paths (`python -m backend.seed_local_dev`, `-w /app/backend` for Alembic).
-2. **Ports** — Frontend `3100`, API `8100`, Postgres host `5532`.
+2. **Ports** — Frontend `3100`, API `8100`, Postgres host `15432`.
 3. **Auth** — Admin login is **email + password** (`FIRST_ADMIN_EMAIL`, `ADMIN_PASSWORD`), not password-only.
 4. **Seeding** — `seed_local_dev` wraps sources, domains, topics, roles; document idempotent reruns.
 5. **Env vars** — Cross-check `backend/config.py` Settings fields against README table and `.env.example`.

@@ -347,14 +347,17 @@ function LibraryPageContent() {
                   className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   placeholder={
                     form.type === "landing_page"
-                      ? "/marketplace-offers/PulseOne_01_landing.pdf"
+                      ? "/service-offers/security-baseline-assessment-for-microsoft-365.pdf"
                       : "https://… or /path/on-this-site"
                   }
                 />
                 {form.type === "landing_page" ? (
                   <p className="mt-1.5 text-xs text-gray-500">
-                    Host the PDF under <code className="text-gray-400">frontend/public</code> (e.g.{" "}
-                    <code className="text-gray-400">/marketplace-offers/PulseOne_01_landing.pdf</code>
+                    Host the PDF under <code className="text-gray-400">frontend/public/service-offers</code>{" "}
+                    with a kebab-case title (e.g.{" "}
+                    <code className="text-gray-400">
+                      /service-offers/security-baseline-assessment-for-microsoft-365.pdf
+                    </code>
                     ). Opens in a new tab from the library table.
                   </p>
                 ) : null}

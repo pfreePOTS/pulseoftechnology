@@ -1190,7 +1190,7 @@ def _build_quick_hits_block(topics: list[Topic]) -> str:
 
 
 def _absolute_public_url(url: str | None) -> str:
-    """Resolve site-relative paths (e.g. /marketplace-offers/…) for email clients."""
+    """Resolve site-relative paths (e.g. /service-offers/…, /marketplace-offers/…) for email clients."""
     raw = (url or "").strip()
     if not raw:
         return ""

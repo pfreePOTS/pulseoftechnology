@@ -1096,11 +1096,14 @@ def test_promo_section_resolves_relative_pdf_url(monkeypatch):
     monkeypatch.setattr(email_service.settings, "public_site_url", "https://pulseone.com")
     item = SimpleNamespace(
         title="Intune Assessment",
-        url="/marketplace-offers/PulseOne_05_landing.pdf",
+        url="/service-offers/endpoint-management-assessment-for-microsoft-intune.pdf",
         type="landing_page",
         summary="Short summary",
         image_url=None,
     )
     html = email_service._build_promo_section([item])
-    assert 'href="https://pulseone.com/marketplace-offers/PulseOne_05_landing.pdf"' in html
+    assert (
+        'href="https://pulseone.com/service-offers/endpoint-management-assessment-for-microsoft-intune.pdf"'
+        in html
+    )
     assert 'target="_blank" rel="noopener noreferrer"' in html

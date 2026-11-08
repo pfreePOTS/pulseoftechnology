@@ -1,15 +1,13 @@
 """Admin newsletter HTML preview respects sandbox domain filters."""
 
 from backend.config import settings
+from backend.tests.conftest import login_as_admin
 from backend.models.topic import AdoptionState, TopicStatus
 from backend.tests.domain_fixtures import make_topic
 
 
 def test_preview_excludes_topics_outside_selected_domains(client, db_session):
-    client.post(
-        "/api/admin/login",
-        json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
-    )
+    login_as_admin(client)
     make_topic(
         db_session,
         name="Sandbox Security Only",
@@ -43,10 +41,7 @@ def test_preview_excludes_topics_outside_selected_domains(client, db_session):
 
 
 def test_preview_domain_filter_is_case_insensitive(client, db_session):
-    client.post(
-        "/api/admin/login",
-        json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
-    )
+    login_as_admin(client)
     for i in range(5):
         make_topic(
             db_session,

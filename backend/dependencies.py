@@ -37,12 +37,27 @@ def hash_password(plain: str) -> str:
     return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt()).decode()
 
 
+_ADMIN_MFA_JWT_TYPE = "admin_mfa"
+
+
 def create_admin_access_token(user: AdminUser) -> str:
     expire = datetime.now(UTC) + timedelta(minutes=settings.admin_token_expire_minutes)
     payload = {
         "sub": str(user.id),
         "aud": _ADMIN_JWT_AUDIENCE,
         "typ": "admin",
+        "exp": expire,
+    }
+    return jwt.encode(payload, settings.admin_jwt_secret, algorithm="HS256")
+
+
+def create_admin_mfa_token(*, user_id: int, challenge_id: str, ttl_minutes: int) -> str:
+    expire = datetime.now(UTC) + timedelta(minutes=ttl_minutes)
+    payload = {
+        "sub": str(user_id),
+        "aud": _ADMIN_JWT_AUDIENCE,
+        "typ": _ADMIN_MFA_JWT_TYPE,
+        "cid": challenge_id,
         "exp": expire,
     }
     return jwt.encode(payload, settings.admin_jwt_secret, algorithm="HS256")
@@ -57,6 +72,20 @@ def decode_admin_token(token: str) -> dict:
     )
     if payload.get("typ") != "admin":
         raise jwt.InvalidTokenError("Invalid token type")
+    return payload
+
+
+def decode_admin_mfa_token(token: str) -> dict:
+    payload = jwt.decode(
+        token,
+        settings.admin_jwt_secret,
+        algorithms=["HS256"],
+        audience=_ADMIN_JWT_AUDIENCE,
+    )
+    if payload.get("typ") != _ADMIN_MFA_JWT_TYPE:
+        raise jwt.InvalidTokenError("Invalid token type")
+    if not payload.get("cid"):
+        raise jwt.InvalidTokenError("Missing challenge id")
     return payload
 
 

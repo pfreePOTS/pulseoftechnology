@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from functools import partial
 from typing import Any
 
+import jwt
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -30,6 +31,7 @@ from ..database import SessionLocal, get_db
 from ..dependencies import (
     ADMIN_COOKIE_NAME,
     create_admin_access_token,
+    decode_admin_mfa_token,
     get_admin_user_from_token,
     get_token_from_request,
     hash_password,
@@ -52,6 +54,7 @@ from ..models.subscriber import Subscriber, validate_industries_and_role_ids
 from ..models.survey_response import SurveyResponse
 from ..models.topic import AdoptionState, Topic, TopicStatus
 from ..rate_limits import limiter
+from ..services import admin_mfa as admin_mfa_service
 from ..services.ai_service import (
     INDUSTRY_GRID_LABELS,
     clear_prompt_template_cache,
@@ -66,6 +69,7 @@ from ..services.email_service import (
     generate_newsletter_preview,
     run_daily_newsletter,
     send_admin_invite_email,
+    send_admin_mfa_code_email,
     send_test_newsletter,
 )
 from ..services.hubspot_sync import (
@@ -156,6 +160,15 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class MfaVerifyRequest(BaseModel):
+    mfa_token: str
+    code: str = Field(..., min_length=4, max_length=16)
+
+
+class MfaResendRequest(BaseModel):
+    mfa_token: str
+
+
 def _admin_cookie_cross_site_settings() -> tuple[bool, str]:
     """Railsway / split-host deploys: SPA on frontend host, API on another — cross-origin fetches."""
     env = app_settings.environment.strip().lower()
@@ -187,10 +200,36 @@ def _issue_admin_cookie_response(user: AdminUser) -> JSONResponse:
     return response
 
 
+def _mfa_user_from_token(mfa_token: str, db: Session) -> tuple[AdminUser, str]:
+    """Return (user, challenge_id) or raise 401."""
+    try:
+        payload = decode_admin_mfa_token(mfa_token)
+    except jwt.PyJWTError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired verification session",
+        ) from e
+    try:
+        user_id = int(payload["sub"])
+    except (KeyError, TypeError, ValueError) as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired verification session",
+        ) from e
+    challenge_id = str(payload.get("cid") or "")
+    user = db.get(AdminUser, user_id)
+    if user is None or not user.is_active or not challenge_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired verification session",
+        )
+    return user, challenge_id
+
+
 @router.post("/login")
 @limiter.limit("10/minute")
 def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)) -> JSONResponse:
-    """Issue a JWT and set an httpOnly cookie for browser clients."""
+    """Verify password, email MFA code, return mfa_token (no session cookie yet)."""
     email = normalize_login_email(payload.email)
     ip = client_ip(request)
     user = db.query(AdminUser).filter(AdminUser.email == email).first()
@@ -208,11 +247,85 @@ def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
+    _challenge, code, mfa_token = admin_mfa_service.create_challenge(db, user)
+    emailed = send_admin_mfa_code_email(user.email, code)
+    if not emailed:
+        admin_mfa_service.invalidate_open_challenges(db, user.id)
+        db.commit()
+        logger.warning(
+            "[auth] mfa_email_failed %s",
+            kv(user_id=user.id, email=user.email, ip=ip),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not send verification email. Try again shortly.",
+        )
+    logger.info(
+        "[auth] mfa_challenge_sent %s",
+        kv(user_id=user.id, email=user.email, ip=ip, superuser=user.is_superuser),
+    )
+    return JSONResponse({"mfa_required": True, "mfa_token": mfa_token})
+
+
+@router.post("/login/mfa")
+@limiter.limit("10/minute")
+def login_mfa(
+    request: Request, payload: MfaVerifyRequest, db: Session = Depends(get_db)
+) -> JSONResponse:
+    """Verify emailed MFA code and issue the admin session cookie."""
+    ip = client_ip(request)
+    user, challenge_id = _mfa_user_from_token(payload.mfa_token, db)
+    verified = admin_mfa_service.verify_challenge(
+        db, user_id=user.id, challenge_id=challenge_id, code=payload.code
+    )
+    if verified is None:
+        logger.warning(
+            "[auth] mfa_failed %s",
+            kv(user_id=user.id, email=user.email, ip=ip, reason="bad_or_expired_code"),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired verification code",
+        )
     logger.info(
         "[auth] login_success %s",
         kv(user_id=user.id, email=user.email, ip=ip, superuser=user.is_superuser),
     )
     return _issue_admin_cookie_response(user)
+
+
+@router.post("/login/mfa/resend")
+@limiter.limit("5/minute")
+def login_mfa_resend(
+    request: Request, payload: MfaResendRequest, db: Session = Depends(get_db)
+) -> JSONResponse:
+    """Invalidate the current challenge and email a new MFA code."""
+    ip = client_ip(request)
+    user, challenge_id = _mfa_user_from_token(payload.mfa_token, db)
+    open_row = admin_mfa_service.get_open_challenge(db, user_id=user.id, challenge_id=challenge_id)
+    if open_row is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired verification session",
+        )
+    _challenge, code, mfa_token = admin_mfa_service.create_challenge(db, user)
+    emailed = send_admin_mfa_code_email(user.email, code)
+    if not emailed:
+        admin_mfa_service.invalidate_open_challenges(db, user.id)
+        db.commit()
+        logger.warning(
+            "[auth] mfa_resend_email_failed %s",
+            kv(user_id=user.id, email=user.email, ip=ip),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not send verification email. Try again shortly.",
+        )
+    logger.info(
+        "[auth] mfa_challenge_resent %s",
+        kv(user_id=user.id, email=user.email, ip=ip),
+    )
+    return JSONResponse({"mfa_required": True, "mfa_token": mfa_token})
 
 
 @router.post("/logout")

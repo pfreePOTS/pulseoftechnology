@@ -108,6 +108,11 @@ class Settings(BaseSettings):
     admin_password_hash: str = ""
     # Bootstrap superuser when admin_users is empty (docker / first deploy). Also used as login email.
     first_admin_email: str = "pulseoneadmin@pulseone.local"
+    # Email MFA for every console account password login
+    admin_mfa_code_ttl_minutes: int = Field(default=10, ge=1, le=60)
+    admin_mfa_max_attempts: int = Field(default=5, ge=1, le=20)
+    # Non-production only: fixed OTP so pytest/Playwright can complete MFA without inbox access.
+    admin_mfa_dev_code: str = ""
 
     # Trend analysis (SQL windows + positioning insights)
     trend_window_days: int = Field(default=7, ge=1, le=120)

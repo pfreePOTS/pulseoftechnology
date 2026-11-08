@@ -32,16 +32,36 @@ export function getAdminCredentials(): { email: string; password: string } {
   };
 }
 
+/** Compose / CI fixed OTP when `ADMIN_MFA_DEV_CODE` is set (non-production only). */
+export function getAdminMfaDevCode(): string {
+  return process.env.E2E_ADMIN_MFA_CODE ?? process.env.ADMIN_MFA_DEV_CODE ?? "246801";
+}
+
+function mfaVerifyUrl(loginUrl: string): string {
+  return loginUrl.replace(/\/login\/?$/, "/login/mfa");
+}
+
 /** Prime httpOnly `pulse_admin` via the API using the Playwright cookie jar (no UI flakiness). */
 export async function loginAsAdmin(page: Page): Promise<void> {
   const { email, password } = getAdminCredentials();
   const loginUrl = getAdminLoginPostUrl();
-  const res = await page.context().request.post(loginUrl, {
+  const step1 = await page.context().request.post(loginUrl, {
     data: { email, password },
     headers: { "Content-Type": "application/json" },
   });
-  if (!res.ok()) {
-    throw new Error(`admin login failed (${res.status()}): ${await res.text()}`);
+  if (!step1.ok()) {
+    throw new Error(`admin login failed (${step1.status()}): ${await step1.text()}`);
+  }
+  const body = (await step1.json()) as { mfa_required?: boolean; mfa_token?: string };
+  if (!body.mfa_required || !body.mfa_token) {
+    throw new Error(`admin login missing MFA challenge: ${JSON.stringify(body)}`);
+  }
+  const step2 = await page.context().request.post(mfaVerifyUrl(loginUrl), {
+    data: { mfa_token: body.mfa_token, code: getAdminMfaDevCode() },
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!step2.ok()) {
+    throw new Error(`admin MFA failed (${step2.status()}): ${await step2.text()}`);
   }
 
   await page.goto("/admin");

@@ -2447,6 +2447,51 @@ def send_test_newsletter(db: Session, to_email: str) -> tuple[bool, str]:
     return False, "SendGrid did not accept the message — check server logs."
 
 
+def send_admin_mfa_code_email(to_email: str, code: str) -> bool:
+    """
+    Email a console login MFA code.
+    Returns False if SendGrid is not configured or the send fails.
+    """
+    if not settings.sendgrid_api_key:
+        logger.warning("SENDGRID_API_KEY not set; admin MFA email not sent to %s", to_email)
+        return False
+    sg = _get_sg_client()
+    from_email = Email(
+        email=settings.sendgrid_from_email,
+        name=settings.sendgrid_from_name,
+    )
+    safe_code = html.escape(code, quote=True)
+    plain = (
+        "Your PulseOne console sign-in code is:\n\n"
+        f"{code}\n\n"
+        "It expires in a few minutes. If you did not try to sign in, you can ignore this email."
+    )
+    html_body = (
+        "<p>Your PulseOne console sign-in code is:</p>"
+        f"<p style=\"font-size:24px;letter-spacing:0.2em;\"><code>{safe_code}</code></p>"
+        "<p>It expires in a few minutes. If you did not try to sign in, you can ignore this email.</p>"
+    )
+    message = Mail(
+        from_email=from_email,
+        to_emails=To(email=to_email),
+        subject="PulseOne sign-in code",
+        plain_text_content=Content("text/plain", plain),
+        html_content=Content("text/html", html_body),
+    )
+    try:
+        response = sg.send(message)
+        if response.status_code != 202:
+            logger.warning(
+                "Unexpected SendGrid status %d for admin MFA to %s",
+                response.status_code,
+                to_email,
+            )
+        return response.status_code == 202
+    except Exception:
+        logger.exception("SendGrid error sending admin MFA to %s", to_email)
+        return False
+
+
 def send_admin_invite_email(to_email: str, temporary_password: str, login_url: str) -> bool:
     """
     Email an invited admin user their temporary password.

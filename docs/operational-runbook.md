@@ -56,7 +56,7 @@ The system needs RSS sources, domain registry rows, radar topics, and role tags 
 Now that sources exist, you can trigger the ingestion pipeline. This will fetch the latest articles from the RSS feeds and pass them to Claude (Haiku) for scoring, classification, and clustering into Topics.
 
 1. Open your browser and navigate to the Admin Dashboard: `http://localhost:3100/admin`
-2. Log in with **`FIRST_ADMIN_EMAIL`** (default `pulseoneadmin@pulseone.local`; short name `pulseoneadmin` also works) and **`ADMIN_PASSWORD`** (default `pulseadmin` unless you changed it in `.env`).
+2. Log in with **`FIRST_ADMIN_EMAIL`** (default `pulseoneadmin@pulseone.local`; short name `pulseoneadmin` also works) and **`ADMIN_PASSWORD`** (default `pulseadmin` unless you changed it in `.env`). Every console account then needs the emailed MFA code (SendGrid). Locally, Compose sets **`ADMIN_MFA_DEV_CODE=246801`** so you can enter that code without checking email; leave it unset in staging/production.
 3. Navigate to the **System Jobs** tab (`/admin/jobs`).
 4. Click the **"Run RSS Ingestion Now"** button.
 5. *Wait.* This process fetches hundreds of articles and makes an API call to Anthropic for each one. Depending on the volume of news, this first run could take 2–5 minutes.

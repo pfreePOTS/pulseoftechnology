@@ -113,8 +113,8 @@ Stop and explain if you need to:
 
 ## 7. Testing
 - **Run tests yourself**; do not ask the user to run them for verification.
-- Prefer the project’s standard environment: ``docker compose exec -T backend bash -lc 'cd /app/backend [TEST_COMMAND_PRIMARY][TEST_COMMAND_PRIMARY] pytest -q'``
-- Additional suites: ``docker compose exec -T frontend sh -lc 'npm run test'``, ``npm run test:e2e` (frontend; full stack via Compose) or CI e2e job`, ``docker compose exec -T backend bash -lc 'cd /app/backend [TEST_COMMAND_TYPECHECK][TEST_COMMAND_TYPECHECK] ruff check . [TEST_COMMAND_TYPECHECK][TEST_COMMAND_TYPECHECK] ruff format --check .'`; frontend `npm run lint``
+- Prefer the project’s standard environment: ``docker compose exec -T backend bash -lc 'cd /app/backend && pytest -q'``
+- Additional suites: ``docker compose exec -T frontend sh -lc 'npm run test'``, ``npm run test:e2e` (frontend; full stack via Compose) or CI e2e job`, ``docker compose exec -T backend bash -lc 'cd /app/backend && ruff check . && ruff format --check .'`; frontend `npm run lint``
 - **All release-quality verification:** `GitHub Actions `.github/workflows/ci.yml` (backend-lint, backend-test, frontend-lint-test, e2e)` (if applicable)
 - See `AGENTS.md (Testing section) and README.md` for the full matrix.
 
@@ -130,7 +130,7 @@ When tests run in Docker/CI with live-mounted source:
 - **Start:** ``docker compose up --build``
 - **Logs:** ``docker compose logs -f backend frontend``
 - **Stop:** ``docker compose down``
-- Services talk over: Compose network; host ports Frontend `3100`, API `8100`, Postgres `5532`
+- Services talk over: Compose network; host ports Frontend `3100`, API `8100`, Postgres `15432`
 - When adding dependencies, update: `backend/requirements.txt`, `backend/requirements-dev.txt`, `frontend/package.json` / lockfile; rebuild Compose images after Python dep changes
 - **Host:** Railway (staging tracks `staging` branch; see `railway/README.md`)
 - **CLI/tooling:** `railway` CLI, `gh`

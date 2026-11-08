@@ -158,12 +158,9 @@ export default function AdminLoginPage() {
           >
             <PulseOneOfficialLogo variant="onDark" size="md" />
           </Link>
-          <h1 className="text-2xl font-bold text-white">Admin</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            {step === "credentials"
-              ? "Sign in with your admin email and password."
-              : "Enter the verification code we emailed you."}
-          </p>
+          {step === "mfa" && (
+            <p className="text-sm text-gray-500">Enter the verification code we emailed you.</p>
+          )}
         </div>
 
         {step === "credentials" ? (
@@ -175,7 +172,7 @@ export default function AdminLoginPage() {
               data-testid="admin-login-email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email (e.g. pulseoneadmin)"
+              placeholder="Email"
               required
               autoFocus
               suppressHydrationWarning
@@ -260,19 +257,13 @@ export default function AdminLoginPage() {
               Check spam if it does not arrive within a minute.
             </li>
             <li>
-              If an admin used <strong className="text-gray-400">Reset password</strong> for your account, your{" "}
+              If someone used <strong className="text-gray-400">Reset password</strong> for your account, your{" "}
               <strong className="text-gray-400">previous password stops working</strong>. You must use the{" "}
               <strong className="text-gray-400">temporary password</strong> from that step, then choose a new password.
             </li>
             <li>
-              If your account was <strong className="text-gray-400">deactivated</strong>, a superuser must activate you
+              If your account was <strong className="text-gray-400">deactivated</strong>, ask a superuser to activate you
               under <strong className="text-gray-400">Users</strong> before sign-in works again.
-            </li>
-            <li className="break-words">
-              Server CLI (Railway shell / Docker):{" "}
-              <code className="text-[11px] text-gray-400">
-                python -m backend.manage_admin reset-password --email your@email.com
-              </code>
             </li>
           </ul>
         </details>

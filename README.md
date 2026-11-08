@@ -114,7 +114,7 @@ After a **`docker compose down -v`** or new Railway Postgres plugin, apply refer
 docker compose exec backend python -m backend.seed_local_dev
 ```
 
-That wraps **`seed_sources`** (RSS catalogue), **`seed_domains`** (domain registry), **`seed_topics`** (core domains, radar‑visible), **`seed_roles`** (CEO/CFO/CTO/CISO/COO/CMO tags), and **`seed_marketplace_offers`** (PulseOne Marketplace Content Library promos, tagged by focus area for newsletter rotation). Promo images ship under `frontend/public/marketplace-offers/`; generate matching one-page PDFs from those PNGs with `python3 scripts/generate_marketplace_landing_pdfs.py` (`PulseOne_XX_landing.pdf`). Staging/prod still need the seed (or CMS sync from Dev) so `content_items` rows exist — re-run `python -m backend.seed_marketplace_offers` to point URLs at the PDFs (not `contact-us`).
+That wraps **`seed_sources`** (RSS catalogue), **`seed_domains`** (domain registry), **`seed_topics`** (core domains, radar‑visible), **`seed_roles`** (CEO/CFO/CTO/CISO/COO/CMO tags), and **`seed_marketplace_offers`** (PulseOne Marketplace Content Library promos, tagged by focus area for newsletter rotation). Promo images ship under `frontend/public/marketplace-offers/`; landing PDFs ship under `frontend/public/service-offers/` with kebab-case titles (e.g. `endpoint-management-assessment-for-microsoft-intune.pdf`). Fallback generator: `python3 scripts/generate_marketplace_landing_pdfs.py`. Staging/prod still need the seed (or CMS sync from Dev) so `content_items` rows exist — re-run `python -m backend.seed_marketplace_offers` to point URLs at the PDFs.
 
 Standalone marketplace seed:
 

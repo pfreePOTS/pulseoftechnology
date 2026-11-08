@@ -29,8 +29,18 @@ describe("legacy redirects", () => {
       expect(rule.permanent).toBe(true);
       expect(rule.source.endsWith("/")).toBe(false);
       expect(rule.source).not.toBe(rule.destination);
-      expect(DESTINATIONS.has(rule.destination)).toBe(true);
+      const known =
+        DESTINATIONS.has(rule.destination) ||
+        rule.destination.startsWith("/service-offers/");
+      expect(known).toBe(true);
     }
+  });
+
+  it("redirects legacy PulseOne landing PDFs into service-offers", () => {
+    const to = Object.fromEntries(LEGACY_REDIRECTS.map((rule) => [rule.source, rule.destination]));
+    expect(to["/marketplace-offers/PulseOne_05_landing.pdf"]).toBe(
+      "/service-offers/endpoint-management-assessment-for-microsoft-intune.pdf",
+    );
   });
 
   it("keeps the paths this app already serves off the redirect table", () => {

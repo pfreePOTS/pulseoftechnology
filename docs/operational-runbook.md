@@ -49,7 +49,7 @@ The system needs RSS sources, domain registry rows, radar topics, and role tags 
    docker compose exec backend python -m backend.seed_local_dev
    ```
 2. You should see output for sources, domains/topics, roles, and **marketplace offers**. Individual modules (`backend.seed_sources`, `backend.seed_domains`, `backend.seed_marketplace_offers`, etc.) are also available if you need to rerun one layer.
-3. Marketplace promo artwork is in `frontend/public/marketplace-offers/`. After deploying Staging/prod, ensure Content Library rows exist via `python -m backend.seed_marketplace_offers` (or the full `seed_local_dev` / CMS sync from Dev).
+3. Marketplace promo artwork is in `frontend/public/marketplace-offers/`; landing PDFs are in `frontend/public/service-offers/`. After deploying Staging/prod, ensure Content Library rows exist via `python -m backend.seed_marketplace_offers` (or the full `seed_local_dev` / CMS sync from Dev).
 
 ## 5. Trigger the First AI Ingestion Run
 

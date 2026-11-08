@@ -1,7 +1,7 @@
 """
 Upsert PulseOne Microsoft Marketplace offers into the Content Library.
 
-Idempotent: matches on title. Sets type=landing_page, on-site PDF URL (``/marketplace-offers/…``),
+Idempotent: matches on title. Sets type=landing_page, on-site PDF URL (``/service-offers/…``),
 and focus-area tags (AI, Security, Cloud, …) for newsletter rotation.
 
     docker compose exec backend python -m backend.seed_marketplace_offers

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 
 import FaqSection from "@/components/FaqSection";
@@ -60,8 +61,16 @@ export default function IndustriesPage() {
       <main className="flex-1">
         {/* HERO — min-height + padding aligned with HeroSection / /radar */}
         <section className="relative flex min-h-[560px] items-center overflow-hidden border-b-4 border-pulse-teal bg-[#111]">
+          <Image
+            src="/images/hero_industries.jpg"
+            alt=""
+            fill
+            priority
+            sizes="100vw"
+            className="object-cover object-[70%_center]"
+          />
           <div
-            className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[rgba(10,10,15,0.82)] via-[rgba(10,10,15,0.65)] to-[rgba(10,10,15,0.45)]"
+            className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[rgba(10,10,15,0.85)] via-[rgba(10,10,15,0.6)] to-[rgba(10,10,15,0.25)]"
             aria-hidden
           />
           <div className="relative z-[1] mx-auto w-full max-w-[1200px] px-6 py-16">
@@ -74,7 +83,7 @@ export default function IndustriesPage() {
             <h1 className="mb-4 max-w-[820px] font-sans text-[clamp(1.875rem,4vw,2.75rem)] leading-[1.12] font-extrabold tracking-tight text-white">
               Twenty industries. One common challenge.
             </h1>
-            <p className="max-w-[680px] font-sans text-lg leading-relaxed text-white/60">
+            <p className="max-w-[680px] font-sans text-lg leading-relaxed text-white/78">
               Every sector is balancing accelerating technology change against the operational
               reality of running the business. Pick your industry below and we&rsquo;ll build a
               custom path tuned to the regulatory, security, and AI-governance pressures you

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 
 import GlobalFooter from "@/components/GlobalFooter";
@@ -38,12 +39,20 @@ export default function ServicesPage() {
       />
 
       <main className="flex flex-1 flex-col bg-white">
-        <section className="relative overflow-hidden border-b-[3px] border-pulse-teal bg-dark-bg px-6 py-[88px]">
+        <section className="relative flex min-h-[560px] items-center overflow-hidden border-b-[3px] border-pulse-teal bg-dark-bg">
+          <Image
+            src="/images/services/overview.jpg"
+            alt=""
+            fill
+            priority
+            sizes="100vw"
+            className="object-cover object-[70%_center]"
+          />
           <div
-            className="pointer-events-none absolute -bottom-24 -left-24 size-[400px] rounded-full bg-[radial-gradient(circle,rgba(1,158,124,0.12)_0%,transparent_70%)]"
+            className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[rgba(10,10,15,0.85)] via-[rgba(10,10,15,0.6)] to-[rgba(10,10,15,0.25)]"
             aria-hidden
           />
-          <div className="relative z-[1] mx-auto max-w-[1200px]">
+          <div className="relative z-[1] mx-auto w-full max-w-[1200px] px-6 py-16">
             <span className="mb-3 block font-sans text-[11px] font-semibold tracking-[3px] text-pulse-teal uppercase">
               Our Services
             </span>

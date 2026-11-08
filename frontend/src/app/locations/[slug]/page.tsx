@@ -7,7 +7,7 @@ import GlobalFooter from "@/components/GlobalFooter";
 import GlobalHeader from "@/components/GlobalHeader";
 import JsonLd from "@/components/JsonLd";
 import { LOCATION_PARTNERS, LOCATIONS, getLocation, locationPath } from "@/lib/locations";
-import { breadcrumbSchema } from "@/lib/schema";
+import { breadcrumbSchema, localBusinessSchema } from "@/lib/schema";
 
 type Params = { slug: string };
 
@@ -30,6 +30,7 @@ export async function generateMetadata({
   if (!location) return {};
 
   const path = locationPath(location.slug);
+  const shareImages = [{ url: location.image, alt: location.imageAlt }];
   return {
     title: { absolute: location.metaTitle },
     description: location.metaDescription,
@@ -39,11 +40,13 @@ export async function generateMetadata({
       url: path,
       title: location.metaTitle,
       description: location.metaDescription,
+      images: shareImages,
     },
     twitter: {
       card: "summary_large_image",
       title: location.metaTitle,
       description: location.metaDescription,
+      images: shareImages.map((image) => image.url),
     },
   };
 }
@@ -56,6 +59,16 @@ export default async function LocationPage({ params }: { params: Promise<Params>
   return (
     <div className="flex min-h-screen flex-col bg-white">
       <GlobalHeader />
+      <JsonLd
+        data={localBusinessSchema({
+          name: `PulseOne ${location.city}`,
+          description: location.metaDescription,
+          path: locationPath(location.slug),
+          telephone: location.phone,
+          areaServed: location.areas,
+          image: location.image,
+        })}
+      />
       <JsonLd
         data={breadcrumbSchema([{ name: "Home", path: "/" }, { name: location.headline }])}
       />

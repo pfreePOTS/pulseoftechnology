@@ -57,7 +57,7 @@ docker compose up
 | Admin Panel | http://localhost:3100/admin       |
 | Backend API | http://localhost:8100             |
 | API Docs    | http://localhost:8100/docs        |
-| Database    | localhost:5532 (host-mapped)      |
+| Database    | localhost:15432 (host-mapped)      |
 
 ---
 

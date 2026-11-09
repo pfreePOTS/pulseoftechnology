@@ -17,7 +17,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pulse_password}
       POSTGRES_DB: ${POSTGRES_DB:-pulse_db}
     ports:
-      - "5532:5432"
+      - "127.0.0.1:15432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -61,6 +61,10 @@ services:
       HUBSPOT_NEWSLETTER_LIST_ID: ${HUBSPOT_NEWSLETTER_LIST_ID:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-pulseadmin}
       FIRST_ADMIN_EMAIL: ${FIRST_ADMIN_EMAIL:-pulseoneadmin@pulseone.local}
+      # Non-production fixed MFA OTP for local/e2e (ignored in production/staging)
+      ADMIN_MFA_DEV_CODE: ${ADMIN_MFA_DEV_CODE:-246801}
+      ADMIN_MFA_CODE_TTL_MINUTES: ${ADMIN_MFA_CODE_TTL_MINUTES:-10}
+      ADMIN_MFA_MAX_ATTEMPTS: ${ADMIN_MFA_MAX_ATTEMPTS:-5}
       # Optional — signal intelligence / vectors (see backend/config.py)
       PINECONE_API_KEY: ${PINECONE_API_KEY:-}
       PINECONE_ENVIRONMENT: ${PINECONE_ENVIRONMENT:-}

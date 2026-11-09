@@ -12,6 +12,7 @@ from ..models.role import Role
 from ..models.source import Source
 from ..models.subscriber import Subscriber
 from ..services.subscriber_tokens import create_subscriber_preferences_token
+from .conftest import login_as_admin
 
 
 def test_login_rejects_wrong_password(client):
@@ -22,11 +23,66 @@ def test_login_rejects_wrong_password(client):
     assert r.status_code == 401
 
 
-def test_login_returns_jwt_and_sets_cookie(client):
+def test_mfa_rejects_wrong_code(client):
+    step1 = client.post(
+        "/api/admin/login",
+        json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
+    )
+    assert step1.status_code == 200
+    r = client.post(
+        "/api/admin/login/mfa",
+        json={"mfa_token": step1.json()["mfa_token"], "code": "000000"},
+    )
+    assert r.status_code == 401
+    assert client.get("/api/admin/session").json()["authenticated"] is False
+
+
+def test_invited_operator_also_requires_mfa(client, db_session):
+    """MFA applies to every console account, not only superusers."""
+    from ..dependencies import hash_password
+    from ..models.admin_user import AdminUser
+
+    db_session.add(
+        AdminUser(
+            email="operator@example.com",
+            password_hash=hash_password("operator-pass"),
+            is_superuser=False,
+            is_active=True,
+            must_change_password=False,
+            page_permissions=["research"],
+        )
+    )
+    db_session.commit()
+    step1 = client.post(
+        "/api/admin/login",
+        json={"email": "operator@example.com", "password": "operator-pass"},
+    )
+    assert step1.status_code == 200
+    assert step1.json().get("mfa_required") is True
+    assert client.get("/api/admin/session").json()["authenticated"] is False
+    r = login_as_admin(client, email="operator@example.com", password="operator-pass")
+    assert r.status_code == 200
+    session = client.get("/api/admin/session").json()
+    assert session["authenticated"] is True
+    assert session["user"]["email"] == "operator@example.com"
+    assert session["user"]["is_superuser"] is False
+
+
+def test_password_alone_requires_mfa_and_sets_no_session(client):
     r = client.post(
         "/api/admin/login",
         json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
     )
+    assert r.status_code == 200
+    data = r.json()
+    assert data.get("mfa_required") is True
+    assert data.get("mfa_token")
+    assert "access_token" not in data
+    assert client.get("/api/admin/session").json()["authenticated"] is False
+
+
+def test_login_returns_jwt_and_sets_cookie(client):
+    r = login_as_admin(client)
     assert r.status_code == 200
     data = r.json()
     assert data.get("token_type") == "bearer"
@@ -41,10 +97,7 @@ def test_login_returns_jwt_and_sets_cookie(client):
 def test_session_reflects_cookie(client):
     assert client.get("/api/admin/session").json()["authenticated"] is False
 
-    client.post(
-        "/api/admin/login",
-        json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
-    )
+    login_as_admin(client)
     data = client.get("/api/admin/session").json()
     assert data["authenticated"] is True
     assert data["user"]["email"] == "pulseoneadmin@pulseone.local"
@@ -52,10 +105,7 @@ def test_session_reflects_cookie(client):
 
 
 def test_invite_can_create_superuser_without_page_permissions(client):
-    client.post(
-        "/api/admin/login",
-        json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
-    )
+    login_as_admin(client)
 
     r = client.post(
         "/api/admin/users/invite",
@@ -79,10 +129,7 @@ def test_invite_can_create_superuser_without_page_permissions(client):
 
 
 def test_bearer_token_grants_access(client):
-    r = client.post(
-        "/api/admin/login",
-        json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
-    )
+    r = login_as_admin(client)
     token = r.json()["access_token"]
     session = client.get(
         "/api/admin/session",
@@ -94,10 +141,7 @@ def test_bearer_token_grants_access(client):
 
 
 def test_logout_clears_session(client):
-    client.post(
-        "/api/admin/login",
-        json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
-    )
+    login_as_admin(client)
     assert client.get("/api/admin/session").json()["authenticated"] is True
     client.post("/api/admin/logout")
     assert client.get("/api/admin/session").json()["authenticated"] is False
@@ -210,10 +254,7 @@ def test_update_subscriber_requires_auth(client):
 def test_admin_create_subscriber_requires_title_industry_and_domain(client, db_session):
     db_session.add(Role(id=20, name="COO", tags=["Leadership"]))
     db_session.commit()
-    client.post(
-        "/api/admin/login",
-        json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
-    )
+    login_as_admin(client)
     base_payload = {
         "email": "admin-added@example.com",
         "first_name": "Admin",
@@ -244,10 +285,7 @@ def test_newsletter_preview_filters_requires_auth(client):
 
 
 def test_agent_runs_summary_ok_for_superuser_empty_table(client):
-    client.post(
-        "/api/admin/login",
-        json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
-    )
+    login_as_admin(client)
     r = client.get("/api/admin/agent-runs/summary")
     assert r.status_code == 200
     data = r.json()
@@ -285,10 +323,7 @@ def test_agent_run_detail_ok_for_superuser(client, db_session):
     db.commit()
     db.refresh(run)
 
-    client.post(
-        "/api/admin/login",
-        json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
-    )
+    login_as_admin(client)
     r = client.get(f"/api/admin/agent-runs/{run.id}")
     assert r.status_code == 200
     data = r.json()
@@ -325,10 +360,7 @@ def test_analysis_persona_suggest_all_background_requires_auth(client):
 
 
 def test_analysis_background_jobs_queue_when_authed(client):
-    client.post(
-        "/api/admin/login",
-        json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
-    )
+    login_as_admin(client)
     r_ind = client.post("/api/admin/topics/analysis/industry-suggest-all-background")
     assert r_ind.status_code == 200
     assert r_ind.json().get("status") == "queued"
@@ -339,13 +371,7 @@ def test_analysis_background_jobs_queue_when_authed(client):
 
 def test_superuser_demote_delete_and_last_superuser_guard_one_login(client):
     """Single login to avoid hitting /api/admin/login rate limit in a full test run."""
-    assert (
-        client.post(
-            "/api/admin/login",
-            json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
-        ).status_code
-        == 200
-    )
+    assert login_as_admin(client).status_code == 200
 
     inv = client.post(
         "/api/admin/users/invite",

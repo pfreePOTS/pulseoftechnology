@@ -11,6 +11,7 @@ from unittest.mock import patch
 import pytest
 
 from backend.config import settings
+from backend.tests.conftest import login_as_admin
 from backend.models.article import Article, ArticleStatus
 from backend.models.source import Source, SourceType
 from backend.models.topic import AdoptionState, Topic, TopicStatus
@@ -32,10 +33,7 @@ AI_ROW = {
 
 
 def _login(client) -> None:
-    client.post(
-        "/api/admin/login",
-        json={"email": "pulseoneadmin@pulseone.local", "password": settings.admin_password},
-    )
+    login_as_admin(client)
 
 
 def _source(db) -> Source:

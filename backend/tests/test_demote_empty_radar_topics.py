@@ -105,10 +105,9 @@ def test_publish_rejects_topic_without_active_articles(client, db_session):
     )
     db_session.commit()
 
-    login = client.post(
-        "/api/admin/login",
-        json={"email": "pulseoneadmin@pulseone.local", "password": "pulseadmin"},
-    )
+    from backend.tests.conftest import login_as_admin
+
+    login = login_as_admin(client)
     assert login.status_code == 200
 
     res = client.post(f"/api/admin/topics/{topic.id}/publish")

@@ -1,3 +1,4 @@
+from .admin_mfa_challenge import AdminMfaChallenge
 from .admin_user import AdminUser
 from .agent_run import AgentRun
 from .article import Article, ArticleStatus
@@ -24,6 +25,7 @@ from .topic import AdoptionState, Topic, TopicStatus
 
 __all__ = [
     "AdminUser",
+    "AdminMfaChallenge",
     "Source",
     "SourceType",
     "Article",

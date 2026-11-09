@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { apiOriginForBrowser } from "@/lib/api";
 import {
   consumeSubscribeDomainPrefill,
   SUBSCRIBE_PREFILL_EVENT,
@@ -78,7 +79,9 @@ function StepIndicator({ current, total }: { current: Step; total: number }) {
 
 export default function SubscribeWizard({ apiBase }: Props) {
   const isClient = useIsClient();
-  const { domains: domainOptions } = useDomains(apiBase);
+  // Prefer the live browser origin so loopback / deploy rewrites match other client fetches.
+  const resolvedApiBase = isClient ? apiOriginForBrowser() || apiBase : apiBase;
+  const { domains: domainOptions } = useDomains(resolvedApiBase);
   const [step, setStep] = useState<Step>(1);
   const [roles, setRoles] = useState<PublicRole[]>([]);
   const [rolesError, setRolesError] = useState("");
@@ -98,11 +101,24 @@ export default function SubscribeWizard({ apiBase }: Props) {
 
   useEffect(() => {
     if (!isClient) return;
-    fetch(`${apiBase}/api/roles`)
+    const controller = new AbortController();
+    setRolesError("");
+    fetch(`${resolvedApiBase}/api/roles`, { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error("Could not load roles"))))
-      .then((data: PublicRole[]) => setRoles(data))
-      .catch(() => setRolesError("Roles could not be loaded. Refresh and try again."));
-  }, [apiBase, isClient]);
+      .then((data: PublicRole[]) => {
+        if (!Array.isArray(data) || data.length === 0) {
+          throw new Error("Roles list empty");
+        }
+        setRoles(data);
+        setRolesError("");
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setRolesError("Roles could not be loaded. Refresh and try again.");
+      });
+    return () => controller.abort();
+  }, [resolvedApiBase, isClient]);
 
   useEffect(() => {
     if (!isClient) return;
@@ -227,7 +243,7 @@ export default function SubscribeWizard({ apiBase }: Props) {
     setSubmitting(true);
     setApiError("");
     try {
-      const res = await fetch(`${apiBase}/api/subscribe`, {
+      const res = await fetch(`${resolvedApiBase}/api/subscribe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -401,9 +417,7 @@ export default function SubscribeWizard({ apiBase }: Props) {
                   Loading title options...
                 </p>
               )}
-              {rolesError ? (
-                <p className="text-sm text-red-600">{rolesError}</p>
-              ) : roles.length > 0 ? (
+              {roles.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {roles.map((r) => {
                     const on = form.role_ids.includes(r.id);
@@ -423,6 +437,8 @@ export default function SubscribeWizard({ apiBase }: Props) {
                     );
                   })}
                 </div>
+              ) : rolesError ? (
+                <p className="text-sm text-red-600">{rolesError}</p>
               ) : null}
               {errors.role_ids && <p className={errorCls}>{errors.role_ids}</p>}
             </div>

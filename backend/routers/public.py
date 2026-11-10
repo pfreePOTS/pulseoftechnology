@@ -367,7 +367,7 @@ class ArticleTrackedPublic(BaseModel):
     source_name: str | None = None
     # Optional thumbnail (RSS media_thumbnail / enclosure / first <img>) — used by
     # the public "Stories we're tracking" cards. Many feeds omit this; the card
-    # falls back to a domain-colour gradient so layout stays uniform.
+    # falls back to a domain-color gradient so layout stays uniform.
     image_url: str | None = None
     # Short teaser summary: AI-extracted `what_is_it` is preferred (designed for
     # this purpose); raw `content` is a last-resort fallback, truncated server-
@@ -737,7 +737,7 @@ def _domains_for_intake_issue(issue: str) -> list[str]:
 
     Exact wizard labels use ``ISSUE_DOMAINS``. Free-text (e.g. 'interested in AI') hints domains.
     Soft labels such as Strategy / Leadership do not map to AI — they leave domain preference empty
-    so industry + role ranking can personalise themes.
+    so industry + role ranking can personalize themes.
     """
     s = (issue or "").strip()
     if not s:
@@ -791,7 +791,7 @@ def _domains_for_intake_issue(issue: str) -> list[str]:
         )
     ):
         guessed.append("cloud")
-    # Strategy / leadership / culture are organisational focuses, not an AI-domain hard map.
+    # Strategy / leadership / culture are organizational focuses, not an AI-domain hard map.
     seen: set[str] = set()
     out: list[str] = []
     for d in guessed:

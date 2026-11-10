@@ -88,7 +88,7 @@ def looks_like_promotional_event(title: str | None, body: str | None) -> bool:
 def split_article_title_body_for_pipeline(article_content: str) -> tuple[str, str]:
     """
     ``process_raw_articles`` wraps rows as ``Title: ...`` then newline(s) then the body excerpt.
-    Normalise that here for promo heuristics and logging.
+    Normalize that here for promo heuristics and logging.
     """
     s = (article_content or "").lstrip()
     prefix = "title:"

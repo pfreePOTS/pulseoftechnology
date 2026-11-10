@@ -45,12 +45,12 @@ const FAQ: FaqItem[] = [
   {
     question: "How often is the radar updated?",
     answer:
-      "Topics and tracked stories update continuously as signals are reviewed, and the daily briefing summarises what moved. The page shows when the radar was last updated so you can see how current the view is.",
+      "Topics and tracked stories update continuously as signals are reviewed, and the daily briefing summarizes what moved. The page shows when the radar was last updated so you can see how current the view is.",
   },
   {
     question: "What does the daily briefing include?",
     answer:
-      "The briefing summarises the signals that moved on the radar, filtered to the domains and industry you select when subscribing. It is written for scanning in a few minutes and links through to the underlying stories when you want the detail.",
+      "The briefing summarizes the signals that moved on the radar, filtered to the domains and industry you select when subscribing. It is written for scanning in a few minutes and links through to the underlying stories when you want the detail.",
   },
   {
     question: "Do I need to be a PulseOne client to use the radar?",
@@ -196,7 +196,7 @@ export default async function RadarPage() {
         <section id="subscribe" className="scroll-mt-4 bg-white px-6 py-14">
           <div className="mx-auto max-w-2xl">
             <h2 className="mb-2 text-center font-sans text-[38px] leading-tight font-bold tracking-tight text-pulse-teal">
-              Get Personalised Intelligence
+              Get Personalized Intelligence
             </h2>
             <p className="mb-8 text-center text-gray-600">
               Curated radar briefings for your industry and domains, in your inbox every

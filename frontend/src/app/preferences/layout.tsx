@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 /**
- * The preference centre is reached from email links and is scoped to a single
+ * The preference center is reached from email links and is scoped to a single
  * subscriber, so it should never be indexed. The page itself is a client
  * component and cannot export metadata, hence this layout.
  */

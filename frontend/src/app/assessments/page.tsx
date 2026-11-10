@@ -133,12 +133,12 @@ const ASSESSMENT_FAQ: FaqItem[] = [
   {
     question: "How long does an assessment take?",
     answer:
-      "Most people finish in one sitting. Each assessment is organised into multiple sections, and you can complete it alone or walk through it with your team if the answers span several people. Scored results are produced per section as soon as you finish.",
+      "Most people finish in one sitting. Each assessment is organized into multiple sections, and you can complete it alone or walk through it with your team if the answers span several people. Scored results are produced per section as soon as you finish.",
   },
   {
     question: "What is a cyber insurance readiness assessment?",
     answer:
-      "It checks your technology environment against the controls cyber insurance carriers now ask about before quoting or renewing: sign-in protection, backups, patching, access management, and incident response. Organisations typically use it to find gaps before the renewal questionnaire arrives rather than during it.",
+      "It checks your technology environment against the controls cyber insurance carriers now ask about before quoting or renewing: sign-in protection, backups, patching, access management, and incident response. Organizations typically use it to find gaps before the renewal questionnaire arrives rather than during it.",
   },
   {
     question: "Do I have to become a client to get the results?",

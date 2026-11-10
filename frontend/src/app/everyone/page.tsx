@@ -169,7 +169,7 @@ export default async function EveryonePage() {
               >
                 Take the 60-second intake
               </Link>{" "}
-              to generate your personalised path.
+              to generate your personalized path.
             </p>
           </div>
         </section>

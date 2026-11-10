@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from backend.marketplace_offers import (
+    legacy_landing_pdf_path,
     offer_image_path,
     offer_landing_pdf_path,
     offer_pdf_filename,
-    legacy_landing_pdf_path,
 )
 
 

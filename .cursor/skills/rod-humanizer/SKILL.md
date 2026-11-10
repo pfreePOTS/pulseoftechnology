@@ -2,8 +2,9 @@
 name: rod-humanizer
 description: >-
   Rod Humanizer. Humanize marketing and product copy in a warm, casual,
-  professional voice; cut em-dash overuse, hyperbole, and clichés (thought
-  leader, best in class, world class, mid-market leader, and similar). Also
+  professional voice; cut em-dash overuse, hyperbole, clichés (thought
+  leader, best in class, world class, mid-market leader, and similar), and
+  British spellings (US English only). Also
   audit LLM/agent system prompts so they do not instruct or encourage that
   language in generated output. Use when the user asks for the Rod Humanizer,
   a humanizer, a humanizer pass, the Rod skill, a Rod pass, de-AI copy,
@@ -81,6 +82,22 @@ clarity and confidence" stacks.
 Project identity docs (for example `pulseone-identity.md`) and existing
 banned-phrase tests outrank this list when they are stricter. Merge both.
 
+### British spellings
+Copy is US English. Models (DeepSeek especially) drift into British spelling,
+and it shows up in generated text even when the site copy is clean. Rewrite:
+
+| British | US |
+|---------|----|
+| organisation, organise, personalise(d), prioritise, optimise, summarise, modernise, recognise, realise, authorise, specialise, normalise (any -ise / -isation) | -ize / -ization |
+| colour, behaviour, favour | color, behavior, favor |
+| centre, programme, catalogue | center, program, catalog |
+| licence, defence | license, defense |
+| labelled / labelling, grey, fulfilment | labeled / labeling, gray, fulfillment |
+
+Leave `cancelled` (accepted US spelling), proper nouns, quoted sources, and
+code identifiers. Check identity docs, prompt strings, seed content, and
+fallback copy, not just pages.
+
 ## AI tells to rewrite
 
 | Tell | Prefer |
@@ -125,6 +142,10 @@ document what to avoid (still verify the *instructional* half is clear).
    prose examples).
 5. **Contradiction** — identity says avoid X, task prompt asks for X
    (“punchy”, “executive tone” without defining plain language).
+6. **No spelling guardrail** — nothing tells the model to write American
+   English. Prefer one rule in the shared LLM client (appended to every system
+   prompt) over repeating it in each prompt, plus a source scan test that fails
+   on British spellings.
 
 ### Prompt-specific prefer
 
@@ -145,7 +166,7 @@ that keeps schema/JSON rules intact.
 - [ ] 1. Scope surfaces (pages, components, content libs, llms.txt, identity)
 - [ ] 2. Scope agent prompts (system/task strings, identity, prompt templates)
 - [ ] 3. Scan both for em dashes, banned phrases, hyperbole, AI tells,
-         and prompted-bad-voice instructions
+         British spellings, and prompted-bad-voice instructions
 - [ ] 4. Report findings with file paths (site vs prompts, separately)
 - [ ] 5. Suggest before/after rewrites (do not edit yet)
 - [ ] 6. If asked to apply: edit site and/or prompts, keep facts/schemas,

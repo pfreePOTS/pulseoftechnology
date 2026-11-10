@@ -10,13 +10,12 @@ from unittest.mock import patch
 
 import pytest
 
-from backend.config import settings
-from backend.tests.conftest import login_as_admin
 from backend.models.article import Article, ArticleStatus
 from backend.models.source import Source, SourceType
 from backend.models.topic import AdoptionState, Topic, TopicStatus
 from backend.services import ai_service, email_service
 from backend.services.ai_service import INDUSTRY_GRID_LABELS, fill_missing_industry_grid_rows
+from backend.tests.conftest import login_as_admin
 from backend.tests.domain_fixtures import make_topic
 
 AI_ROW = {

@@ -1833,13 +1833,13 @@ def bulk_suggest_subdomains(
     background_tasks: BackgroundTasks,
     _: AdminUser = Depends(require_admin),
 ):
-    """Queue subdomain labelling for up to 50 topics (background; avoids long request hangs)."""
+    """Queue subdomain labeling for up to 50 topics (background; avoids long request hangs)."""
     ids = list(dict.fromkeys(int(x) for x in payload.topic_ids[:50]))
     if not ids:
         raise HTTPException(status_code=400, detail="No topic ids provided")
     background_tasks.add_task(_run_bulk_suggest_subdomains, ids)
     return {
-        "message": "Sub-domain labelling started in the background.",
+        "message": "Sub-domain labeling started in the background.",
         "topic_count": len(ids),
     }
 

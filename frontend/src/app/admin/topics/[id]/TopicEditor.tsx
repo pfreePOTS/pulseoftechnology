@@ -422,7 +422,7 @@ export default function TopicEditor({ topic }: { topic: TopicDetail }) {
                   Industry Positions
                 </h3>
                 <p className="text-xs text-gray-500">
-                  Per-industry impact and risk (radar distance and pull toward centre), adoption stage, and radar
+                  Per-industry impact and risk (radar distance and pull toward center), adoption stage, and radar
                   visibility
                 </p>
               </div>

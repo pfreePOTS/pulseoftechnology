@@ -933,7 +933,7 @@ function TrendDiscoveryInner() {
         return;
       }
       await loadTopics();
-      setActionSuccess("Sub-domain refreshed (grey pill next to the domain badge).");
+      setActionSuccess("Sub-domain refreshed (gray pill next to the domain badge).");
       window.setTimeout(() => setActionSuccess(null), 8000);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sub-domain suggestion failed");
@@ -976,8 +976,8 @@ function TrendDiscoveryInner() {
       const n = data.topic_count ?? 0;
       setActionSuccess(
         n > 0
-          ? `Labelling ${n} topic(s) in the background. The table will refresh every few seconds; check server logs for any failures.`
-          : (data.message ?? "Sub-domain labelling started."),
+          ? `Labeling ${n} topic(s) in the background. The table will refresh every few seconds; check server logs for any failures.`
+          : (data.message ?? "Sub-domain labeling started."),
       );
       window.setTimeout(() => setActionSuccess(null), 12000);
       await loadTopics({ quiet: true });
@@ -988,7 +988,7 @@ function TrendDiscoveryInner() {
         }
       })();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Bulk sub-domain labelling failed");
+      setError(e instanceof Error ? e.message : "Bulk sub-domain labeling failed");
     } finally {
       setSubdomainBulkBusy(false);
     }
@@ -1164,7 +1164,7 @@ function TrendDiscoveryInner() {
               {subdomainBulkBusy ? (
                 <>
                   <Spinner className="h-4 w-4" />
-                  Labelling sub-domains…
+                  Labeling sub-domains…
                 </>
               ) : (
                 "AI sub-domains (group)"

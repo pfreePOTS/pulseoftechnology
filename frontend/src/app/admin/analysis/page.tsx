@@ -891,9 +891,9 @@ export default function AnalysisPage() {
               <span className="font-medium text-gray-200">Public radar geometry</span> — Stars sit on{" "}
               <span className="text-gray-400">
                 discrete rings by impact: ≤5 outer, then one ring inward for each band (5–6, 6–7, 7–8, 8–9), and 9+ in
-                the centre zone
+                the center zone
               </span>
-              . Higher impact is closer to the centre. Risk is displayed in the panel but does not move the star.
+              . Higher impact is closer to the center. Risk is displayed in the panel but does not move the star.
             </li>
           </ul>
         </CollapsibleHelpBlock>
@@ -933,7 +933,7 @@ export default function AnalysisPage() {
                 underway.
               </li>
               <li>
-                <span className="font-medium text-gray-300">Make the Most Of</span> — Fully embraced; optimise for
+                <span className="font-medium text-gray-300">Make the Most Of</span> — Fully embraced; optimize for
                 advantage.
               </li>
             </ul>

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 /**
  * Lightweight SVG motifs for illustrative case-study cards (no raster art per sector).
- * Stroke icons — pair with tinted panels; colours come from Tailwind classes.
+ * Stroke icons — pair with tinted panels; colors come from Tailwind classes.
  */
 
 function IconFrame({ children, className }: { children: ReactNode; className?: string }) {
@@ -72,7 +72,7 @@ export function CaseStudyHeroIcon({
   }
 }
 
-/** Panel colours — stable per narrative pattern (not per industry URL permutation). */
+/** Panel colors — stable per narrative pattern (not per industry URL permutation). */
 export function caseStudyHeroPanelClass(caseStudyId: string): string {
   switch (caseStudyId) {
     case "ops-ai-sequencing":

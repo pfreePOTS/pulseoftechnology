@@ -1,8 +1,7 @@
 """Admin newsletter HTML preview respects sandbox domain filters."""
 
-from backend.config import settings
-from backend.tests.conftest import login_as_admin
 from backend.models.topic import AdoptionState, TopicStatus
+from backend.tests.conftest import login_as_admin
 from backend.tests.domain_fixtures import make_topic
 
 

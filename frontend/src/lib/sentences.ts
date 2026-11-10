@@ -30,7 +30,7 @@ export function clampRadarRationaleParagraph(text: string): string {
  * points so the panel scans quickly instead of forcing readers through a wall
  * of text.
  *
- * Behaviour by sentence count:
+ * Behavior by sentence count:
  *  - 0 sentences  → empty (caller should fall back to a paragraph)
  *  - 1–2 sentences → empty (lets the caller render the original paragraph;
  *                    bullets feel forced when there's only one supporting point)

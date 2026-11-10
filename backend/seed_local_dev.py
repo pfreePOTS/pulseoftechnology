@@ -2,7 +2,7 @@
 One-shot curated bootstrap for an empty Postgres (local or shared dev).
 
 Runs, in order:
-  1. seed_sources — RSS catalogue (ingestion needs rows in ``sources``)
+  1. seed_sources — RSS catalog (ingestion needs rows in ``sources``)
   2. seed_topics — core radar topics with ``is_published=True`` so /radar has stars
   3. seed_roles — standard executive personas for newsletters
   4. seed_marketplace_offers — PulseOne Marketplace Content Library promos

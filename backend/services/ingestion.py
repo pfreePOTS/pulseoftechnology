@@ -78,7 +78,7 @@ def _scrape_og_image(article_url: str) -> str | None:
     outlet can never break the hourly ingestion job. We cap the read size and
     the request timeout aggressively because the meta tags we care about are
     always in `<head>` and the only consumer (the radar story cards) renders
-    a domain-colour gradient when this returns `None`."""
+    a domain-color gradient when this returns `None`."""
     if not article_url or not article_url.lower().startswith(("http://", "https://")):
         return None
     try:

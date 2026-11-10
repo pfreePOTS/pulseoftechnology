@@ -422,7 +422,7 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
               <p className="mx-auto mt-4 max-w-[720px] font-sans text-[16px] leading-relaxed text-[#555]">
                 {issue.trim() ?
                   <>
-                    <span className="font-semibold text-[#333]">What you prioritised:</span> {issue.trim()}
+                    <span className="font-semibold text-[#333]">What you prioritized:</span> {issue.trim()}
                     {stageForDisplay.trim() ? " · " : ""}
                   </>
                 : null}
@@ -504,7 +504,7 @@ export default function RecommendedPathProgressiveBody({ intake, hasIntake, hero
                 <p className="font-sans text-[15px] leading-relaxed text-white/82">{watchBrief}</p>
               ) : (
                 <p className="rounded-[10px] border border-white/[0.08] bg-white/[0.03] px-5 py-4 font-sans text-sm text-white/45">
-                  We don&rsquo;t have enough personalised narrative yet. Widen your intake answers or revisit in a moment
+                  We don&rsquo;t have enough personalized narrative yet. Widen your intake answers or revisit in a moment
                   while the radar refreshes.
                 </p>
               )}

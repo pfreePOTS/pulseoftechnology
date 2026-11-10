@@ -2468,7 +2468,7 @@ def send_admin_mfa_code_email(to_email: str, code: str) -> bool:
     )
     html_body = (
         "<p>Your PulseOne console sign-in code is:</p>"
-        f"<p style=\"font-size:24px;letter-spacing:0.2em;\"><code>{safe_code}</code></p>"
+        f'<p style="font-size:24px;letter-spacing:0.2em;"><code>{safe_code}</code></p>'
         "<p>It expires in a few minutes. If you did not try to sign in, you can ignore this email.</p>"
     )
     message = Mail(

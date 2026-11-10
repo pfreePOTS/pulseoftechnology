@@ -1,11 +1,10 @@
 from datetime import UTC, datetime
 
-from ..config import settings
-from .conftest import login_as_admin
 from ..models.article import Article, ArticleStatus
 from ..models.classification_feedback import ClassificationFeedback
 from ..models.source import Source, SourceType
 from ..models.topic import Topic
+from .conftest import login_as_admin
 
 
 def _login(client) -> None:

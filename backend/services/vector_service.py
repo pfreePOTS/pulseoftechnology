@@ -91,7 +91,7 @@ def _placeholder_embed(text: str) -> list[float]:
 
     vec = [counts.get(i, 0.0) for i in range(EMBEDDING_DIM)]
 
-    # L2 normalise so cosine similarity = dot product
+    # L2 normalize so cosine similarity = dot product
     magnitude = math.sqrt(sum(v * v for v in vec)) or 1.0
     return [v / magnitude for v in vec]
 

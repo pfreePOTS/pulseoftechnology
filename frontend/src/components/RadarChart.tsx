@@ -20,9 +20,9 @@ export { INDUSTRY_COLORS };
 export interface IndustryPosition {
   /** @deprecated use impact_score — kept for older records */
   urgency_score?: number;
-  /** 1–10 magnitude of impact for this industry (drives distance from centre) */
+  /** 1–10 magnitude of impact for this industry (drives distance from center) */
   impact_score?: number;
-  /** 1–10 regulatory / threat / compliance exposure — higher pulls the star toward the centre */
+  /** 1–10 regulatory / threat / compliance exposure — higher pulls the star toward the center */
   risk_level?: number;
   adoption_state: string;
   /** @deprecated Prefer industry_impact; still merged into public radar rationale */
@@ -80,7 +80,7 @@ const SIZE = 680 * SCALE;
 const CX = SIZE / 2;
 const CY = SIZE / 2;
 const MAX_R = 175 * SCALE;
-/** Pill centres sit outside the filled disk; extra gap avoids long labels (e.g. Make the Most Of) overlapping the radar. */
+/** Pill centers sit outside the filled disk; extra gap avoids long labels (e.g. Make the Most Of) overlapping the radar. */
 const LABEL_R = MAX_R + 80 * SCALE;
 const RADAR_PAD = 8 * SCALE;
 const MIN_URGENCY_R = 30 * SCALE;
@@ -128,10 +128,10 @@ const ADOPTION_AXES = [
   "Make the Most Of",
 ] as const;
 
-/** Pre-compute each pill centre as a percentage of the SVG viewBox so the
+/** Pre-compute each pill center as a percentage of the SVG viewBox so the
  *  HTML tooltip overlay (layered on top of the SVG inside the same `relative`
  *  container) can position itself next to its own pill — not always at
- *  top-centre. Mirrors the polar→XY math used to draw the pill itself. */
+ *  top-center. Mirrors the polar→XY math used to draw the pill itself. */
 const ADOPTION_AXIS_TOOLTIP_GEOM: Record<
   (typeof ADOPTION_AXES)[number],
   { xPct: number; yPct: number }
@@ -159,14 +159,14 @@ const ADOPTION_STAGE_TOOLTIPS: Record<(typeof ADOPTION_AXES)[number], string> = 
   "Get Ahead Of": "Trends accelerating fast. Start building awareness and strategy.",
   "Get Prepared For": "Near-term impact expected. Develop plans and allocate resources.",
   "Get Your Hands Around": "Active adoption needed. Engage teams and begin implementation.",
-  "Make the Most Of": "Highest urgency. Maximise value extraction and competitive advantage.",
+  "Make the Most Of": "Highest urgency. Maximize value extraction and competitive advantage.",
 };
 
 /** Per-pill placement for the adoption-stage hover tooltip:
  *  - `vDir`: "above" floats the card upward from the pill; the only top-edge
  *    pill ("Learn About") instead floats "below" since "above" would spill
  *    out of the chart container.
- *  - `hAnchor`: edge pills tilt the card toward the chart centre so it stays
+ *  - `hAnchor`: edge pills tilt the card toward the chart center so it stays
  *    on-screen without runtime measurement. "leftOfPill" anchors the card's
  *    right side to the pill (card extends to its left). */
 type AxisTooltipPlacement = {
@@ -248,8 +248,8 @@ function adoptionPhaseHeadline(state: string): string {
 }
 
 /**
- * Discrete impact bands: higher impact sits closer to the centre (priority).
- * ≤5 outer · (5,6] · (6,7] · (7,8] · [8,9) · 9+ centre zone — one step inward per band.
+ * Discrete impact bands: higher impact sits closer to the center (priority).
+ * ≤5 outer · (5,6] · (6,7] · (7,8] · [8,9) · 9+ center zone — one step inward per band.
  */
 export function impactScoreToRadius(impact: number): number {
   const x = Math.min(10, Math.max(1, impact));
@@ -263,7 +263,7 @@ export function impactScoreToRadius(impact: number): number {
   return Math.max(MIN_URGENCY_R, fracFromCentre * MAX_R);
 }
 
-/** Ring guide radii (fractions of MAX_R from centre) — boundaries between impact bands. */
+/** Ring guide radii (fractions of MAX_R from center) — boundaries between impact bands. */
 const IMPACT_RING_GUIDE_FRACS = [0.84, 0.67, 0.5, 0.33, 0.16] as const;
 
 function radiusFromIndustryImpact(pos: IndustryPosition, topicFallbackUrgency: number): number {
@@ -438,15 +438,15 @@ function sidebarScoreLabel(topic: RadarTopic): string {
 
 const INDUSTRY_PALETTE_ROWS = [...INDUSTRY_OPTIONS, "Other"] as const;
 
-/** Full industry → star colour key (compact, left of radar). */
+/** Full industry → star color key (compact, left of radar). */
 function IndustryPaletteLegend({ compact }: { compact?: boolean }) {
   return (
     <nav
-      aria-label="Industry star colours"
+      aria-label="Industry star colors"
       className="w-full shrink-0 rounded-lg border border-gray-200 bg-gray-50/90 px-2 py-2 font-sans shadow-sm lg:sticky lg:top-4 lg:max-h-[min(72vh,380px)] lg:overflow-y-auto lg:self-start"
     >
       <p className="text-[10px] font-bold uppercase tracking-wide text-pulse-teal">Legend</p>
-      <p className="mt-0.5 text-[9px] leading-snug text-gray-500">Star colour by industry</p>
+      <p className="mt-0.5 text-[9px] leading-snug text-gray-500">Star color by industry</p>
       <div className="mt-1.5 grid grid-cols-1 gap-x-1.5 gap-y-0.5">
         {INDUSTRY_PALETTE_ROWS.map((name) => (
           <div key={name} className="flex min-w-0 items-center gap-1">
@@ -573,7 +573,7 @@ export default function RadarChart({
           ? "max-w-none gap-3 lg:gap-4"
           : // Default layout: tighter `lg:gap-3` (was gap-5) trades 16px of inter-
             // column padding for 16px of legend width — the radar SVG keeps its
-            // pixel width while the larger legend nudges it closer to centre.
+            // pixel width while the larger legend nudges it closer to center.
             "max-w-[min(100%,96rem)] gap-6 lg:gap-3")
       }
       style={
@@ -586,7 +586,7 @@ export default function RadarChart({
           legend's top edge aligns with the radar's "Learn About" pill /
           "PulseOne Technology Radar" header (instead of sitting up at the SVG
           bounding-box top). Default-layout `max-w` widened in two notches
-          (13.5rem → 17rem → 18rem) to push the radar toward visual centre.
+          (13.5rem → 17rem → 18rem) to push the radar toward visual center.
           The accompanying `lg:gap-3` (down from `lg:gap-5`) on the parent
           flex row gives the SVG back the 16px the legend takes, so the chart
           column does not shrink with each notch. Centering offset is
@@ -611,7 +611,7 @@ export default function RadarChart({
       >
         {/* Adoption-stage tooltip — replaces the old single-line native SVG <title>
             and the "How to Read the Radar" section below the chart. Positioned
-            next to the hovered pill (not always top-centre) using the pre-
+            next to the hovered pill (not always top-center) using the pre-
             computed pill percentages + per-axis placement table. Translucent
             background so any stars beneath stay partly visible. */}
         {hoveredAxis
@@ -620,7 +620,7 @@ export default function RadarChart({
               const placement = ADOPTION_TOOLTIP_PLACEMENT[hoveredAxis];
               /** Distance between the pill edge and the tooltip card. */
               const TIP_GAP_PX = 28;
-              /** How far the tooltip extends past the pill centre when anchored
+              /** How far the tooltip extends past the pill center when anchored
                *  to one side — keeps the card slightly past the pill so the eye
                *  reads them as a paired unit rather than a free-floating card. */
               const HORIZ_OFFSET_PX = 36;
@@ -663,7 +663,7 @@ export default function RadarChart({
       <svg
         viewBox={`0 ${svgCoord(RADAR_VIEW_TOP)} ${SIZE} ${svgCoord(RADAR_VIEW_HEIGHT)}`}
         className="w-full h-auto"
-        aria-label="PulseOne Industry Radar. Wedge shows adoption stage; distance shows impact band (9+ toward centre)"
+        aria-label="PulseOne Industry Radar. Wedge shows adoption stage; distance shows impact band (9+ toward center)"
       >
         <defs>
           <radialGradient id="radarBg" cx="50%" cy="50%" r="50%">
@@ -725,7 +725,7 @@ export default function RadarChart({
           );
         })}
 
-        {/* ── Centre pip ── */}
+        {/* ── Center pip ── */}
         <circle cx={CX} cy={CY} r={4 * SCALE} fill="var(--color-pulse-teal)" opacity="0.45" />
 
         {/* ── Stars (per-industry or domain fallback) — visuals first; see hit-target pass below ── */}
@@ -878,7 +878,7 @@ export default function RadarChart({
 
       {/* ── Detail panel: lg top padding matches SVG "Learn About" pill (not the raw SVG box top) ──
           Default-layout width narrowed by ~120px (28rem → 20.5rem) so the radar
-          column sits closer to the visual centre between the 13.5rem legend
+          column sits closer to the visual center between the 13.5rem legend
           (left) and this panel (right). Admin compact preview keeps its wider
           `max-w-sm` since that layout already has more horizontal room. */}
       <aside
@@ -946,7 +946,7 @@ function RadarDefaultPanel({
             <span className="font-semibold text-gray-600">How to read this chart:</span> each{" "}
             <span className="text-gray-700">wedge</span> is an adoption stage for that industry.{" "}
             <span className="text-gray-700">Distance from the center</span> uses discrete impact bands:{" "}
-            <span className="text-gray-700">9+</span> sits in the centre zone,{" "}
+            <span className="text-gray-700">9+</span> sits in the center zone,{" "}
             <span className="text-gray-700">5 and below</span> on the outer ring, with one ring inward for each band{" "}
             (5–6, 6–7, 7–8, 8–9). Dashed circles mark those bands. Risk is shown in the detail panel only. The list below
             ranks by the same impact score (max across industries when several stars exist).

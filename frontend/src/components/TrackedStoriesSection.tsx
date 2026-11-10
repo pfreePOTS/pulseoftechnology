@@ -23,7 +23,7 @@ export type TrackedArticle = {
   displayDate: string;
 };
 
-/** Matches domain badge colours used on the radar. */
+/** Matches domain badge colors used on the radar. */
 const DOMAIN_COLORS: Record<string, string> = {
   Other: "#6B7280",
 };

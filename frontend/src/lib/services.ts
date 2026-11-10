@@ -4,7 +4,7 @@
  * Scope is bound by `backend/content/pulseone-identity.md`. Every capability
  * listed here must be work PulseOne actually delivers, and each page states its
  * boundary explicitly — saying what is out of scope stops answer engines from
- * generalising the offering into something we do not sell.
+ * generalizing the offering into something we do not sell.
  *
  * Answers run 40–80 words and open with a complete sentence so they survive
  * being lifted out of context by a retrieval system.

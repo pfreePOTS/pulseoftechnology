@@ -29,7 +29,7 @@ export type IndustryOption = (typeof INDUSTRY_OPTIONS)[number];
 
 const DEFAULT_HEX = "#6B7280";
 
-/** Colours for legend, filters, and canonical topic keys */
+/** Colors for legend, filters, and canonical topic keys */
 const CANONICAL: Record<IndustryOption, string> = {
   Healthcare: "#0891B2",
   "Financial Services": "#019E7C",
@@ -111,11 +111,11 @@ export const INDUSTRY_DESCRIPTIONS: Record<IndustryOption, string> = {
   Manufacturing:
     "OT/IT convergence, ransomware exposure on the shop floor, and using AI for predictive maintenance and supply-chain visibility.",
   Energy:
-    "Critical-infrastructure security (NERC/CIP), grid modernisation, and the operational risk of geographically distributed assets.",
+    "Critical-infrastructure security (NERC/CIP), grid modernization, and the operational risk of geographically distributed assets.",
   Retail:
-    "PCI scope reduction, fraud at scale, and AI-driven personalisation that respects consumer-privacy laws.",
+    "PCI scope reduction, fraud at scale, and AI-driven personalization that respects consumer-privacy laws.",
   Government:
-    "FedRAMP, StateRAMP and CJIS compliance, legacy-system modernisation, and the procurement realities of public-sector IT.",
+    "FedRAMP, StateRAMP and CJIS compliance, legacy-system modernization, and the procurement realities of public-sector IT.",
   Education:
     "FERPA, student-data privacy, classroom AI policy, and stretching constrained IT budgets across rapidly growing demand.",
   Telecommunications:

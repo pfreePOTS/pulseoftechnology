@@ -22,6 +22,11 @@ from ..config import settings
 
 logger = logging.getLogger(__name__)
 
+US_SPELLING_RULE = (
+    "Write all prose in American English spelling "
+    "(organization, prioritize, color, center, program, defense)."
+)
+
 
 class LLMAPIError(Exception):
     """Raised when the active provider fails; pipeline code may treat this as retry-worthy."""
@@ -347,6 +352,7 @@ def chat_completion_result(
     if not is_llm_configured():
         raise RuntimeError("Configure DEEPSEEK_API_KEY, ANTHROPIC_API_KEY, and/or OPENAI_API_KEY")
 
+    system = f"{system}\n\n{US_SPELLING_RULE}"
     started = time.perf_counter()
     errors: list[str] = []
 

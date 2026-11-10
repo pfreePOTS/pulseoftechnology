@@ -63,7 +63,7 @@ export function fallbackHeadlineFromIntake(
     return `What technology signals matter for leaders in ${reg}`;
   }
   if (stg) {
-    return "Aligning posture before the next tooling or programme milestone";
+    return "Aligning posture before the next tooling or program milestone";
   }
   return "A practical read on where to focus next";
 }

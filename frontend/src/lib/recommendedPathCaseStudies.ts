@@ -973,7 +973,7 @@ export function recommendedCaseStudiesIntro(intake?: RecommendedPathCaseStudyInt
   if (issue) {
     return `Illustrative examples of how we would help, aligned with your focus on ${issue}.`;
   }
-  return "Illustrative examples of how we would help organisations like yours.";
+  return "Illustrative examples of how we would help organizations like yours.";
 }
 
 export function recommendedCaseStudiesForIntake(

@@ -15,7 +15,7 @@ type LoadingStep = { label: string; completeAtMs: number; final?: boolean };
 const STEPS: LoadingStep[] = [
   { label: "Reviewing your situation", completeAtMs: 600 },
   { label: "Mapping our experience to your industry", completeAtMs: 2400 },
-  { label: "Synthesising what we think", completeAtMs: 6200 },
+  { label: "Synthesizing what we think", completeAtMs: 6200 },
   { label: "Pulling what we're watching", completeAtMs: 8000 },
   { label: "Preparing how to engage", completeAtMs: 9500, final: true },
 ];
@@ -32,7 +32,7 @@ export default function RecommendedPathBuildingScreen({ embedded = false }: Prop
       aria-live="polite"
     >
       <span className="sr-only">
-        Building your personalised path. This usually takes about ten seconds.
+        Building your personalized path. This usually takes about ten seconds.
       </span>
 
       <div className="relative mb-10 flex h-32 w-32 items-center justify-center">

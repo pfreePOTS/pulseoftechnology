@@ -33,7 +33,7 @@ CORE_TOPICS = [
         "adoption_state": "Get Your Hands Around",
         "summary": (
             "Generative AI and autonomous agent frameworks are reshaping knowledge work "
-            "at every level of the organisation. CEOs and CTOs must decide now whether "
+            "at every level of the organization. CEOs and CTOs must decide now whether "
             "to build, buy, or partner. Why it matters: Early movers are compressing "
             "decision cycles and cutting operational overhead by 30–50% in targeted "
             "functions."
@@ -47,7 +47,7 @@ CORE_TOPICS = [
             "Finance & Banking": {
                 "urgency_score": 9.0,
                 "adoption_state": "Get Your Hands Around",
-                "rationale": "AI-driven fraud detection and hyper-personalised advisory are already live at tier-1 banks, forcing mid-tier firms to accelerate.",
+                "rationale": "AI-driven fraud detection and hyper-personalized advisory are already live at tier-1 banks, forcing mid-tier firms to accelerate.",
             },
             "Healthcare": {
                 "urgency_score": 8.5,
@@ -67,7 +67,7 @@ CORE_TOPICS = [
             "Retail & E-Commerce": {
                 "urgency_score": 8.8,
                 "adoption_state": "Get Your Hands Around",
-                "rationale": "Personalisation engines and AI-generated content are driving measurable conversion lifts; delayed adoption directly impacts revenue.",
+                "rationale": "Personalization engines and AI-generated content are driving measurable conversion lifts; delayed adoption directly impacts revenue.",
             },
             "Government & Public Sector": {
                 "urgency_score": 7.0,
@@ -82,12 +82,12 @@ CORE_TOPICS = [
             "Energy & Utilities": {
                 "urgency_score": 7.0,
                 "adoption_state": "Get Prepared For",
-                "rationale": "Grid optimisation and predictive maintenance AI offers significant OPEX savings, but legacy SCADA integration requires phased planning.",
+                "rationale": "Grid optimization and predictive maintenance AI offers significant OPEX savings, but legacy SCADA integration requires phased planning.",
             },
             "Other": {
                 "urgency_score": 7.5,
                 "adoption_state": "Get Ahead Of",
-                "rationale": "Cross-industry AI adoption is accelerating; organisations without an AI strategy are already falling behind peers.",
+                "rationale": "Cross-industry AI adoption is accelerating; organizations without an AI strategy are already falling behind peers.",
             },
         },
     },
@@ -151,7 +151,7 @@ CORE_TOPICS = [
             "Other": {
                 "urgency_score": 7.0,
                 "adoption_state": "Get Ahead Of",
-                "rationale": "Identity-based attacks are sector-agnostic; any organisation with cloud assets needs phishing-resistant MFA as a baseline.",
+                "rationale": "Identity-based attacks are sector-agnostic; any organization with cloud assets needs phishing-resistant MFA as a baseline.",
             },
         },
     },
@@ -196,12 +196,12 @@ CORE_TOPICS = [
             "Retail & E-Commerce": {
                 "urgency_score": 8.5,
                 "adoption_state": "Get Your Hands Around",
-                "rationale": "Personalisation engines processing purchase history and biometric data face CCPA and GDPR enforcement; consent infrastructure is business-critical.",
+                "rationale": "Personalization engines processing purchase history and biometric data face CCPA and GDPR enforcement; consent infrastructure is business-critical.",
             },
             "Government & Public Sector": {
                 "urgency_score": 9.0,
                 "adoption_state": "Get Your Hands Around",
-                "rationale": "Public sector AI deployments require explainability and data audit trails; regulators are scrutinising algorithmic decision-making in benefits and justice.",
+                "rationale": "Public sector AI deployments require explainability and data audit trails; regulators are scrutinizing algorithmic decision-making in benefits and justice.",
             },
             "Media & Entertainment": {
                 "urgency_score": 7.5,
@@ -211,12 +211,12 @@ CORE_TOPICS = [
             "Energy & Utilities": {
                 "urgency_score": 7.5,
                 "adoption_state": "Get Prepared For",
-                "rationale": "Smart meter and grid sensor data constitutes personal data under GDPR; data minimisation and retention policies need urgent review.",
+                "rationale": "Smart meter and grid sensor data constitutes personal data under GDPR; data minimization and retention policies need urgent review.",
             },
             "Other": {
                 "urgency_score": 7.0,
                 "adoption_state": "Get Ahead Of",
-                "rationale": "Any organisation using AI must establish data lineage and consent tracking before regulators arrive; proactive governance avoids reactive fines.",
+                "rationale": "Any organization using AI must establish data lineage and consent tracking before regulators arrive; proactive governance avoids reactive fines.",
             },
         },
     },
@@ -229,7 +229,7 @@ CORE_TOPICS = [
             "AI-accelerated threat actors are outpacing traditional SOC response times. "
             "Automated detection, AI-assisted triage, and business continuity planning "
             "are moving from best practice to baseline requirement. Why it matters: Mean "
-            "time to detect breaches exceeds 200 days for organisations without automated "
+            "time to detect breaches exceeds 200 days for organizations without automated "
             "response playbooks."
         ),
         "industry_positions": {
@@ -241,7 +241,7 @@ CORE_TOPICS = [
             "Finance & Banking": {
                 "urgency_score": 9.2,
                 "adoption_state": "Make the Most Of",
-                "rationale": "DORA mandates tested incident response and resilience programmes; tier-1 banks run quarterly cyber exercises with regulators present.",
+                "rationale": "DORA mandates tested incident response and resilience programs; tier-1 banks run quarterly cyber exercises with regulators present.",
             },
             "Healthcare": {
                 "urgency_score": 8.8,
@@ -281,7 +281,7 @@ CORE_TOPICS = [
             "Other": {
                 "urgency_score": 6.5,
                 "adoption_state": "Get Ahead Of",
-                "rationale": "SMEs are increasingly targeted as soft entry points into supply chains; a basic incident response playbook is the minimum viable defence.",
+                "rationale": "SMEs are increasingly targeted as soft entry points into supply chains; a basic incident response playbook is the minimum viable defense.",
             },
         },
     },
@@ -306,7 +306,7 @@ CORE_TOPICS = [
             "Finance & Banking": {
                 "urgency_score": 8.5,
                 "adoption_state": "Get Your Hands Around",
-                "rationale": "Regulators now scrutinise cloud concentration risk; banks must map third-party dependencies and enforce data residency controls.",
+                "rationale": "Regulators now scrutinize cloud concentration risk; banks must map third-party dependencies and enforce data residency controls.",
             },
             "Healthcare": {
                 "urgency_score": 7.8,
@@ -326,7 +326,7 @@ CORE_TOPICS = [
             "Retail & E-Commerce": {
                 "urgency_score": 8.2,
                 "adoption_state": "Get Your Hands Around",
-                "rationale": "Peak traffic demands require cloud auto-scaling; unoptimised cloud spend during off-peak erodes margins for already thin-margin retailers.",
+                "rationale": "Peak traffic demands require cloud auto-scaling; unoptimized cloud spend during off-peak erodes margins for already thin-margin retailers.",
             },
             "Government & Public Sector": {
                 "urgency_score": 7.5,
@@ -346,7 +346,7 @@ CORE_TOPICS = [
             "Other": {
                 "urgency_score": 6.5,
                 "adoption_state": "Learn About",
-                "rationale": "Cloud adoption without governance leads to sprawl and security gaps; organisations should establish a baseline cloud strategy before expanding.",
+                "rationale": "Cloud adoption without governance leads to sprawl and security gaps; organizations should establish a baseline cloud strategy before expanding.",
             },
         },
     },
@@ -359,7 +359,7 @@ CORE_TOPICS = [
             "AI-powered workflow automation is collapsing the distinction between RPA, "
             "BPM, and enterprise software. Agentic AI that can operate across ERP, CRM, "
             "and communication platforms is moving from pilot to production. Why it matters: "
-            "Organisations deploying intelligent automation are achieving 2–4x productivity "
+            "Organizations deploying intelligent automation are achieving 2–4x productivity "
             "gains in back-office functions."
         ),
         "industry_positions": {
@@ -376,7 +376,7 @@ CORE_TOPICS = [
             "Healthcare": {
                 "urgency_score": 7.5,
                 "adoption_state": "Get Prepared For",
-                "rationale": "Prior authorisation and claims processing automation reduces clinician administrative burden, but integration with legacy EHR systems is complex.",
+                "rationale": "Prior authorization and claims processing automation reduces clinician administrative burden, but integration with legacy EHR systems is complex.",
             },
             "Manufacturing": {
                 "urgency_score": 8.0,
@@ -422,7 +422,7 @@ CORE_TOPICS = [
         "adoption_state": "Get Prepared For",
         "summary": (
             "Regulators globally are moving from principles to prescriptive rules on AI, "
-            "data residency, and supply-chain security. Third-party risk programmes must "
+            "data residency, and supply-chain security. Third-party risk programs must "
             "now extend to AI vendors and cloud sub-processors. Why it matters: A single "
             "fourth-party breach can trigger regulatory action and reputational damage "
             "affecting the entire supply chain."
@@ -431,7 +431,7 @@ CORE_TOPICS = [
             "Technology": {
                 "urgency_score": 8.0,
                 "adoption_state": "Get Prepared For",
-                "rationale": "Software vendors are now subject to EU AI Act and Cyber Resilience Act obligations; product compliance programmes must begin in 2025.",
+                "rationale": "Software vendors are now subject to EU AI Act and Cyber Resilience Act obligations; product compliance programs must begin in 2025.",
             },
             "Finance & Banking": {
                 "urgency_score": 9.8,
@@ -441,7 +441,7 @@ CORE_TOPICS = [
             "Healthcare": {
                 "urgency_score": 9.5,
                 "adoption_state": "Make the Most Of",
-                "rationale": "MDR, HIPAA, and AI-specific medical device regulations require documented audit trails; non-compliance risks patient safety and licence to operate.",
+                "rationale": "MDR, HIPAA, and AI-specific medical device regulations require documented audit trails; non-compliance risks patient safety and license to operate.",
             },
             "Manufacturing": {
                 "urgency_score": 7.5,
@@ -466,7 +466,7 @@ CORE_TOPICS = [
             "Media & Entertainment": {
                 "urgency_score": 6.5,
                 "adoption_state": "Learn About",
-                "rationale": "Content distribution partners and advertising technology vendors are emerging third-party risks; most media organisations lack formal TPRM programmes.",
+                "rationale": "Content distribution partners and advertising technology vendors are emerging third-party risks; most media organizations lack formal TPRM programs.",
             },
             "Energy & Utilities": {
                 "urgency_score": 8.0,
@@ -521,12 +521,12 @@ CORE_TOPICS = [
             "Retail & E-Commerce": {
                 "urgency_score": 6.5,
                 "adoption_state": "Get Ahead Of",
-                "rationale": "Warehouse robotics and smart shelving are delivering measurable efficiency gains; retailers not piloting are ceding fulfilment speed to Amazon-native competitors.",
+                "rationale": "Warehouse robotics and smart shelving are delivering measurable efficiency gains; retailers not piloting are ceding fulfillment speed to Amazon-native competitors.",
             },
             "Government & Public Sector": {
                 "urgency_score": 8.5,
                 "adoption_state": "Get Prepared For",
-                "rationale": "Smart city infrastructure and defence-adjacent OT systems are high-value nation-state targets; NIS2 now explicitly covers public sector OT operators.",
+                "rationale": "Smart city infrastructure and defense-adjacent OT systems are high-value nation-state targets; NIS2 now explicitly covers public sector OT operators.",
             },
             "Media & Entertainment": {
                 "urgency_score": 4.5,
@@ -536,12 +536,12 @@ CORE_TOPICS = [
             "Energy & Utilities": {
                 "urgency_score": 9.8,
                 "adoption_state": "Make the Most Of",
-                "rationale": "Grid modernisation and renewable integration depend on IIoT at scale; NERC CIP and NIS2 create mandatory OT security requirements for all operators.",
+                "rationale": "Grid modernization and renewable integration depend on IIoT at scale; NERC CIP and NIS2 create mandatory OT security requirements for all operators.",
             },
             "Other": {
                 "urgency_score": 6.0,
                 "adoption_state": "Get Ahead Of",
-                "rationale": "IoT adoption is accelerating across all sectors; organisations deploying connected devices must address security governance before incidents occur.",
+                "rationale": "IoT adoption is accelerating across all sectors; organizations deploying connected devices must address security governance before incidents occur.",
             },
         },
     },

@@ -36,7 +36,7 @@ test.describe("Marketing / public pages", () => {
       page.getByRole("heading", { name: /Key Trending Topics/i }),
     ).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: /Get Personalised Intelligence/i }),
+      page.getByRole("heading", { name: /Get Personalized Intelligence/i }),
     ).toBeVisible();
   });
 

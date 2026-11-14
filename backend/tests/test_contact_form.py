@@ -51,6 +51,37 @@ def test_contact_queues_sendgrid_notification():
     assert kwargs["company"] == "Acme Corp"
 
 
+def test_contact_queues_hubspot_deal_and_email():
+    with (
+        patch("backend.routers.public.send_contact_form_notification") as mock_send,
+        patch("backend.routers.public.submit_contact_form_to_hubspot") as mock_hs,
+    ):
+        res = client.post("/api/contact", json=_VALID)
+    assert res.status_code == 201
+    mock_send.assert_called_once()
+    mock_hs.assert_called_once()
+    kwargs = mock_hs.call_args.kwargs
+    assert kwargs["source"] == "contact_form"
+    assert kwargs["name"] == "Jane Doe"
+    assert kwargs["email"] == "jane@example.com"
+    assert kwargs["company"] == "Acme Corp"
+    assert kwargs["message"] == "We need help with cloud migration."
+    assert kwargs["phone"] == "555-0100"
+    assert kwargs["industry"] == "Financial Services"
+    assert kwargs["role"] == "CIO / CTO"
+
+
+def test_contact_honeypot_does_not_queue_hubspot():
+    with (
+        patch("backend.routers.public.send_contact_form_notification") as mock_send,
+        patch("backend.routers.public.submit_contact_form_to_hubspot") as mock_hs,
+    ):
+        res = client.post("/api/contact", json={**_VALID, "website": "http://spam.example"})
+    assert res.status_code == 201
+    mock_send.assert_not_called()
+    mock_hs.assert_not_called()
+
+
 @pytest.mark.parametrize(
     "field",
     ["name", "company", "message"],

@@ -44,10 +44,14 @@ TEST_ADMIN_MFA_CODE = "246801"
 @pytest.fixture(autouse=True)
 def _noop_hubspot_background_sync(request: pytest.FixtureRequest):
     """Subscriptions/preferences enqueue HubSpot — stub for API tests; keep real code in test_hubspot_sync."""
-    if "test_hubspot_sync" in str(request.path):
+    path = str(request.path)
+    if "test_hubspot_sync" in path or "test_hubspot_contact_deals" in path:
         yield
         return
-    with patch("backend.services.hubspot_sync.sync_subscriber_to_hubspot", return_value=True):
+    with (
+        patch("backend.services.hubspot_sync.sync_subscriber_to_hubspot", return_value=True),
+        patch("backend.routers.public.submit_contact_form_to_hubspot", return_value=True),
+    ):
         yield
 
 

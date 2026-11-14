@@ -94,6 +94,7 @@ Application logs use grep-friendly prefixes on important paths:
 | `[auth]` | Login success/failure, logout, forbidden admin routes |
 | `[subscribe]` | Signup, reactivate, unsubscribe, preferences |
 | `[contact]` | Inbound contact form metadata |
+| `[hubspot]` | Contact-form CRM push (contact, company, deal) |
 | `[job]` | Scheduled/manual ingest, newsletter, HubSpot batch |
 | `[recommended-path]` / `[everyone-overview]` | Public LLM route latency and counts |
 
@@ -116,3 +117,31 @@ Operational log coverage is tested in `backend/tests/test_logging.py` and `backe
 ### Recommended-path synthesis cache (PULSE-026)
 
 `/recommended-path` and `/everyone-overview` cache LLM synthesis **in-process** (1h TTL, single-flight). That is correct for local Compose and for a **single** API replica. Keep the Railway Backend service at **1 replica** until a shared cache (Postgres/Redis) lands; multiple replicas each hold their own cache and can duplicate LLM spend under load.
+
+## 9. Contact form → HubSpot deals
+
+`POST /api/contact` still emails `CONTACT_FORM_TO_EMAIL`. After a real submission (honeypot left blank) the API also pushes the person to HubSpot in the background. That push is independent of the email: the visitor still gets a thank-you if HubSpot fails, and the attempt is a row on **Admin → HubSpot** (`source=contact_form`).
+
+Each submission:
+
+1. Upserts a **contact** by email (name, phone, company, job title, industry). It does not set `pulse_subscribed`, `pulse_domains`, or `pulse_role`, and it does not add the person to the newsletter list.
+2. Finds a **company** with that exact name, or creates one, and associates it to the contact. Public mailboxes (`gmail.com` and similar) do not set the company domain.
+3. Creates a **new deal** every time (a repeat submission does not update an open deal) on the pipeline and stage below, associated to the contact and the company.
+
+Set these on the API service (local `.env` and Railway), then restart the API:
+
+- `HUBSPOT_CONTACT_DEAL_PIPELINE_ID` — the Connected deal pipeline
+- `HUBSPOT_CONTACT_DEAL_STAGE_ID` — that pipeline's first open stage
+
+If either id is empty, the contact and company are still upserted and the log operation is `deal_skipped_no_pipeline`.
+
+The private app behind `HUBSPOT_API_KEY` needs these scopes in addition to contacts read/write:
+
+- `crm.objects.deals.read`
+- `crm.objects.deals.write`
+- `crm.schemas.deals.read`
+- `crm.objects.companies.read`
+- `crm.objects.companies.write`
+- `crm.schemas.companies.read`
+
+**Admin → HubSpot → Test HubSpot connectivity** stays red until contacts, companies, and deals all answer a search. Reconcile subscribers still syncs newsletter contacts only. Apply the migration (`alembic upgrade head`) so sync-log rows can store the company and deal ids.

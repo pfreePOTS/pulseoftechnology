@@ -26,5 +26,7 @@ class HubSpotSyncLog(Base):
     operation: Mapped[str] = mapped_column(String(32), nullable=False)
     success: Mapped[bool] = mapped_column(Boolean, nullable=False)
     hubspot_contact_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    hubspot_company_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    hubspot_deal_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)

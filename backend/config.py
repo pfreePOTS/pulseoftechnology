@@ -99,6 +99,9 @@ class Settings(BaseSettings):
     hubspot_batch_sync_minute_utc: int = Field(default=0, ge=0, le=59)
     # ILS list ID (HubSpot UI: list details) — MANUAL or SNAPSHOT list only; used after contact upsert
     hubspot_newsletter_list_id: str = ""
+    # Contact-form deals. Empty values skip deal create; contact and company upserts still run.
+    hubspot_contact_deal_pipeline_id: str = ""
+    hubspot_contact_deal_stage_id: str = ""
     # Pinecone vector database (optional — signal scorer degrades gracefully without it)
     pinecone_api_key: str = ""
     pinecone_environment: str = ""  # e.g. "us-east-1-aws"

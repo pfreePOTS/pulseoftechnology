@@ -75,7 +75,7 @@ from ..services.email_service import (
 from ..services.hubspot_sync import (
     reconcile_all_subscribers_to_hubspot,
     sync_subscriber_to_hubspot,
-    test_hubspot_connection,
+    test_hubspot_crm_access,
 )
 from ..services.industry_analysis import analyze_topic_industries, pending_industry_labels
 from ..services.industry_cells import apply_curator_edits
@@ -3511,6 +3511,8 @@ class HubSpotStatusOut(BaseModel):
     api_key_configured: bool
     api_key_masked: str
     newsletter_list_id_configured: bool
+    contact_deal_pipeline_configured: bool
+    contact_deal_stage_configured: bool
     hubspot_custom_properties_note: list[str]
     batch_sync_enabled: bool
     batch_sync_hour_utc: int
@@ -3528,6 +3530,8 @@ class HubSpotSyncLogOut(BaseModel):
     operation: str
     success: bool
     hubspot_contact_id: str | None
+    hubspot_company_id: str | None = None
+    hubspot_deal_id: str | None = None
     payload: dict[str, Any] | None
     error_message: str | None
 
@@ -3555,6 +3559,8 @@ def hubspot_status(_: AdminUser = Depends(require_admin)):
     next_rt = getattr(job, "next_run_time", None) if job else None
     next_iso = next_rt.isoformat() if next_rt else None
     list_ok = bool((app_settings.hubspot_newsletter_list_id or "").strip())
+    pipeline_ok = bool((app_settings.hubspot_contact_deal_pipeline_id or "").strip())
+    stage_ok = bool((app_settings.hubspot_contact_deal_stage_id or "").strip())
     props = [
         "pulse_domains — comma-separated topic domains shown on signup",
         "pulse_subscribed — reflects active vs lapsed unsubscribe",
@@ -3566,6 +3572,8 @@ def hubspot_status(_: AdminUser = Depends(require_admin)):
         api_key_configured=configured,
         api_key_masked=masked,
         newsletter_list_id_configured=list_ok,
+        contact_deal_pipeline_configured=pipeline_ok,
+        contact_deal_stage_configured=stage_ok,
         hubspot_custom_properties_note=props,
         batch_sync_enabled=app_settings.hubspot_batch_sync_enabled,
         batch_sync_hour_utc=app_settings.hubspot_batch_sync_hour_utc,
@@ -3590,8 +3598,7 @@ def hubspot_logs(
 
 @router.post("/hubspot/test-connection")
 def hubspot_test_connection(_: AdminUser = Depends(require_admin)):
-    ok, err = test_hubspot_connection()
-    return {"ok": ok, "error": err}
+    return test_hubspot_crm_access()
 
 
 @router.post("/hubspot/reconcile")

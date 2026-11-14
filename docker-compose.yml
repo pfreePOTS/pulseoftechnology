@@ -59,6 +59,8 @@ services:
       PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-http://localhost:3100}
       HUBSPOT_API_KEY: ${HUBSPOT_API_KEY:-}
       HUBSPOT_NEWSLETTER_LIST_ID: ${HUBSPOT_NEWSLETTER_LIST_ID:-}
+      HUBSPOT_CONTACT_DEAL_PIPELINE_ID: ${HUBSPOT_CONTACT_DEAL_PIPELINE_ID:-}
+      HUBSPOT_CONTACT_DEAL_STAGE_ID: ${HUBSPOT_CONTACT_DEAL_STAGE_ID:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-pulseadmin}
       FIRST_ADMIN_EMAIL: ${FIRST_ADMIN_EMAIL:-pulseoneadmin@pulseone.local}
       # Non-production fixed MFA OTP for local/e2e (ignored in production/staging)

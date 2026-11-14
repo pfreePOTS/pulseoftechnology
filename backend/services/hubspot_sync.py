@@ -90,8 +90,10 @@ def _persist_sync_log(
     operation: str,
     success: bool,
     hubspot_contact_id: str | None,
-    payload: dict[str, str],
+    payload: dict[str, Any] | None,
     error_message: str | None,
+    hubspot_deal_id: str | None = None,
+    hubspot_company_id: str | None = None,
 ) -> None:
     db = SessionLocal()
     try:
@@ -103,7 +105,9 @@ def _persist_sync_log(
                 operation=operation,
                 success=success,
                 hubspot_contact_id=hubspot_contact_id,
-                payload=dict(payload),
+                hubspot_company_id=hubspot_company_id,
+                hubspot_deal_id=hubspot_deal_id,
+                payload=dict(payload) if payload is not None else None,
                 error_message=error_message,
             )
         )
@@ -323,31 +327,57 @@ def reconcile_all_subscribers_to_hubspot(*, source: str = "scheduled_batch") -> 
     return summary
 
 
-def test_hubspot_connection() -> tuple[bool, str | None]:
-    """Auth sanity check — CRM search endpoint (same as subscriber upsert auth)."""
-    if not (settings.hubspot_api_key or "").strip():
-        return False, "HUBSPOT_API_KEY is not set"
+def _probe_object_search(search_api: Any, property_name: str, value: str) -> dict[str, Any]:
+    """Read-only CRM search. Does not create or update records."""
     try:
-        client = _get_hs_client()
-        search_request = PublicObjectSearchRequest(
-            filter_groups=[
-                {
-                    "filters": [
-                        {
-                            "propertyName": "email",
-                            "operator": "EQ",
-                            "value": "hubspot-connectivity-check@pulseone.invalid",
-                        }
-                    ]
-                }
-            ],
-            limit=1,
+        search_api.do_search(
+            PublicObjectSearchRequest(
+                filter_groups=[
+                    {
+                        "filters": [
+                            {
+                                "propertyName": property_name,
+                                "operator": "EQ",
+                                "value": value,
+                            }
+                        ]
+                    }
+                ],
+                limit=1,
+            )
         )
-        client.crm.contacts.search_api.do_search(search_request)
-        return True, None
-    except ApiException as e:
-        logger.warning("HubSpot connectivity test failed: %s", e)
-        return False, str(e)[:400]
-    except Exception as e:
-        logger.warning("HubSpot connectivity test unexpected: %s", e)
-        return False, str(e)[:400]
+        return {"ok": True, "error": None}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:400]}
+
+
+def test_hubspot_crm_access() -> dict[str, Any]:
+    """Auth check for contacts, companies, and deals. ``ok`` is true only when all three succeed."""
+    if not (settings.hubspot_api_key or "").strip():
+        missing = {"ok": False, "error": "HUBSPOT_API_KEY is not set"}
+        checks = {name: dict(missing) for name in ("contacts", "companies", "deals")}
+        return {"ok": False, "error": missing["error"], "checks": checks}
+
+    client = _get_hs_client()
+    checks = {
+        "contacts": _probe_object_search(
+            client.crm.contacts.search_api,
+            "email",
+            "hubspot-connectivity-check@pulseone.invalid",
+        ),
+        "companies": _probe_object_search(
+            client.crm.companies.search_api,
+            "name",
+            "__pulseone_scope_probe__",
+        ),
+        "deals": _probe_object_search(
+            client.crm.deals.search_api,
+            "dealname",
+            "__pulseone_scope_probe__",
+        ),
+    }
+    failed = [name for name, check in checks.items() if not check["ok"]]
+    if not failed:
+        return {"ok": True, "error": None, "checks": checks}
+    summary = "; ".join(f"{name}: {checks[name]['error']}" for name in failed)
+    return {"ok": False, "error": summary[:400], "checks": checks}

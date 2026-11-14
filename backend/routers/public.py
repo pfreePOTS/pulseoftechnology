@@ -29,6 +29,7 @@ from ..services.ai_service import (
 )
 from ..services.domain_registry import pickable_domains, validate_subscriber_domain_slugs
 from ..services.email_service import send_contact_form_notification
+from ..services.hubspot_contact_deals import submit_contact_form_to_hubspot
 from ..services.hubspot_sync import sync_subscriber_to_hubspot
 from ..services.industry_cells import live_industry_positions
 from ..services.newsletter_selection import (
@@ -679,6 +680,17 @@ def contact(
             industry=payload.industry,
             role=payload.role,
         )
+    )
+    background_tasks.add_task(
+        submit_contact_form_to_hubspot,
+        name=payload.name,
+        email=payload.email,
+        company=payload.company,
+        message=payload.message,
+        phone=payload.phone,
+        industry=payload.industry,
+        role=payload.role,
+        source="contact_form",
     )
 
     return ContactResponse(message="Thanks — we'll be in touch within one business day.")

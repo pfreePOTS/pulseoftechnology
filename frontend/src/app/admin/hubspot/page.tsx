@@ -13,12 +13,29 @@ interface HubSpotStatus {
   api_key_configured: boolean;
   api_key_masked: string;
   newsletter_list_id_configured: boolean;
+  contact_deal_pipeline_configured: boolean;
+  contact_deal_stage_configured: boolean;
   hubspot_custom_properties_note: string[];
   batch_sync_enabled: boolean;
   batch_sync_hour_utc: number;
   batch_sync_minute_utc: number;
   scheduler_job_id: string;
   scheduler_next_run_utc: string | null;
+}
+
+interface HubSpotObjectCheck {
+  ok: boolean;
+  error: string | null;
+}
+
+interface HubSpotTestResult {
+  ok: boolean;
+  error: string | null;
+  checks?: {
+    contacts: HubSpotObjectCheck;
+    companies: HubSpotObjectCheck;
+    deals: HubSpotObjectCheck;
+  };
 }
 
 interface HubSpotSyncLogRow {
@@ -30,7 +47,9 @@ interface HubSpotSyncLogRow {
   operation: string;
   success: boolean;
   hubspot_contact_id: string | null;
-  payload: Record<string, string> | null;
+  hubspot_company_id: string | null;
+  hubspot_deal_id: string | null;
+  payload: Record<string, unknown> | null;
   error_message: string | null;
 }
 
@@ -46,6 +65,7 @@ export default function AdminHubSpotPage() {
   const [statusErr, setStatusErr] = useState<string | null>(null);
   const [logsErr, setLogsErr] = useState<string | null>(null);
   const [testState, setTestState] = useState<JobState>("idle");
+  const [lastTestOk, setLastTestOk] = useState<boolean | null>(null);
   const [reconcileState, setReconcileState] = useState<JobState>("idle");
   const [testMsg, setTestMsg] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -90,8 +110,19 @@ export default function AdminHubSpotPage() {
         method: "POST",
       });
       if (!r.ok) throw new Error(await r.text());
-      const j = (await r.json()) as { ok: boolean; error: string | null };
-      setTestMsg(j.ok ? "HubSpot replied successfully over the Contacts API." : j.error ?? "Failed");
+      const j = (await r.json()) as HubSpotTestResult;
+      const summary = j.checks
+        ? (["contacts", "companies", "deals"] as const)
+            .map((name) => {
+              const check = j.checks?.[name];
+              return `${name}: ${check?.ok ? "ok" : check?.error ?? "failed"}`;
+            })
+            .join("\n")
+        : j.ok
+          ? "HubSpot replied successfully."
+          : (j.error ?? "Failed");
+      setTestMsg(summary);
+      setLastTestOk(j.ok);
       setTestState(j.ok ? "ok" : "err");
     } catch (e) {
       setTestMsg(e instanceof Error ? e.message : "Request failed");
@@ -139,7 +170,7 @@ export default function AdminHubSpotPage() {
         <header className="mb-8">
           <h1 className="text-3xl font-bold tracking-tight text-white">HubSpot</h1>
           <p className="mt-1 text-sm text-gray-400">
-            Connection status, APScheduler reconcile window, Contacts properties we send, and a full audit log of pushes.
+            Connection status, contact-form deals, the subscriber reconcile window, and a full audit log of pushes.
           </p>
         </header>
 
@@ -163,6 +194,26 @@ export default function AdminHubSpotPage() {
                   <dd className="text-right">
                     <span style={{ color: status.newsletter_list_id_configured ? ACCENT : "#b91c1c" }}>
                       {status.newsletter_list_id_configured ? "Configured" : "Not set"}
+                    </span>
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-gray-500">
+                    Contact-form pipeline (<code className="text-[11px] text-gray-500">HUBSPOT_CONTACT_DEAL_PIPELINE_ID</code>)
+                  </dt>
+                  <dd className="text-right">
+                    <span style={{ color: status.contact_deal_pipeline_configured ? ACCENT : "#b91c1c" }}>
+                      {status.contact_deal_pipeline_configured ? "Configured" : "Not set"}
+                    </span>
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-gray-500">
+                    Contact-form stage (<code className="text-[11px] text-gray-500">HUBSPOT_CONTACT_DEAL_STAGE_ID</code>)
+                  </dt>
+                  <dd className="text-right">
+                    <span style={{ color: status.contact_deal_stage_configured ? ACCENT : "#b91c1c" }}>
+                      {status.contact_deal_stage_configured ? "Configured" : "Not set"}
                     </span>
                   </dd>
                 </div>
@@ -196,7 +247,7 @@ export default function AdminHubSpotPage() {
           <section className="rounded-xl border border-gray-800 bg-gray-900 p-5">
             <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-400">Actions</h2>
             <p className="mt-2 text-xs text-gray-500">
-              &quot;Test&quot; verifies your PAT can authenticate to the Contacts search API.&nbsp;
+              &quot;Test&quot; checks that the private app can search contacts, companies, and deals. A missing deals scope stays red.&nbsp;
               Reconcile replays{" "}
               <strong className="text-gray-400">every subscriber row</strong> like the nightly job (background task).
             </p>
@@ -214,7 +265,11 @@ export default function AdminHubSpotPage() {
                       : "Failed"}
               </button>
               {testMsg && (
-                <p className={`text-xs ${testMsg.includes("Failed") ? "text-red-300" : "text-green-400"}`}>{testMsg}</p>
+                <p
+                  className={`whitespace-pre-line text-xs ${lastTestOk ? "text-green-400" : "text-red-300"}`}
+                >
+                  {testMsg}
+                </p>
               )}
               <button
                 type="button"
@@ -246,7 +301,7 @@ export default function AdminHubSpotPage() {
             <Link href="/admin/subscribers" className="underline" style={{ color: ACCENT }}>
               Subscribers
             </Link>
-            . Tune cadence via env:&nbsp;<code className="text-gray-500">HUBSPOT_BATCH_*</code> — see{" "}
+            . A public contact-form submission upserts a contact and company, then opens a new deal when both deal env ids are set. It does not join the newsletter list. Tune cadence via env:&nbsp;<code className="text-gray-500">HUBSPOT_BATCH_*</code> — see{" "}
             <Link href="/admin/jobs" className="underline" style={{ color: ACCENT }}>
               System Jobs
             </Link>
@@ -272,7 +327,9 @@ export default function AdminHubSpotPage() {
                   <th className="px-4 py-2">Email</th>
                   <th className="px-4 py-2">Operation</th>
                   <th className="px-4 py-2">Source</th>
-                  <th className="px-4 py-2">CRM id</th>
+                  <th className="px-4 py-2">Contact</th>
+                  <th className="px-4 py-2">Company</th>
+                  <th className="px-4 py-2">Deal</th>
                   <th className="min-w-[12rem] px-4 py-2">Payload</th>
                   <th className="px-4 py-2">Notes</th>
                 </tr>
@@ -280,7 +337,7 @@ export default function AdminHubSpotPage() {
               <tbody>
                 {logs.length === 0 && !logsErr && (
                   <tr>
-                    <td colSpan={7} className="px-5 py-8 text-center text-gray-500">
+                    <td colSpan={9} className="px-5 py-8 text-center text-gray-500">
                       No pushes recorded yet.&nbsp;
                       {!status?.api_key_configured && (
                         <>
@@ -307,6 +364,8 @@ export default function AdminHubSpotPage() {
                     </td>
                     <td className="px-4 py-2 text-xs capitalize text-gray-400">{row.source.replace(/_/g, " ")}</td>
                     <td className="px-4 py-2 font-mono text-xs text-gray-500">{row.hubspot_contact_id ?? "—"}</td>
+                    <td className="px-4 py-2 font-mono text-xs text-gray-500">{row.hubspot_company_id ?? "—"}</td>
+                    <td className="px-4 py-2 font-mono text-xs text-gray-500">{row.hubspot_deal_id ?? "—"}</td>
                     <td className="max-w-xl px-4 py-2 align-top">
                       {row.payload ? (
                         <pre className="max-h-32 overflow-auto rounded-lg bg-black/30 p-2 text-[11px] text-gray-400">

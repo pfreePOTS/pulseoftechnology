@@ -52,6 +52,7 @@ from ..services.topic_serializers import (
     topic_domain_slug,
 )
 from ..services.tracked_article_filter import article_qualifies_pulse_tracked_surface
+from ..services.turnstile import verify_turnstile_token
 
 logger = logging.getLogger(__name__)
 
@@ -187,6 +188,9 @@ class ContactRequest(BaseModel):
     # to fill every input they see; if this is non-empty we silently 200 and
     # drop the submission (no DB write, no logging beyond a debug line).
     website: str | None = None
+    # Cloudflare Turnstile token from the contact widget. Required when
+    # TURNSTILE_SECRET_KEY is set, and on staging/production.
+    turnstile_token: str | None = None
 
     @field_validator("email")
     @classmethod
@@ -204,13 +208,20 @@ class ContactRequest(BaseModel):
             raise ValueError("Required field")
         return v
 
-    @field_validator("phone", "industry", "role", "website")
+    @field_validator("phone", "industry", "role", "website", "turnstile_token")
     @classmethod
     def normalise_optional(cls, v: str | None) -> str | None:
         if v is None:
             return None
         v = v.strip()
         return v or None
+
+    @field_validator("turnstile_token")
+    @classmethod
+    def cap_turnstile_token(cls, v: str | None) -> str | None:
+        if v and len(v) > 2048:
+            raise ValueError("Invalid security check")
+        return v
 
 
 class ContactResponse(BaseModel):
@@ -644,7 +655,8 @@ def contact(
     """Receive a "Send us a message" submission from the public `/contact` page.
 
     Sends an email to ``CONTACT_FORM_TO_EMAIL`` (default ``marketing@pulseone.com``)
-    via SendGrid when configured. Always logs structured metadata for ops.
+    via SendGrid when configured. Cloudflare Turnstile must pass when a secret
+    is configured, and on staging/production. Always logs structured metadata.
     """
     # Honeypot — silently 200 to keep the bot from learning that the field
     # tripped the filter. Log at debug for diagnostics only.
@@ -654,6 +666,12 @@ def contact(
             request.client.host if request.client else "unknown",
         )
         return ContactResponse(message="Thanks — we'll be in touch within one business day.")
+
+    if not verify_turnstile_token(payload.turnstile_token, client_ip(request)):
+        raise HTTPException(
+            status_code=400,
+            detail="Please complete the security check and try again.",
+        )
 
     logger.info(
         "[contact] inbound submission %s",

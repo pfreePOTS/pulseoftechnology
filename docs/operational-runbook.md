@@ -109,6 +109,7 @@ Optional: set **`LOG_LEVEL=DEBUG`** in `.env` (see `.env.example`) for more deta
 ### Client IP and email in logs (PULSE-001 / PULSE-002)
 
 - **`TRUST_PROXY_HEADERS`** (default: on when `ENVIRONMENT` is `staging` or `production`): `[auth]` / `[subscribe]` / `[contact]` lines use the first `X-Forwarded-For` hop so Railway logs show the browser client, not the proxy.
+- **Contact form:** `TURNSTILE_SECRET_KEY` on the API and `NEXT_PUBLIC_TURNSTILE_SITE_KEY` on the frontend (build time) protect `POST /api/contact`. The widget is **PulseOne contact** in Cloudflare. Add `www.pulseone.com`, the staging hostname, and `localhost` on that widget. Staging and production reject the form when the secret is unset. Development skips the check only when the secret is empty.
 - **`LOG_REDACT_EMAILS`** (default: on in staging/production): `email=` / `contact_email=` values hash the local-part (`a1b2c3d4e5@domain`) so Railway log sinks hold less raw PII. Local Compose and pytest keep cleartext unless you set `LOG_REDACT_EMAILS=true`.
 - **Retention:** Railway service logs are for short-term ops triage. Do not treat them as a durable CRM or compliance archive; HubSpot / Postgres remain the systems of record for subscriber identity. If you export logs long-term, enable redaction and restrict access to operators who already have admin console access.
 

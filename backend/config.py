@@ -85,6 +85,9 @@ class Settings(BaseSettings):
     sendgrid_newsletter_template_id: str = ""  # legacy; newsletter always sends built-in full HTML
     # Inbound `/contact` form notifications (SendGrid)
     contact_form_to_email: str = "marketing@pulseone.com"
+    # Cloudflare Turnstile secret for POST /api/contact. Empty skips the check
+    # in development. Staging and production reject submissions when this is empty.
+    turnstile_secret_key: str = ""
     # Public API base URL for newsletter links (survey, read online); no trailing slash
     api_base_url: str = "http://localhost:8000"
     # Public Next.js site (radar home) for “dig deeper” links; no trailing slash

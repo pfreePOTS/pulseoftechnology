@@ -27,7 +27,7 @@ Set at minimum (staging values are examples — use your Railway URLs):
 | `ADMIN_PASSWORD` | When `ENVIRONMENT` is `staging` or `production`, must be set and must not equal the literal `pulseadmin`. Used to create the first admin row while `admin_users` is empty. If you **only** set `ADMIN_PASSWORD_HASH` and omit this variable, bootstrap will not create a user. |
 | `SERVER_API_URL` | Not needed on backend; used by frontend only. |
 
-Optional: AI keys (`DEEPSEEK_API_KEY`, `ANTHROPIC_API_KEY`), `SENDGRID_API_KEY`, `HUBSPOT_API_KEY`, etc., per `.env.example`.
+Optional: AI keys (`DEEPSEEK_API_KEY`, `ANTHROPIC_API_KEY`), `SENDGRID_API_KEY`, `HUBSPOT_API_KEY`, `TURNSTILE_SECRET_KEY` (contact form), etc., per `.env.example`. `TURNSTILE_SECRET_KEY` is required for `/api/contact` when `ENVIRONMENT` is `staging` or `production`.
 
 Railway assigns **`PORT`** — `backend/Dockerfile.prod` already binds Uvicorn to `${PORT:-8000}`.
 
@@ -39,12 +39,13 @@ Railway assigns **`PORT`** — `backend/Dockerfile.prod` already binds Uvicorn t
 | `SERVER_API_URL` | **Build-time** | SSR/server-side fetches inside the container URL to the backend (same public URL unless you introduce private networking). |
 | `NEXT_PUBLIC_ROBOTS_INDEX` | **Build-time** | Set to `false` on staging, and on production until DNS points at this app. Leave unset once `pulseone.com` serves production. |
 | `NEXT_PUBLIC_SITE_URL` | **Build-time** | Canonical origin for metadata, sitemap, and JSON-LD. Set to `https://pulseone.com` on production before cutover. |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | **Build-time** | Public Cloudflare Turnstile site key for the contact form (`PulseOne contact` widget). |
 
 At **runtime**, Railway **`PORT`** is consumed by Next standalone (`server.js`).
 
 ## 3. Build args (Railway dashboard)
 
-Frontend Docker build needs `NEXT_PUBLIC_API_URL` and `SERVER_API_URL` at **build** time.
+Frontend Docker build needs `NEXT_PUBLIC_API_URL`, `SERVER_API_URL`, and `NEXT_PUBLIC_TURNSTILE_SITE_KEY` at **build** time.
 
 In Railway: **Frontend service → Variables** — mark these as **available during build**, or define equivalent **Docker build arguments** in the UI if Railway exposes them for Dockerfile `ARG`s.
 

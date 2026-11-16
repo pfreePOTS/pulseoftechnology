@@ -31,6 +31,7 @@ export const OFFICE_LOCATIONS = [
   "Ventura, CA",
   "Los Angeles, CA",
   "New Jersey",
+  "Philadelphia, PA",
   "Nashville, TN",
   "Bozeman, MT",
 ];

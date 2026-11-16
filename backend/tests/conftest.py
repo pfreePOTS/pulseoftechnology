@@ -56,6 +56,12 @@ def _noop_hubspot_background_sync(request: pytest.FixtureRequest):
 
 
 @pytest.fixture(autouse=True)
+def _turnstile_disabled(monkeypatch):
+    """Contact tests opt in by setting a secret. A developer .env key must not call Cloudflare."""
+    monkeypatch.setattr(settings, "turnstile_secret_key", "")
+
+
+@pytest.fixture(autouse=True)
 def _admin_mfa_test_defaults(monkeypatch):
     """Every console login requires MFA; tests use a fixed code and mocked SendGrid."""
     monkeypatch.setattr(settings, "admin_mfa_dev_code", TEST_ADMIN_MFA_CODE)

@@ -3,6 +3,16 @@ import Link from "next/link";
 import { PulseOneOfficialLogo } from "@/components/PulseOneOfficialLogo";
 import { SERVICES, servicePath } from "@/lib/services";
 
+/** Office line in the footer copyright bar. Plain text — location pages are for search landing, not footer nav. */
+const FOOTER_OFFICES = [
+  "Ventura, CA",
+  "Los Angeles, CA",
+  "New Jersey",
+  "Philadelphia, PA",
+  "Nashville, TN",
+  "Bozeman, MT",
+] as const;
+
 export default function GlobalFooter() {
   const year = new Date().getFullYear();
   return (
@@ -93,9 +103,7 @@ export default function GlobalFooter() {
         </div>
         <div className="flex flex-col gap-3 pt-8 text-[13px] text-white/30 md:flex-row md:items-center md:justify-between">
           <p>© {year} PulseOne Group. All rights reserved.</p>
-          <p className="text-center md:text-right">
-            Ventura, CA · Los Angeles, CA · New Jersey · Nashville, TN · Bozeman, MT
-          </p>
+          <p className="text-center md:text-right">{FOOTER_OFFICES.join(" · ")}</p>
         </div>
       </div>
     </footer>

@@ -61,7 +61,12 @@ body {
   animation: marquee-scroll 48s linear infinite;
 }
 
-.marquee-track-animate:hover {
+.marquee-track-animate-slow {
+  animation: marquee-scroll 72s linear infinite;
+}
+
+.marquee-track-animate:hover,
+.marquee-track-animate-slow:hover {
   animation-play-state: paused;
 }
 

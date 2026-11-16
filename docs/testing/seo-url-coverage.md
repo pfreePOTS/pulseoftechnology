@@ -30,7 +30,9 @@ Automated check: `frontend/src/lib/legacyRedirects.test.ts` loads `apexWordpress
 
 ## Accepted drops (404 after cutover)
 
-`/thrive`, `/thrive-login`, `/thrive-registration`, `/thrive-special-access`, `/courses`, `/profile`, `/profile-2`, `/profile-3`, `/reset-password`, `/reset-password-2`, `/registration-2`, `/grow-with-confidence`, `/hubspot-blog-post-test`, `/framework_process`, `/appointment-confirmation`, `/upcoming-events`
+`/thrive`, `/thrive-login`, `/thrive-registration`, `/thrive-special-access`, `/courses`, `/profile`, `/profile-2`, `/profile-3`, `/reset-password`, `/reset-password-2`, `/registration-2`, `/grow-with-confidence`, `/hubspot-blog-post-test`, `/framework_process`, `/upcoming-events`
+
+`/appointment-confirmation` is app-native (noindex): the email system redirects meeting requests there (PULSE-042).
 
 Also left as 404: LearnDash trees under `/assignment/`, `/courses/…/lessons/…`, and `/quizzes/week-10-quiz`.
 

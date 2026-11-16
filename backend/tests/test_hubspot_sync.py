@@ -310,3 +310,43 @@ class TestNewsletterListMembership:
             hubspot_sync.sync_subscriber_to_hubspot(_sub(is_active=True))
 
         mock_client.crm.lists.memberships_api.add.assert_called_once_with("list-1", ["42"])
+
+
+class TestCrmAccess:
+    def test_ok_only_when_contacts_companies_and_deals_succeed(self):
+        mock_client = MagicMock()
+        with (
+            patch.object(hubspot_sync, "_get_hs_client", return_value=mock_client),
+            patch.object(hubspot_sync.settings, "hubspot_api_key", "fake-key"),
+        ):
+            result = hubspot_sync.test_hubspot_crm_access()
+        assert result["ok"] is True
+        assert result["error"] is None
+        assert result["checks"]["contacts"]["ok"] is True
+        assert result["checks"]["companies"]["ok"] is True
+        assert result["checks"]["deals"]["ok"] is True
+        mock_client.crm.contacts.basic_api.create.assert_not_called()
+        mock_client.crm.companies.basic_api.create.assert_not_called()
+        mock_client.crm.deals.basic_api.create.assert_not_called()
+
+    def test_deals_scope_failure_is_not_a_green_result(self):
+        mock_client = MagicMock()
+        mock_client.crm.deals.search_api.do_search.side_effect = RuntimeError("missing deals scope")
+        with (
+            patch.object(hubspot_sync, "_get_hs_client", return_value=mock_client),
+            patch.object(hubspot_sync.settings, "hubspot_api_key", "fake-key"),
+        ):
+            result = hubspot_sync.test_hubspot_crm_access()
+        assert result["ok"] is False
+        assert result["checks"]["contacts"]["ok"] is True
+        assert result["checks"]["companies"]["ok"] is True
+        assert result["checks"]["deals"]["ok"] is False
+        assert "missing deals scope" in result["checks"]["deals"]["error"]
+        assert "deals" in (result["error"] or "")
+
+    def test_missing_api_key_fails_every_check(self):
+        with patch.object(hubspot_sync.settings, "hubspot_api_key", ""):
+            result = hubspot_sync.test_hubspot_crm_access()
+        assert result["ok"] is False
+        assert result["checks"]["contacts"]["ok"] is False
+        assert "HUBSPOT_API_KEY" in result["checks"]["contacts"]["error"]

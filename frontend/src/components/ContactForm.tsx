@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { API_BASE } from "@/lib/api";
 import { INDUSTRY_OPTIONS } from "@/lib/industryGrid";
@@ -19,6 +19,10 @@ import { useIsClient } from "@/lib/useIsClient";
  * positioned off-screen via `tabIndex={-1}` and `autoComplete="off"` so a
  * real keyboard user can never reach it; bots that auto-fill every input
  * will trip it and the backend silently 200s on the submission.
+ *
+ * When `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is set, Cloudflare Turnstile must
+ * issue a token before Send is enabled. The API checks that token with
+ * `TURNSTILE_SECRET_KEY`.
  */
 
 const ROLES = [
@@ -33,6 +37,45 @@ const ROLES = [
 ] as const;
 
 const INDUSTRY_DROPDOWN = [...INDUSTRY_OPTIONS, "Other"] as const;
+
+const TURNSTILE_SITE_KEY = (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "").trim();
+
+type TurnstileRenderOptions = {
+  sitekey: string;
+  theme?: "light" | "dark" | "auto";
+  callback?: (token: string) => void;
+  "expired-callback"?: () => void;
+  "error-callback"?: () => void;
+};
+
+type TurnstileApi = {
+  render: (element: HTMLElement, options: TurnstileRenderOptions) => string;
+  reset: (widgetId: string) => void;
+  remove: (widgetId: string) => void;
+};
+
+declare global {
+  interface Window {
+    turnstile?: TurnstileApi;
+    onTurnstileLoad?: () => void;
+  }
+}
+
+function loadTurnstile(onReady: () => void) {
+  if (typeof window === "undefined") return;
+  if (window.turnstile) {
+    onReady();
+    return;
+  }
+  window.onTurnstileLoad = onReady;
+  if (document.querySelector("script[data-turnstile]")) return;
+  const script = document.createElement("script");
+  script.src =
+    "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onTurnstileLoad";
+  script.async = true;
+  script.dataset.turnstile = "true";
+  document.head.appendChild(script);
+}
 
 type FormState = "idle" | "loading" | "success" | "error";
 
@@ -53,12 +96,59 @@ export default function ContactForm() {
   const [role, setRole] = useState("");
   const [message, setMessage] = useState("");
   const [website, setWebsite] = useState(""); // honeypot
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileFailed, setTurnstileFailed] = useState(false);
+  const turnstileRef = useRef<HTMLDivElement>(null);
+  const turnstileWidgetId = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!TURNSTILE_SITE_KEY) return;
+    let cancelled = false;
+    loadTurnstile(() => {
+      if (cancelled || !turnstileRef.current || !window.turnstile || turnstileWidgetId.current) {
+        return;
+      }
+      turnstileWidgetId.current = window.turnstile.render(turnstileRef.current, {
+        sitekey: TURNSTILE_SITE_KEY,
+        theme: "light",
+        callback: (token) => {
+          setTurnstileToken(token);
+          setTurnstileFailed(false);
+        },
+        "expired-callback": () => setTurnstileToken(""),
+        "error-callback": () => {
+          setTurnstileToken("");
+          setTurnstileFailed(true);
+        },
+      });
+    });
+    return () => {
+      cancelled = true;
+      if (turnstileWidgetId.current && window.turnstile) {
+        window.turnstile.remove(turnstileWidgetId.current);
+        turnstileWidgetId.current = null;
+      }
+    };
+  }, []);
+
+  const resetTurnstile = () => {
+    setTurnstileToken("");
+    if (turnstileWidgetId.current && window.turnstile) {
+      window.turnstile.reset(turnstileWidgetId.current);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (state === "loading") return;
     setErrorMessage("");
     setState("loading");
+
+    if (TURNSTILE_SITE_KEY && !turnstileToken) {
+      setErrorMessage("Complete the security check, then send your message.");
+      setState("error");
+      return;
+    }
 
     try {
       const res = await fetch(`${API_BASE}/api/contact`, {
@@ -73,6 +163,7 @@ export default function ContactForm() {
           industry: industry || undefined,
           role: role || undefined,
           website: website || undefined,
+          turnstile_token: turnstileToken || undefined,
         }),
       });
 
@@ -91,6 +182,7 @@ export default function ContactForm() {
         }
         setErrorMessage(detail);
         setState("error");
+        resetTurnstile();
         return;
       }
 
@@ -98,6 +190,7 @@ export default function ContactForm() {
     } catch {
       setErrorMessage("Network error. Please check your connection and try again.");
       setState("error");
+      resetTurnstile();
     }
   };
 
@@ -272,19 +365,23 @@ export default function ContactForm() {
         />
       </div>
 
-      {state === "error" && errorMessage && (
+      {TURNSTILE_SITE_KEY ? (
+        <div ref={turnstileRef} className="min-h-[65px]" />
+      ) : null}
+
+      {(state === "error" && errorMessage) || turnstileFailed ? (
         <div
           role="alert"
           className="rounded-md border border-pulse-red/30 bg-pulse-red/5 px-3.5 py-2.5 font-sans text-[13.5px] text-pulse-red"
         >
-          {errorMessage}
+          {errorMessage || "The security check could not load. Refresh the page and try again."}
         </div>
-      )}
+      ) : null}
 
       <button
         type="submit"
-        disabled={state === "loading"}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-pulse-red px-6 py-3 font-sans text-[14.5px] font-semibold text-white transition-colors hover:bg-[#a81117] disabled:cursor-wait disabled:opacity-70 sm:w-auto"
+        disabled={state === "loading" || (Boolean(TURNSTILE_SITE_KEY) && !turnstileToken)}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-pulse-red px-6 py-3 font-sans text-[14.5px] font-semibold text-white transition-colors hover:bg-[#a81117] disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
       >
         {state === "loading" ? (
           <>

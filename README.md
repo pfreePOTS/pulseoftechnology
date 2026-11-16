@@ -236,6 +236,8 @@ pulseoftechnology/
 | `LOG_LEVEL`            | `INFO`             | Root log level for app modules (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `SENDGRID_API_KEY`     | —                  | Email delivery (optional for dev)        |
 | `CONTACT_FORM_TO_EMAIL`| `marketing@pulseone.com` | Inbound `/contact` form notifications via SendGrid |
+| `TURNSTILE_SECRET_KEY` | — | Cloudflare Turnstile secret for `/api/contact`. Empty skips the check in development. Staging and production reject submissions when it is unset. |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | PulseOne contact site key | Public Turnstile site key baked into the contact form. Rebuild the frontend after changing it. |
 | `HUBSPOT_API_KEY`      | —                  | CRM sync (optional)                      |
 | `HUBSPOT_NEWSLETTER_LIST_ID` | —            | HubSpot list ILS ID; add/remove contact after upsert (optional) |
 | `NEXT_PUBLIC_API_URL`  | `http://localhost:8100` | Browser-facing API URL (Compose `frontend` service) |

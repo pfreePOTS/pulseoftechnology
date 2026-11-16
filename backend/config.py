@@ -85,6 +85,9 @@ class Settings(BaseSettings):
     sendgrid_newsletter_template_id: str = ""  # legacy; newsletter always sends built-in full HTML
     # Inbound `/contact` form notifications (SendGrid)
     contact_form_to_email: str = "marketing@pulseone.com"
+    # Cloudflare Turnstile secret for POST /api/contact. Empty skips the check
+    # in development. Staging and production reject submissions when this is empty.
+    turnstile_secret_key: str = ""
     # Public API base URL for newsletter links (survey, read online); no trailing slash
     api_base_url: str = "http://localhost:8000"
     # Public Next.js site (radar home) for “dig deeper” links; no trailing slash
@@ -99,6 +102,9 @@ class Settings(BaseSettings):
     hubspot_batch_sync_minute_utc: int = Field(default=0, ge=0, le=59)
     # ILS list ID (HubSpot UI: list details) — MANUAL or SNAPSHOT list only; used after contact upsert
     hubspot_newsletter_list_id: str = ""
+    # Contact-form deals. Empty values skip deal create; contact and company upserts still run.
+    hubspot_contact_deal_pipeline_id: str = ""
+    hubspot_contact_deal_stage_id: str = ""
     # Pinecone vector database (optional — signal scorer degrades gracefully without it)
     pinecone_api_key: str = ""
     pinecone_environment: str = ""  # e.g. "us-east-1-aws"

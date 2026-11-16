@@ -3,11 +3,6 @@ export type LocationService = {
   body: string;
 };
 
-export type LocationPartner = {
-  src: string;
-  alt: string;
-};
-
 export type LocationPage = {
   slug: string;
   city: string;
@@ -62,15 +57,6 @@ function expertise(area: string, customers: string): string[] {
   ];
 }
 
-/** Partner marks already shown on the current city pages. Files live in /public/images. */
-export const LOCATION_PARTNERS: readonly LocationPartner[] = [
-  { src: "/images/logo_microsoft.png", alt: "Microsoft" },
-  { src: "/images/logo_barracuda.jpg", alt: "Barracuda" },
-  { src: "/images/logo_dell.png", alt: "Dell" },
-  { src: "/images/logo_fortinet.png", alt: "Fortinet" },
-  { src: "/images/logo_sonicwall.jpg", alt: "SonicWall" },
-];
-
 export const LOCATIONS: readonly LocationPage[] = [
   {
     slug: "los-angeles",
@@ -119,7 +105,7 @@ export const LOCATIONS: readonly LocationPage[] = [
     headline: "Managed IT Support for New Jersey",
     areas: "Trenton • Edison • Newark • Princeton • Levittown",
     intro:
-      "Providing IT services to local businesses for over 18 years. Servicing Trenton, Edison, Newark, Princeton, Levittown, and other areas near you.",
+      "Providing IT services to local businesses for over 20 years. Servicing Trenton, Edison, Newark, Princeton, Levittown, and other areas near you.",
     services: SERVICES,
     expertise: expertise("New Jersey and surrounding areas", "New Jersey"),
     phone: "732-913-0060",
@@ -136,7 +122,7 @@ export const LOCATIONS: readonly LocationPage[] = [
     headline: "Managed IT Support for Bozeman",
     areas: "Bozeman • Billings • Helena • Big Sky • Butte",
     intro:
-      "Providing IT services to local businesses for over 18 years. Servicing Bozeman, Billings, Helena, Big Sky, Butte, and other areas near you.",
+      "Providing IT services to local businesses for over 20 years. Servicing Bozeman, Billings, Helena, Big Sky, Butte, and other areas near you.",
     services: SERVICES,
     expertise: expertise("Bozeman and surrounding areas", "Montana"),
     phone: "406-898-2300",
@@ -158,7 +144,7 @@ export const LOCATIONS: readonly LocationPage[] = [
     headline: "Managed IT Support for Philadelphia",
     areas: "Philadelphia • Burlington • Newportville • Levittown • Trenton",
     intro:
-      "Providing IT services to local businesses for over 18 years. Servicing North Philadelphia, Burlington, Newportville, Levittown, Trenton, and other areas near you.",
+      "Providing IT services to local businesses for over 20 years. Servicing North Philadelphia, Burlington, Newportville, Levittown, Trenton, and other areas near you.",
     services: SERVICES,
     expertise: expertise("Philadelphia and surrounding areas", "Philadelphia"),
     phone: "800.422.1156",

@@ -20,6 +20,63 @@ _VALID = {
 }
 
 
+def test_contact_rejects_when_turnstile_secret_set_and_token_missing(monkeypatch):
+    from backend.config import settings
+
+    monkeypatch.setattr(settings, "turnstile_secret_key", "test-secret")
+    with patch("backend.routers.public.send_contact_form_notification") as mock_send:
+        res = client.post("/api/contact", json=_VALID)
+    assert res.status_code == 400
+    assert "security check" in res.json()["detail"].lower()
+    mock_send.assert_not_called()
+
+
+def test_contact_accepts_when_turnstile_succeeds(monkeypatch):
+    from backend.config import settings
+
+    monkeypatch.setattr(settings, "turnstile_secret_key", "test-secret")
+    fake = type("R", (), {"json": lambda self: {"success": True}})()
+    with (
+        patch("backend.routers.public.send_contact_form_notification") as mock_send,
+        patch("backend.services.turnstile.httpx.post", return_value=fake) as mock_post,
+    ):
+        res = client.post("/api/contact", json={**_VALID, "turnstile_token": "token-ok"})
+    assert res.status_code == 201
+    mock_send.assert_called_once()
+    sent = mock_post.call_args.kwargs["data"]
+    assert sent["secret"] == "test-secret"
+    assert sent["response"] == "token-ok"
+
+
+def test_contact_rejects_when_turnstile_fails(monkeypatch):
+    from backend.config import settings
+
+    monkeypatch.setattr(settings, "turnstile_secret_key", "test-secret")
+    fake = type(
+        "R",
+        (),
+        {"json": lambda self: {"success": False, "error-codes": ["invalid-input-response"]}},
+    )()
+    with (
+        patch("backend.routers.public.send_contact_form_notification") as mock_send,
+        patch("backend.services.turnstile.httpx.post", return_value=fake),
+    ):
+        res = client.post("/api/contact", json={**_VALID, "turnstile_token": "token-bad"})
+    assert res.status_code == 400
+    mock_send.assert_not_called()
+
+
+def test_contact_rejects_in_production_without_turnstile_secret(monkeypatch):
+    from backend.config import settings
+
+    monkeypatch.setattr(settings, "turnstile_secret_key", "")
+    monkeypatch.setattr(settings, "environment", "production")
+    with patch("backend.routers.public.send_contact_form_notification") as mock_send:
+        res = client.post("/api/contact", json=_VALID)
+    assert res.status_code == 400
+    mock_send.assert_not_called()
+
+
 def test_contact_accepts_valid_submission():
     with patch("backend.routers.public.send_contact_form_notification"):
         res = client.post("/api/contact", json=_VALID)
@@ -49,6 +106,37 @@ def test_contact_queues_sendgrid_notification():
     assert kwargs["name"] == "Jane Doe"
     assert kwargs["email"] == "jane@example.com"
     assert kwargs["company"] == "Acme Corp"
+
+
+def test_contact_queues_hubspot_deal_and_email():
+    with (
+        patch("backend.routers.public.send_contact_form_notification") as mock_send,
+        patch("backend.routers.public.submit_contact_form_to_hubspot") as mock_hs,
+    ):
+        res = client.post("/api/contact", json=_VALID)
+    assert res.status_code == 201
+    mock_send.assert_called_once()
+    mock_hs.assert_called_once()
+    kwargs = mock_hs.call_args.kwargs
+    assert kwargs["source"] == "contact_form"
+    assert kwargs["name"] == "Jane Doe"
+    assert kwargs["email"] == "jane@example.com"
+    assert kwargs["company"] == "Acme Corp"
+    assert kwargs["message"] == "We need help with cloud migration."
+    assert kwargs["phone"] == "555-0100"
+    assert kwargs["industry"] == "Financial Services"
+    assert kwargs["role"] == "CIO / CTO"
+
+
+def test_contact_honeypot_does_not_queue_hubspot():
+    with (
+        patch("backend.routers.public.send_contact_form_notification") as mock_send,
+        patch("backend.routers.public.submit_contact_form_to_hubspot") as mock_hs,
+    ):
+        res = client.post("/api/contact", json={**_VALID, "website": "http://spam.example"})
+    assert res.status_code == 201
+    mock_send.assert_not_called()
+    mock_hs.assert_not_called()
 
 
 @pytest.mark.parametrize(

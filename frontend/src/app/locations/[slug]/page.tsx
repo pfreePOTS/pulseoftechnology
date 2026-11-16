@@ -6,7 +6,8 @@ import { notFound } from "next/navigation";
 import GlobalFooter from "@/components/GlobalFooter";
 import GlobalHeader from "@/components/GlobalHeader";
 import JsonLd from "@/components/JsonLd";
-import { LOCATION_PARTNERS, LOCATIONS, getLocation, locationPath } from "@/lib/locations";
+import PartnersLogoMarquee from "@/components/PartnersLogoMarquee";
+import { LOCATIONS, getLocation, locationPath } from "@/lib/locations";
 import { breadcrumbSchema, localBusinessSchema } from "@/lib/schema";
 
 type Params = { slug: string };
@@ -108,7 +109,7 @@ export default async function LocationPage({ params }: { params: Promise<Params>
               </a>
             </p>
           ) : null}
-          <div className="relative z-[1] mx-auto w-full max-w-[1200px] px-8 py-16">
+          <div className="relative z-[1] mx-auto w-full max-w-[1200px] px-6 py-16">
             <p className="mb-4 font-sans text-[13px] font-semibold tracking-[2px] text-pulse-teal uppercase">
               {location.areas}
             </p>
@@ -121,67 +122,79 @@ export default async function LocationPage({ params }: { params: Promise<Params>
           </div>
         </section>
 
-        <section className="bg-white px-8 py-14">
+        <section className="bg-white px-6 py-16 md:py-20">
           <div className="mx-auto max-w-[1200px]">
-            <h2 className="mb-8 font-sans text-[28px] font-bold tracking-tight text-[#111]">
+            <span className="mb-3 block font-sans text-[11px] font-semibold tracking-[3px] text-pulse-teal uppercase">
+              Local solutions
+            </span>
+            <h2 className="mb-8 max-w-[720px] border-l-[5px] border-pulse-red py-0 pl-[18px] font-sans text-[28px] font-bold tracking-tight text-[#1a1a1a]">
               Information technology solutions for your business
             </h2>
-            <ul className="grid gap-6 md:grid-cols-2">
+            <ul className="grid gap-5 md:grid-cols-2">
               {location.services.map((service) => (
-                <li key={service.title} className="rounded-lg border border-[#e0e0e0] bg-[#f6f6f6] px-6 py-5">
-                  <h3 className="font-sans text-[17px] font-bold text-[#111]">{service.title}</h3>
-                  <p className="mt-2 font-sans text-[15px] leading-relaxed text-[#333]">{service.body}</p>
+                <li
+                  key={service.title}
+                  className="rounded-[10px] border border-[#e0e0e0] bg-[#f4f4f4] px-6 py-6 transition-colors hover:border-pulse-teal"
+                >
+                  <h3 className="font-sans text-[17px] font-bold text-[#1a1a1a]">{service.title}</h3>
+                  <p className="mt-2 font-sans text-[15px] leading-relaxed text-[#646464]">{service.body}</p>
                 </li>
               ))}
             </ul>
 
-            <h2 className="mt-14 mb-4 font-sans text-[22px] font-bold tracking-tight text-[#111]">
+            <h2 className="mt-16 mb-6 font-sans text-[22px] font-bold tracking-tight text-[#1a1a1a]">
               Expertise includes
             </h2>
-            <ul className="grid gap-2 sm:grid-cols-2">
+            <ul className="grid gap-3 sm:grid-cols-2">
               {location.expertise.map((item) => (
-                <li key={item} className="font-sans text-[15px] leading-relaxed text-[#333]">
+                <li
+                  key={item}
+                  className="flex gap-3 border-l-[3px] border-pulse-teal/40 pl-4 font-sans text-[15px] leading-relaxed text-[#646464]"
+                >
                   {item}
                 </li>
               ))}
             </ul>
+          </div>
+        </section>
 
-            <h2 className="mt-14 mb-6 font-sans text-[13px] font-semibold tracking-[2px] text-[#777] uppercase">
+        <section className="overflow-hidden border-t-4 border-pulse-teal bg-[#f4f4f4] px-6 py-[70px]">
+          <div className="mx-auto mb-10 max-w-[1200px] text-center">
+            <span className="mb-3 block font-sans text-[11px] font-semibold tracking-[3px] text-pulse-teal uppercase">
               Technologies we work with
+            </span>
+            <h2 className="font-sans text-[28px] font-bold text-[#1a1a1a]">
+              Platform partnerships that support delivery
             </h2>
-            <ul className="flex flex-wrap items-center gap-6">
-              {LOCATION_PARTNERS.map((partner) => (
-                <li key={partner.src} className="flex h-16 w-36 items-center justify-center rounded-md bg-white">
-                  <Image
-                    src={partner.src}
-                    alt={partner.alt}
-                    width={144}
-                    height={64}
-                    className="max-h-12 w-auto object-contain"
-                  />
-                </li>
-              ))}
-            </ul>
+          </div>
+          <PartnersLogoMarquee fadeFrom="#f4f4f4" />
+        </section>
 
-            <p className="mt-12 font-sans text-[15px] text-[#333]">
-              <span className="mb-1 block font-sans text-[12px] font-semibold tracking-[1.5px] text-[#777] uppercase">
-                Phone
-              </span>
-              <a
-                href={`tel:${telHref(location.phone)}`}
-                className="font-semibold text-pulse-teal hover:underline"
-              >
-                {location.phone}
-              </a>
+        <section className="relative overflow-hidden border-t-[3px] border-pulse-red bg-dark-bg px-6 py-[80px]">
+          <div
+            className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_50%,rgba(213,23,30,0.12)_0%,transparent_70%)]"
+            aria-hidden
+          />
+          <div className="relative z-[1] mx-auto max-w-[720px] text-center">
+            <span className="mb-3 block font-sans text-[11px] font-semibold tracking-[3px] text-pulse-teal uppercase">
+              {location.city} office
+            </span>
+            <a
+              href={`tel:${telHref(location.phone)}`}
+              className="mb-4 inline-block font-sans text-[clamp(1.5rem,3vw,2rem)] font-bold tracking-tight text-white transition-colors hover:text-pulse-teal"
+            >
+              {location.phone}
+            </a>
+            <p className="mb-8 font-sans text-base leading-relaxed text-white/65">
+              Talk with the local team about managed IT for your organization. We listen before we
+              recommend.
             </p>
-            <p className="mt-8">
-              <Link
-                href="/contact"
-                className="inline-block rounded-md bg-pulse-red px-5 py-3 font-sans text-sm font-semibold text-white hover:opacity-90"
-              >
-                Talk with an expert
-              </Link>
-            </p>
+            <Link
+              href="/contact"
+              className="inline-block rounded bg-pulse-red px-9 py-[13px] font-sans text-sm font-semibold text-white transition-colors hover:bg-[#a81117]"
+            >
+              Talk with an expert
+            </Link>
           </div>
         </section>
       </main>

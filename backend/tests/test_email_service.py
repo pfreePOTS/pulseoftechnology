@@ -366,7 +366,7 @@ def _merged_pipeline():
 
 
 def test_explicit_domain_is_not_refilled_from_other_pillars(monkeypatch):
-    """A Security pick stays on Security topics even when fewer than the minimum."""
+    """A Security pick stays first. Other pillars only top the list up to three stories."""
     monkeypatch.setattr(
         email_service,
         "_newsletter_first_article_via_chain",
@@ -393,8 +393,10 @@ def test_explicit_domain_is_not_refilled_from_other_pillars(monkeypatch):
         db=MagicMock(),
         merged_pipeline=_merged_pipeline(),
     )
-    assert {t.name for t in pool} == {"Sec A", "Sec B"}
-    assert tier in {"domains_fresh_articles", "domains_only"}
+    assert [t.name for t in pool[:2]] == ["Sec A", "Sec B"]
+    assert len(pool) == 3
+    assert pool[2].domain == "AI"
+    assert tier.startswith("match_1")
 
 
 def test_explicit_industry_is_not_refilled_with_unrelated_topics(monkeypatch):
@@ -429,7 +431,133 @@ def test_explicit_industry_is_not_refilled_with_unrelated_topics(monkeypatch):
         db=MagicMock(),
         merged_pipeline=_merged_pipeline(),
     )
-    assert [t.name for t in pool] == ["Hospital AI"]
+    assert pool[0].name == "Hospital AI"
+    assert len(pool) == 3
+
+
+def test_preference_ladder_ranks_three_identifier_matches_first(monkeypatch):
+    """CEO + Retail + Compliance beats a compliance-only theme and a full generic grid."""
+
+    def article_for(topic, *_args, **_kwargs):
+        return topic.sample_article
+
+    monkeypatch.setattr(email_service, "_newsletter_first_article_via_chain", article_for)
+
+    def sample(**kwargs):
+        base = dict(
+            id=1,
+            title="Story",
+            tags=[],
+            what_is_it="",
+            why_it_matters="",
+            persona_impacts=None,
+            content="",
+            subdomain="",
+        )
+        base.update(kwargs)
+        return SimpleNamespace(**base)
+
+    best = _topic("Compliance", 2.0, "Retail CEO compliance")
+    best.sample_article = sample(
+        what_is_it="Retail checkout fraud is spreading through stored cards.",
+        persona_impacts={"CEO": "Ask who approves refund exceptions."},
+    )
+    grid = {
+        label: {
+            "industry_impact": "Generic sector note.",
+            "impact_score": 5,
+            "source": "ai",
+            "impact_approved": True,
+        }
+        for label in (
+            "Healthcare",
+            "Financial Services",
+            "Technology",
+            "Manufacturing",
+            "Energy",
+            "Retail",
+            "Government",
+            "Education",
+            "Telecommunications",
+            "Transportation",
+            "Media & Entertainment",
+            "Real Estate",
+            "Agriculture",
+            "Pharma & Biotech",
+            "Legal Services",
+            "Hospitality",
+            "Nonprofit",
+            "Defense & Aerospace",
+            "Insurance",
+            "Professional Services",
+        )
+    }
+    domain_only = _topic("Compliance", 9.0, "Generic compliance")
+    domain_only.industry_positions = grid
+    domain_only.sample_article = sample(what_is_it="Regulators issued fresh guidance.")
+    unrelated = _topic("AI", 8.0, "Unrelated AI")
+    unrelated.sample_article = sample()
+    role = SimpleNamespace(name="CEO", tags=["Strategy"])
+    sub = _sub(
+        domains=["compliance"],
+        industries=["Retail & E-Commerce"],
+        roles=[role],
+    )
+    pool, tier = email_service._resolve_newsletter_topic_pool(
+        subscriber=sub,
+        all_approved=[domain_only, unrelated, best],
+        db=MagicMock(),
+        merged_pipeline=_merged_pipeline(),
+    )
+    assert pool[0].name == "Retail CEO compliance"
+    assert "Generic compliance" in {t.name for t in pool}
+    assert tier.startswith("match_3_of_3")
+
+
+def test_industry_lens_resolves_retail_alias():
+    topic = SimpleNamespace(
+        industry_positions={
+            "Retail": {
+                "industry_impact": "Stores need a checkout control.",
+                "source": "ai",
+                "impact_approved": True,
+            }
+        }
+    )
+    sub = _sub(industries=["Retail & E-Commerce"])
+    html = email_service._industry_lens_block(topic, sub)
+    assert "Stores need a checkout control" in html
+
+
+def test_top_stories_include_article_title(monkeypatch):
+    article = SimpleNamespace(
+        id=9,
+        title="UK sets rules for personal AI agents",
+        url="https://example.com/agents",
+        what_is_it="Four regulators told firms to add user controls.",
+        why_it_matters="",
+        content="",
+        tags=[],
+        subdomain="",
+        persona_impacts=None,
+        domain=None,
+    )
+    monkeypatch.setattr(
+        email_service,
+        "select_articles_for_newsletter_topic",
+        lambda *args, **kwargs: [article],
+    )
+    topic = _topic("Compliance", 6.0, "AI Agent Governance")
+    html = email_service._build_top_stories_block(
+        [topic],
+        db=MagicMock(),
+        subscriber=_sub(),
+        role_objs=[],
+        ingest_cutoffs=None,
+        include_lead_image=False,
+    )
+    assert "UK sets rules for personal AI agents" in html
+    assert "AI Agent Governance" in html
 
 
 def test_role_tags_rank_matching_topics_ahead_of_higher_urgency(monkeypatch):
@@ -788,6 +916,7 @@ def test_build_html_header_omits_hot_headline_and_includes_story_rollup():
             "url": "https://example.com/x",
             "source_name": "TechCrunch",
             "ingested_at": datetime(2026, 4, 13, 12, 13, 7, tzinfo=UTC),
+            "what_is_it": "Technology teams are rolling out agents.",
         },
     }
     topics = [
@@ -835,6 +964,7 @@ def test_build_html_hot_topic_lead_when_subscriber_includes_hot_topic():
             "url": "https://example.com/x",
             "source_name": "TechCrunch",
             "ingested_at": datetime(2026, 4, 13, 12, 13, 7, tzinfo=UTC),
+            "what_is_it": "Technology teams are rolling out agents.",
         },
     }
     topics = [
@@ -860,31 +990,67 @@ def test_build_html_hot_topic_lead_when_subscriber_includes_hot_topic():
     assert html.count("<img") == 2
 
 
-def test_build_html_hot_lead_shows_when_hot_topic_not_in_subscriber_topics():
-    """Global hot lead is editorial: subscribers see it even if that topic is outside their rollup."""
+def test_build_html_hot_lead_omitted_without_industry_and_role_fit():
+    """A retail CEO does not get a hot lead that matches neither industry nor role."""
     hot = {
-        "hot_topic": {"id": 99, "name": "Other", "domain": "AI", "subdomain": ""},
+        "hot_topic": {"id": 99, "name": "AI Chip Export Controls", "domain": "Compliance", "subdomain": ""},
         "hot_article": {
-            "title": "Breaking global briefing lead",
+            "title": "The Nvidia scandal could upend chip sales to China",
             "url": "https://example.com/y",
-            "source_name": "X",
-            "ingested_at": datetime(2026, 4, 13, tzinfo=UTC),
+            "source_name": "Wired",
+            "ingested_at": datetime(2026, 11, 17, tzinfo=UTC),
+            "what_is_it": "A political fight over whether the U.S. keeps chip sales moving.",
+            "why_it_matters": "Expect louder political noise around China chip policy.",
+            "persona_impacts": {"CTO": "Watch export licenses."},
         },
     }
     topics = [
-        SimpleNamespace(id=1, name="Mine", domain="AI", urgency_score=9.0, summary="A."),
+        SimpleNamespace(id=1, name="Mine", domain="Compliance", urgency_score=9.0, summary="A."),
     ]
-    sub = _sub()
+    sub = _sub(
+        industries=["Retail & E-Commerce"],
+        domains=["compliance"],
+        roles=[SimpleNamespace(name="CEO", tags=["Strategy"])],
+    )
     html = email_service._build_html(
         sub,
         topics,
         db=MagicMock(),
         hot_of_day=hot,
     )
-    assert "Breaking global briefing lead" in html
+    assert "Nvidia scandal" not in html
+    assert "Hot on your radar" not in html
+
+
+def test_build_html_hot_lead_shows_when_industry_and_role_match():
+    """Hot lead can sit outside the topic list when the article fits industry and role."""
+    hot = {
+        "hot_topic": {"id": 99, "name": "Checkout fraud", "domain": "Compliance", "subdomain": ""},
+        "hot_article": {
+            "title": "Retail chains face a new checkout fraud wave",
+            "url": "https://example.com/y",
+            "source_name": "X",
+            "ingested_at": datetime(2026, 11, 17, tzinfo=UTC),
+            "what_is_it": "Retailers are seeing a new fraud pattern at checkout.",
+            "persona_impacts": {"CEO": "Ask the board how refunds are approved."},
+        },
+    }
+    topics = [
+        SimpleNamespace(id=1, name="Mine", domain="AI", urgency_score=9.0, summary="A."),
+    ]
+    sub = _sub(
+        industries=["Retail & E-Commerce"],
+        domains=["compliance"],
+        roles=[SimpleNamespace(name="CEO", tags=["Strategy"])],
+    )
+    html = email_service._build_html(
+        sub,
+        topics,
+        db=MagicMock(),
+        hot_of_day=hot,
+    )
+    assert "Retail chains face a new checkout fraud wave" in html
     assert "Hot on your radar" in html
-    assert "Pulse of Technology" in html
-    assert "pots_logo_new.png" in html
 
 
 def test_newsletter_subject_uses_hot_article_title():

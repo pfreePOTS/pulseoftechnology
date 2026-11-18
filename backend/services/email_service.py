@@ -36,6 +36,7 @@ from ..models.topic import Topic, TopicStatus
 from .domain_registry import CORE_DOMAIN_DEFS, slugify_domain
 from .industry_cells import live_industry_positions
 from .newsletter_selection import (
+    article_has_persona_for_roles,
     article_industry_bonus,
     role_tag_match_score,
     role_tags_from_roles,
@@ -100,6 +101,12 @@ def _newsletter_article_pick_cutoffs(c: NewsletterArticleIngestCutoffs) -> list[
 
 # Prefer this many radar themes before widening the topic pool beyond strict profile/article fit.
 NEWSLETTER_ASSEMBLY_MIN_TOPICS = 5
+# 3 top stories + 4 article breakdowns. Lower match tiers fill up to this size.
+NEWSLETTER_BRIEFING_SLOTS = 7
+# Keep at least a top-story row. Unrelated fallback is only used below this.
+NEWSLETTER_MIN_STORIES = 3
+# A full Analysis grid has a cell for every industry, so cell presence is not a preference hit.
+_FULL_INDUSTRY_GRID = 15
 
 # Canonical PulseOne company LinkedIn (newsletter footer / brand links — not share-offsite).
 PULSEONE_LINKEDIN_URL = (
@@ -299,15 +306,17 @@ def _newsletter_subject_and_headline(
     topics: list[Topic],
     roles: list[Role],
     hot_data: dict[str, Any] | None,
+    subscriber: Subscriber | None = None,
 ) -> tuple[str, str | None]:
     """
-    Prefer the global hot-topic article title when ``hot_data`` is available; otherwise a
+    Prefer a hot-topic article title when that lead fits the subscriber; otherwise a
     Pulse of Technology Daily digest line. Returns (subject, headline_for_body or None).
 
-    Hot-topic selection is editorial and shared across subscribers; it no longer depends on
-    whether the theme appears in the subscriber's domain-filtered topic list.
+    The hot lead is included only when it matches the industry and role the subscriber set.
     """
-    ht, ha, _ = _resolve_hot_topic_lead_for_subscriber(topics, hot_data)
+    role_names = [(getattr(r, "name", None) or "").strip() for r in roles]
+    role_names = [n for n in role_names if n] or None
+    ht, ha, _ = _resolve_hot_topic_lead_for_subscriber(topics, hot_data, subscriber, role_names)
     role_bit = ""
     if roles:
         names = ", ".join((r.name or "").strip() for r in roles if (r.name or "").strip())
@@ -636,10 +645,10 @@ def _briefing_subsection(title: str, body: str) -> str:
 def _industry_lens_block(topic: Topic, subscriber: Subscriber | None) -> str:
     if subscriber is None or not isinstance(topic.industry_positions, dict):
         return ""
-    live = live_industry_positions(topic.industry_positions)
     lines: list[str] = []
+    ip = topic.industry_positions if isinstance(topic.industry_positions, dict) else {}
     for ind in getattr(subscriber, "industries", None) or []:
-        pos = live.get(ind)
+        pos = _industry_positions_lookup(ip, [str(ind)])
         blurb = _industry_position_narrative(pos)
         if blurb:
             lines.append(f"{ind}: {_clamp_brief_sentences(blurb, 2)}")
@@ -848,21 +857,56 @@ _EMAIL_TEMPLATE = """\
 """
 
 
+def _hot_article_view(hot_article: dict[str, Any]) -> Any:
+    """Shape a hot-lead payload like an Article for industry and persona checks."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        title=hot_article.get("title") or "",
+        what_is_it=hot_article.get("what_is_it") or "",
+        why_it_matters=hot_article.get("why_it_matters") or "",
+        content=hot_article.get("content") or "",
+        tags=hot_article.get("tags") or [],
+        persona_impacts=hot_article.get("persona_impacts"),
+        subdomain=hot_article.get("subdomain") or "",
+    )
+
+
+def _hot_lead_relevant_for_subscriber(
+    hot_topic: dict[str, Any],
+    hot_article: dict[str, Any],
+    subscriber: Subscriber,
+    role_names: list[str] | None,
+) -> bool:
+    """Hot lead stays only when it fits every industry and role the subscriber set."""
+    industries = _subscriber_industry_labels(subscriber)
+    names = [n for n in (role_names or []) if n]
+    if not industries and not names:
+        return True
+    article = _hot_article_view(hot_article)
+    topic_view = type(article)(
+        industry_positions=hot_topic.get("industry_positions"),
+        domain=hot_topic.get("domain"),
+    )
+    if industries and not _industry_signals_for_article(topic_view, article, industries):
+        return False
+    if names and not article_has_persona_for_roles(article, names):
+        return False
+    return True
+
+
 def _resolve_hot_topic_lead_for_subscriber(
     topics: list[Topic],
     hot_data: dict[str, Any] | None,
+    subscriber: Subscriber | None = None,
+    role_names: list[str] | None = None,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None, int | None]:
     """
-    Return the global ``hot_of_day`` lead for everyone when ``hot_topic`` / ``hot_article`` exist.
+    Return today's hot lead when it fits the subscriber's industry and role.
 
-    Product decision (2026-08-12): hot lead is the shared top story for every subscriber so a
-    single briefing still surfaces the day's lead. Personalized **Top Stories** below remain
-    profile-sorted from the assembled preference pool (hot topic peeled to avoid duplicates).
-
-    ``topics`` is retained for call-site compatibility only; the lead is **not** gated on
-    whether the subscriber's domain-filtered briefing includes that topic. The returned topic
-    id is used to peel that theme from downstream sections (rollup, deep dives) so it is not
-    shown twice in the same issue.
+    ``topics`` is retained for call-site compatibility. The lead does not have to be one of
+    those topics, but it is omitted when the article misses an industry or role the
+    subscriber actually set. The returned topic id is peeled from later sections.
     """
     _ = topics
     if not hot_data:
@@ -876,6 +920,10 @@ def _resolve_hot_topic_lead_for_subscriber(
     except (KeyError, TypeError, ValueError):
         return None, None, None
     if not (str(ha.get("title") or "").strip() or str(ha.get("url") or "").strip()):
+        return None, None, None
+    if subscriber is not None and not _hot_lead_relevant_for_subscriber(
+        ht, ha, subscriber, role_names
+    ):
         return None, None, None
     return ht, ha, peel_id
 
@@ -941,10 +989,20 @@ def _build_top_stories_block(
                 f'style="display:block;width:100%;max-width:670px;height:auto;border:0;" />'
                 f"</a></td></tr></table>"
             )
+        story_title = ""
+        if first_art is not None and (first_art.title or "").strip():
+            linked = html.escape((first_art.title or "").strip())
+            href = html.escape((first_art.url or "").strip() or "#")
+            story_title = (
+                f'<a href="{href}" style="font-size:17px;font-weight:700;color:#111827;'
+                f'text-decoration:none;line-height:1.35;">{linked}</a><br>'
+            )
         rows.append(
             f'<div style="margin:0 0 18px;font-family:{_FF};">'
             f"{lead_img}"
-            f'<span style="font-size:17px;font-weight:700;color:#111827;">{html.escape(t.name)}</span><br>'
+            f"{story_title}"
+            f'<span style="font-size:13px;font-weight:700;letter-spacing:0.04em;'
+            f'text-transform:uppercase;color:#4A5F6D;">{html.escape(t.name)}</span><br>'
             f'<span style="font-size:15px;color:#4A5F6D;line-height:1.6;">{html.escape(summ)}{read_more}</span>'
             f"</div>"
         )
@@ -1372,7 +1430,17 @@ def _build_html(
     else:
         sorted_topics = sorted(topics, key=lambda t: t.urgency_score, reverse=True)
 
-    ht, ha, hot_topic_id_for_sections = _resolve_hot_topic_lead_for_subscriber(topics, hot_data)
+    role_name_list = [
+        (getattr(r, "name", None) or "").strip()
+        for r in role_objs
+        if (getattr(r, "name", None) or "").strip()
+    ]
+    ht, ha, hot_topic_id_for_sections = _resolve_hot_topic_lead_for_subscriber(
+        topics,
+        hot_data,
+        subscriber,
+        role_name_list or None,
+    )
     hot_lead_html = _build_hot_topic_lead_html(ht, ha) if ht and ha else ""
     header_banner_html = _build_newsletter_header_banner_html()
 
@@ -1546,7 +1614,7 @@ def send_daily_newsletter(
         merge_pipeline_settings(db) if db is not None else merge_pipeline_settings(None)
     )
 
-    subject, _ = _newsletter_subject_and_headline(topics, roles, hot_data)
+    subject, _ = _newsletter_subject_and_headline(topics, roles, hot_data, subscriber)
     issue = NewsletterIssue(
         subscriber_email=subscriber.email,
         subject=subject,
@@ -1708,12 +1776,45 @@ def _industry_positions_lookup(ip: dict, industries: list[str]) -> object | None
     return None
 
 
+def _cell_impact_score(cell: object) -> float | None:
+    if not isinstance(cell, dict):
+        return None
+    raw = cell.get("impact_score")
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _industry_grid_is_specific_match(topic: Topic | object, industries: list[str]) -> bool:
+    """A grid cell counts only when it is sparse or a standout impact, not a filled 20-cell grid."""
+    ip = getattr(topic, "industry_positions", None)
+    if not isinstance(ip, dict) or not industries:
+        return False
+    cell = _industry_positions_lookup(ip, industries)
+    if cell is None:
+        return False
+    live = live_industry_positions(ip)
+    if len(live) < _FULL_INDUSTRY_GRID:
+        return True
+    score = _cell_impact_score(cell)
+    if score is None or score < 7:
+        return False
+    scores = [s for s in (_cell_impact_score(v) for v in live.values()) if s is not None]
+    if not scores:
+        return False
+    scores.sort()
+    median = scores[len(scores) // 2]
+    return score > median
+
+
 def _industry_signals_for_article(topic: Topic, article: Article, industries: list[str]) -> bool:
     if not industries:
         return True
-    ip = topic.industry_positions
-    if isinstance(ip, dict) and _industry_positions_lookup(ip, industries) is not None:
+    if _industry_grid_is_specific_match(topic, industries):
         return True
+    if article is None:
+        return False
     match_labels = _subscriber_industry_match_labels(industries)
     return any(article_industry_bonus(article, ind) > 0 for ind in match_labels)
 
@@ -1744,10 +1845,7 @@ def _sort_topics_by_urgency_desc(topics: list[Topic]) -> list[Topic]:
 
 
 def _topic_has_industry_grid_hit(topic: Topic, industries: list[str]) -> bool:
-    ip = getattr(topic, "industry_positions", None)
-    if not isinstance(ip, dict) or not industries:
-        return False
-    return _industry_positions_lookup(ip, industries) is not None
+    return _industry_grid_is_specific_match(topic, industries)
 
 
 def _order_newsletter_pool_industry_first(
@@ -1898,42 +1996,12 @@ def _resolve_newsletter_topic_pool(
     def everything() -> list[Topic]:
         return list(approved)
 
+    possible = int(has_domains) + int(bool(industries)) + int(bool(role_names))
+    allow_l = {x.lower() for x in (_domain_allow_for_newsletter(subscriber) or set())}
+
     chosen: tuple[list[Topic], str] | None = None
-    if has_domains and industries:
-        # Stay inside the industry+domain intersection. Widen only when that set is empty.
-        for label, lazy in (
-            ("industry_domains_fresh", industry_fresh),
-            ("domains_fresh_articles", domain_fresh),
-            ("domains_only", domain_only),
-            ("cross_domain_industry_fresh", cross_industry),
-            ("all_pipeline_topics", everything),
-        ):
-            pool = lazy()
-            if pool:
-                chosen = (pool, label)
-                break
-    elif has_domains:
-        for label, lazy in (
-            ("domains_fresh_articles", domain_fresh),
-            ("domains_only", domain_only),
-            ("all_pipeline_topics", everything),
-        ):
-            pool = lazy()
-            if pool:
-                chosen = (pool, label)
-                break
-    elif industries:
-        for label, lazy in (
-            ("industry_domains_fresh", industry_fresh),
-            ("cross_domain_industry_fresh", cross_industry),
-            ("all_pipeline_topics", everything),
-        ):
-            pool = lazy()
-            if pool:
-                chosen = (pool, label)
-                break
-    else:
-        # No domain or industry pick: keep a full briefing, then rank by role chips.
+    if possible == 0:
+        # No domain, industry, or role: keep a full briefing, then rank by role chips.
         for label, lazy in (
             ("domains_fresh_articles", domain_fresh),
             ("domains_only", domain_only),
@@ -1943,6 +2011,70 @@ def _resolve_newsletter_topic_pool(
             if pool and (len(pool) >= min_topics or label == "all_pipeline_topics"):
                 chosen = (pool, label)
                 break
+    else:
+        scored: list[tuple[int, Topic]] = []
+        for topic in approved:
+            art = _newsletter_first_article_via_chain(
+                topic, db, role_names, ingest, role_tags or None
+            )
+            score = 0
+            if has_domains and topic_domain_slug_for_filter(topic) in allow_l:
+                score += 1
+            if industries and _industry_signals_for_article(topic, art, industries):
+                score += 1
+            if role_names and art is not None and article_has_persona_for_roles(art, role_names):
+                score += 1
+            scored.append((score, topic))
+
+        picked: list[Topic] = []
+        seen: set[int] = set()
+        best_used: int | None = None
+        widened = False
+        used_fallback = False
+
+        def _take(level: int, *, unlimited: bool, stop_at: int) -> None:
+            bucket = [topic for score, topic in scored if score == level and id(topic) not in seen]
+            if not bucket:
+                return
+            ordered = _order_newsletter_pool_industry_first(
+                bucket,
+                db=db,
+                subscriber=subscriber,
+                role_names=role_names,
+                ingest=ingest,
+                role_tags=role_tags,
+            )
+            for topic in ordered:
+                if not unlimited and len(picked) >= stop_at:
+                    break
+                picked.append(topic)
+                seen.add(id(topic))
+
+        for level in range(possible, 0, -1):
+            before = len(picked)
+            _take(level, unlimited=(level == possible), stop_at=NEWSLETTER_BRIEFING_SLOTS)
+            if len(picked) > before and best_used is None:
+                best_used = level
+            if before and len(picked) > before:
+                widened = True
+            if len(picked) >= NEWSLETTER_BRIEFING_SLOTS:
+                break
+        if len(picked) < NEWSLETTER_MIN_STORIES:
+            before = len(picked)
+            _take(0, unlimited=False, stop_at=NEWSLETTER_MIN_STORIES)
+            used_fallback = len(picked) > before
+        if not picked:
+            chosen = None
+        else:
+            if best_used is None:
+                label = "fallback"
+            else:
+                label = f"match_{best_used}_of_{possible}"
+                if used_fallback:
+                    label += "+fallback"
+                elif widened:
+                    label += "+widen"
+            chosen = (picked, label)
 
     if not chosen:
         return [], "empty"
@@ -1954,6 +2086,10 @@ def _resolve_newsletter_topic_pool(
         len(pool),
         getattr(subscriber, "email", "?"),
     )
+    # Preference tiers are already best-match first. Re-sorting by urgency would
+    # pull a weak fallback ahead of a real domain or industry hit.
+    if label.startswith("match_") or label == "fallback":
+        return pool, label
     return (
         _order_newsletter_pool_industry_first(
             pool,
@@ -2143,11 +2279,12 @@ def assemble_newsletter_topics(
     """
     Narrow pipeline topics by subscriber wizard preferences.
 
-    - Domain picks keep the cohort inside those pillars.
-    - Industry picks keep industry-matched themes; the ladder widens only when that
-      set is empty (not merely below ``NEWSLETTER_ASSEMBLY_MIN_TOPICS``).
-    - With neither pick, tiers still prefer a pool that clears the minimum topic
-      count before falling back to the full pipeline cohort.
+    - Domain, industry, and role are scored together. All three matches come first,
+      then two, then one. A full industry grid does not count as an industry match.
+    - Lower tiers fill the briefing up to ``NEWSLETTER_BRIEFING_SLOTS``. Unrelated
+      topics are added only when fewer than ``NEWSLETTER_MIN_STORIES`` matched.
+    - With no domain, industry, or role, tiers still prefer a pool that clears the
+      minimum topic count before falling back to the full pipeline cohort.
     - Role chips reorder topics and the article chosen inside each topic.
 
     ``skip_domain_filter=True`` skips domain narrowing and the preference ladder.
@@ -2212,9 +2349,8 @@ def generate_newsletter_preview(
     Uses up to 20 topics from the **same cohort as the scheduled newsletter**: watched or
     selected pipeline topics only (not ``is_published``-only rows).
 
-    Domain picks keep the preview inside those pillars. Industry picks keep topics
-    whose analyzed industry grid (or article text) matches, and only widen when that
-    set is empty. Role chips reorder topics and the article chosen inside each topic.
+    Domain, industry, and role are scored together (3, then 2, then 1). A filled
+    industry grid is not an industry match. Role chips reorder topics inside a tier.
     An empty domain list means all pillars, not a skipped ladder.
 
     Injects an admin-only assembly-tier banner (not used on real sends).

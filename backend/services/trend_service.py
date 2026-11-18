@@ -359,6 +359,10 @@ def _serialize_hot_article(hot_art: Article | None) -> dict[str, Any] | None:
         "image_url": img_u or None,
         "what_is_it": hot_art.what_is_it,
         "why_it_matters": hot_art.why_it_matters,
+        "persona_impacts": hot_art.persona_impacts
+        if isinstance(hot_art.persona_impacts, dict)
+        else None,
+        "content": (hot_art.content or "")[:4000],
     }
 
 

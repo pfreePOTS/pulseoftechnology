@@ -309,14 +309,13 @@ def _newsletter_subject_and_headline(
     subscriber: Subscriber | None = None,
 ) -> tuple[str, str | None]:
     """
-    Prefer a hot-topic article title when that lead fits the subscriber; otherwise a
+    Prefer the global hot-topic article title when ``hot_data`` is available; otherwise a
     Pulse of Technology Daily digest line. Returns (subject, headline_for_body or None).
 
-    The hot lead is included only when it matches the industry and role the subscriber set.
+    The hot lead is shared across subscribers and does not depend on their preferences.
     """
-    role_names = [(getattr(r, "name", None) or "").strip() for r in roles]
-    role_names = [n for n in role_names if n] or None
-    ht, ha, _ = _resolve_hot_topic_lead_for_subscriber(topics, hot_data, subscriber, role_names)
+    _ = subscriber
+    ht, ha, _ = _resolve_hot_topic_lead_for_subscriber(topics, hot_data)
     role_bit = ""
     if roles:
         names = ", ".join((r.name or "").strip() for r in roles if (r.name or "").strip())
@@ -857,56 +856,19 @@ _EMAIL_TEMPLATE = """\
 """
 
 
-def _hot_article_view(hot_article: dict[str, Any]) -> Any:
-    """Shape a hot-lead payload like an Article for industry and persona checks."""
-    from types import SimpleNamespace
-
-    return SimpleNamespace(
-        title=hot_article.get("title") or "",
-        what_is_it=hot_article.get("what_is_it") or "",
-        why_it_matters=hot_article.get("why_it_matters") or "",
-        content=hot_article.get("content") or "",
-        tags=hot_article.get("tags") or [],
-        persona_impacts=hot_article.get("persona_impacts"),
-        subdomain=hot_article.get("subdomain") or "",
-    )
-
-
-def _hot_lead_relevant_for_subscriber(
-    hot_topic: dict[str, Any],
-    hot_article: dict[str, Any],
-    subscriber: Subscriber,
-    role_names: list[str] | None,
-) -> bool:
-    """Hot lead stays only when it fits every industry and role the subscriber set."""
-    industries = _subscriber_industry_labels(subscriber)
-    names = [n for n in (role_names or []) if n]
-    if not industries and not names:
-        return True
-    article = _hot_article_view(hot_article)
-    topic_view = type(article)(
-        industry_positions=hot_topic.get("industry_positions"),
-        domain=hot_topic.get("domain"),
-    )
-    if industries and not _industry_signals_for_article(topic_view, article, industries):
-        return False
-    if names and not article_has_persona_for_roles(article, names):
-        return False
-    return True
-
-
 def _resolve_hot_topic_lead_for_subscriber(
     topics: list[Topic],
     hot_data: dict[str, Any] | None,
-    subscriber: Subscriber | None = None,
-    role_names: list[str] | None = None,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None, int | None]:
     """
-    Return today's hot lead when it fits the subscriber's industry and role.
+    Return the global ``hot_of_day`` lead for everyone when ``hot_topic`` / ``hot_article`` exist.
 
-    ``topics`` is retained for call-site compatibility. The lead does not have to be one of
-    those topics, but it is omitted when the article misses an industry or role the
-    subscriber actually set. The returned topic id is peeled from later sections.
+    Product decision: the hot lead is the shared top story for every subscriber, regardless of
+    domain, industry, or role. Personalized **Top Stories** below remain profile-sorted from
+    the assembled preference pool (hot topic peeled to avoid duplicates).
+
+    ``topics`` is retained for call-site compatibility only. The returned topic id is used to
+    peel that theme from downstream sections so it is not shown twice in the same issue.
     """
     _ = topics
     if not hot_data:
@@ -920,10 +882,6 @@ def _resolve_hot_topic_lead_for_subscriber(
     except (KeyError, TypeError, ValueError):
         return None, None, None
     if not (str(ha.get("title") or "").strip() or str(ha.get("url") or "").strip()):
-        return None, None, None
-    if subscriber is not None and not _hot_lead_relevant_for_subscriber(
-        ht, ha, subscriber, role_names
-    ):
         return None, None, None
     return ht, ha, peel_id
 
@@ -1430,17 +1388,7 @@ def _build_html(
     else:
         sorted_topics = sorted(topics, key=lambda t: t.urgency_score, reverse=True)
 
-    role_name_list = [
-        (getattr(r, "name", None) or "").strip()
-        for r in role_objs
-        if (getattr(r, "name", None) or "").strip()
-    ]
-    ht, ha, hot_topic_id_for_sections = _resolve_hot_topic_lead_for_subscriber(
-        topics,
-        hot_data,
-        subscriber,
-        role_name_list or None,
-    )
+    ht, ha, hot_topic_id_for_sections = _resolve_hot_topic_lead_for_subscriber(topics, hot_data)
     hot_lead_html = _build_hot_topic_lead_html(ht, ha) if ht and ha else ""
     header_banner_html = _build_newsletter_header_banner_html()
 

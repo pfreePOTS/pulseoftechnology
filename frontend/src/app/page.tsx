@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import GlobalHeader from "@/components/GlobalHeader";
 import HeroSection from "@/components/HeroSection";
@@ -55,7 +56,11 @@ export default function Home() {
             Not ready to talk? Stay ahead anyway.
           </h2>
           <p className="mb-8 text-center font-sans text-[15px] leading-relaxed text-[#646464]">
-            The Pulse of Technology Radar is PulseOne&rsquo;s live view of what&rsquo;s
+            The{" "}
+            <Link href="/radar" className="font-semibold text-pulse-teal hover:underline">
+              Pulse of Technology
+            </Link>{" "}
+            Radar is PulseOne&rsquo;s live view of what&rsquo;s
             changing in technology. Subscribe and get the signals that matter to your industry and role,
             in your inbox each morning.
           </p>

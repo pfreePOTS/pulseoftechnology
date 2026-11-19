@@ -990,10 +990,15 @@ def test_build_html_hot_topic_lead_when_subscriber_includes_hot_topic():
     assert html.count("<img") == 2
 
 
-def test_build_html_hot_lead_omitted_without_industry_and_role_fit():
-    """A retail CEO does not get a hot lead that matches neither industry nor role."""
+def test_build_html_hot_lead_shows_without_industry_and_role_fit():
+    """Hot lead is for everyone, even when it matches neither industry nor role."""
     hot = {
-        "hot_topic": {"id": 99, "name": "AI Chip Export Controls", "domain": "Compliance", "subdomain": ""},
+        "hot_topic": {
+            "id": 99,
+            "name": "AI Chip Export Controls",
+            "domain": "Compliance",
+            "subdomain": "",
+        },
         "hot_article": {
             "title": "The Nvidia scandal could upend chip sales to China",
             "url": "https://example.com/y",
@@ -1018,8 +1023,11 @@ def test_build_html_hot_lead_omitted_without_industry_and_role_fit():
         db=MagicMock(),
         hot_of_day=hot,
     )
-    assert "Nvidia scandal" not in html
-    assert "Hot on your radar" not in html
+    assert "Nvidia scandal" in html
+    assert "Hot on your radar" in html
+    subject, headline = email_service._newsletter_subject_and_headline(topics, sub.roles, hot, sub)
+    assert "Nvidia Scandal" in subject or "Nvidia scandal" in subject
+    assert headline is not None
 
 
 def test_build_html_hot_lead_shows_when_industry_and_role_match():
